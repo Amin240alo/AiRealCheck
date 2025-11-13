@@ -1,0 +1,14 @@
+Flask
+flask-cors
+requests
+Pillow\npillow-heif
+numpy
+opencv-python-headless
+ImageHash
+pyjwt
+bcrypt
+SQLAlchemy
+python-dotenv
+torch
+timm
+

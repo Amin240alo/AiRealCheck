@@ -1,0 +1,152 @@
+﻿import requests
+import base64
+import json
+import os
+
+# Deinen Hive AI API-Key hier eintragen
+HIVE_API_KEY = "nWlETBQwu0aH+kclFrlKcQ=="
+
+def analyze_with_hive(file_path: str):
+    """
+    Sendet das Bild an Hive AI zur Analyse (Real vs Fake).
+    """
+    assert os.path.exists(file_path), "Datei existiert nicht"
+
+    with open(file_path, "rb") as f:
+        img_data = base64.b64encode(f.read()).decode("utf-8")
+
+    url = "https://api.thehive.ai/api/v2/task/sync"
+    headers = {
+        "Authorization": f"Token {HIVE_API_KEY}",
+        "Content-Type": "application/json"
+    }
+
+    payload = {
+    "model": "deepfake-detection",
+    "input": [{"image": img_data}]
+  }
+
+
+    response = requests.post(url, headers=headers, json=payload)
+
+    if response.status_code != 200:
+        return {
+            "error": True,
+            "message": f"Fehler bei Anfrage: {response.status_code}",
+            "details": response.text
+        }
+
+    data = response.json()
+
+    try:
+      /* AIRealCheck - Minimal script.js rebuilt for stable image analysis */
+
+document.addEventListener('DOMContentLoaded', () => {
+  const $ = (s) => document.querySelector(s);
+  const $$ = (s) => document.querySelectorAll(s);
+
+  function bindAnalyzeButtons() {
+    $$('.ac-primary[data-kind]').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const kind = btn.dataset.kind;
+        analyzeFile(kind);
+      });
+    });
+  }
+
+  async function analyzeFile(mediaType) {
+    const idMap = { image: '#imageInput', video: '#videoInput', audio: '#audioInput' };
+    const fileInput = document.querySelector(idMap[mediaType] || '#imageInput');
+    const file = fileInput && fileInput.files ? fileInput.files[0] : null;
+
+    if (!file) {
+      alert('Bitte zuerst eine Datei auswÃ¤hlen!');
+      return;
+    }
+
+    if (mediaType !== 'image') {
+      const area = document.querySelector('#analysisArea');
+      if (area) {
+        area.innerHTML = `<div class="ac-card"><b>Nur Bilder werden aktuell unterstÃ¼tzt.</b><p class="ac-subtle">Video/Audio kommt spÃ¤ter.</p></div>`;
+      }
+      return;
+    }
+
+    const area = document.querySelector('#analysisArea');
+    if (area) {
+      area.innerHTML = `
+        <div class="ac-card">
+          <b>Analyse lÃ¤uft...</b>
+          <p class="ac-subtle">Bitte warten</p>
+          <progress max="100" value="30" style="width:100%;height:10px"></progress>
+        </div>`;
+    }
+
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('type', mediaType);
+
+    try {
+      const resp = await fetch('http://127.0.0.1:5000/analyze', { method: 'POST', body: formData });
+      const data = await resp.json();
+
+      if (!data || data.ok === false) {
+        const msg = (data && (data.error || data.message)) || 'Analyse fehlgeschlagen';
+        if (area) {
+          area.innerHTML = `<div class="ac-card"><b>Fehler</b><p class="ac-subtle">${msg}</p></div>`;
+        }
+        return;
+      }
+
+      const real = data.real;
+      const fake = data.fake;
+      const msg = data.message || '';
+      const details = Array.isArray(data.details) ? data.details : [];
+
+      if (area) {
+        area.innerHTML = `
+          <div class="ac-card">
+            <div class="ac-row" style="justify-content: space-between; align-items: baseline;">
+              <div>
+                <b>${real}% echt / ${fake}% KI</b>
+                <p class="ac-subtle" style="margin:4px 0 0 0">${msg}</p>
+              </div>
+              <button id="toggleDetails" class="ac-ghost" style="font-size:12px;padding:4px 8px">Details</button>
+            </div>
+            <div id="inlineDetails" class="ac-subtle" style="display:none; margin-top:8px">
+              <ul class="ac-compare-list">
+                ${details.map((d) => `<li>${String(d)}</li>`).join('')}
+              </ul>
+            </div>
+          </div>`;
+
+        const btn = document.querySelector('#toggleDetails');
+        const box = document.querySelector('#inlineDetails');
+        if (btn && box) {
+          btn.addEventListener('click', () => {
+            const open = box.style.display !== 'none';
+            box.style.display = open ? 'none' : 'block';
+            btn.textContent = open ? 'Details' : 'Details verbergen';
+          });
+        }
+      }
+    } catch (err) {
+      if (area) {
+        area.innerHTML = `<div class="ac-card"><b>Fehler</b><p class="ac-subtle">Verbindung zum Server fehlgeschlagen.</p></div>`;
+      }
+      console.error('Analyse-Fehler:', err);
+    }
+  }
+
+  // Deaktiviert jede noch irgendwo gebundene Demo-Funktion
+  try {
+    window.startFakeAnalysis = function () {};
+    window.showFakeResult = function () {};
+  } catch (e) {}
+
+  bindAnalyzeButtons();
+});
+
+
