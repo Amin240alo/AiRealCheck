@@ -11,7 +11,7 @@ from Backend.models import User, CreditTx
 
 
 JWT_SECRET = os.getenv("AIREALCHECK_JWT_SECRET", "dev_change_me")
-FREE_CREDITS = int(os.getenv("AIREALCHECK_FREE_CREDITS", "5") or 5)
+FREE_CREDITS = int(os.getenv("AIREALCHECK_FREE_CREDITS", "100") or 100)
 
 
 def _error(error: str, status: int = 400, details=None):
@@ -71,6 +71,17 @@ def jwt_required(fn):
             return _error("user_not_found", 404)
         g.current_user_id = user.id
         g.current_user_is_premium = bool(user.is_premium)
+        g.current_user_is_admin = bool(getattr(user, "is_admin", False))
+        return fn(*args, **kwargs)
+    return wrapper
+
+
+def require_admin(fn):
+    @wraps(fn)
+    @jwt_required
+    def wrapper(*args, **kwargs):
+        if not bool(getattr(g, "current_user_is_admin", False)):
+            return _error("forbidden", 403)
         return fn(*args, **kwargs)
     return wrapper
 

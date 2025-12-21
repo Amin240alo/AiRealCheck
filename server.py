@@ -5,18 +5,32 @@ import hashlib
 import json
 from typing import Tuple
 from dotenv import load_dotenv
+import jwt
 
 from Backend.image_forensics import analyze_image
 from Backend.deepfake_api import analyze_with_hive
 from Backend.db import init_db
-from Backend.models import Base
+from Backend.models import Base, User
 from Backend.auth import bp_auth
 from Backend.credits import bp_credits
-from Backend.middleware import jwt_required, require_credits, spend_one_credit
+from Backend.admin import bp_admin
+from Backend.middleware import spend_one_credit, get_session, parse_auth_header, ensure_daily_reset
+
+import sys, os
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, BASE_DIR)
+sys.path.insert(0, os.path.join(BASE_DIR, "Backend"))
+
+print("LOADED SERVER.PY FROM:", __file__)
+
+
+JWT_SECRET = os.getenv("AIREALCHECK_JWT_SECRET", "dev_change_me")
 
 
 load_dotenv()  # lade .env damit Flags wie AIREALCHECK_IMAGE_FALLBACK wirken
 app = Flask(__name__)
+app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB Upload-Limit
+
 # Restrictive CORS per requirements
 _allowed_origins = ["http://127.0.0.1:5500", "http://127.0.0.1:5000"]
 CORS(app, resources={r"/*": {"origins": _allowed_origins}})
@@ -61,27 +75,29 @@ init_db(Base)
 # Register blueprints
 app.register_blueprint(bp_auth)
 app.register_blueprint(bp_credits)
+app.register_blueprint(bp_admin)
 
 # Simple in-memory rate limit: 30 req / 5 min per IP
-_RATE_BUCKET = {}
-_RATE_LIMIT = 30
-_RATE_WINDOW_SEC = 300
+# _RATE_BUCKET = {}
+# _RATE_LIMIT = 30
+# _RATE_WINDOW_SEC = 300
+#
+# @app.before_request
+# def _rate_limiter():
+#     try:
+#         ip = request.headers.get("X-Forwarded-For", request.remote_addr) or "?"
+#         now = int(__import__("time").time())
+#         bucket = _RATE_BUCKET.get(ip, [])
+#         bucket = [t for t in bucket if now - t < _RATE_WINDOW_SEC]
+#         bucket.append(now)
+#         _RATE_BUCKET[ip] = bucket
+#         if len(bucket) > _RATE_LIMIT:
+#             app.logger.warning(f"rate_limit_exceeded ip={ip}")
+#             return jsonify({"ok": False, "error": "rate_limited", "details": []}), 429
+#     except Exception as e:
+#         app.logger.error(f"rate_limit_error: {e}")
+#         return None
 
-@app.before_request
-def _rate_limiter():
-    try:
-        ip = request.headers.get("X-Forwarded-For", request.remote_addr) or "?"
-        now = int(__import__("time").time())
-        bucket = _RATE_BUCKET.get(ip, [])
-        bucket = [t for t in bucket if now - t < _RATE_WINDOW_SEC]
-        bucket.append(now)
-        _RATE_BUCKET[ip] = bucket
-        if len(bucket) > _RATE_LIMIT:
-            app.logger.warning(f"rate_limit_exceeded ip={ip}")
-            return jsonify({"ok": False, "error": "rate_limited", "details": []}), 429
-    except Exception as e:
-        app.logger.error(f"rate_limit_error: {e}")
-        return None
 
 
 def _is_image_ext(filename: str) -> bool:
@@ -133,18 +149,14 @@ def health():
     return jsonify({"ok": True})
 
 
-@app.post("/analyze")
-@jwt_required
-@require_credits
-def analyze():
-    file = request.files.get("file")
-    if not file or not getattr(file, "filename", None):
+def _run_analysis(file_storage, media_type="image", user_ctx=None, charge_credit=False):
+    if not file_storage or not getattr(file_storage, "filename", None):
         return jsonify({"ok": False, "error": "no_file", "details": ["Keine Datei hochgeladen"]}), 400
 
-    filename = os.path.basename(file.filename)
+    filename = os.path.basename(file_storage.filename)
     dst_path = os.path.join(UPLOAD_DIR, filename)
     os.makedirs(UPLOAD_DIR, exist_ok=True)
-    file.save(dst_path)
+    file_storage.save(dst_path)
 
     result = None
     source_used = None
@@ -208,14 +220,18 @@ def analyze():
         # Spend credit atomically after successful analysis for hive/forensics
         credit_spent = False
         credits_left = None
-        try:
-            if source_used in {"hive", "forensics"}:
-                credits_left = spend_one_credit(getattr(g, "current_user_id", 0), reason=f"analyze:{source_used}")
+        if charge_credit and user_ctx and source_used in {"hive", "forensics"}:
+            try:
+                credits_left = spend_one_credit(user_ctx.get("id", 0), reason=f"analyze:{source_used}")
                 credit_spent = True
-        except Exception as e:
-            app.logger.warning(f"credit_spend_error: {str(e)}")
+            except Exception as e:
+                return jsonify({"ok": False, "error": str(e), "details": []}), 402
 
-        response_payload["usage"] = {"source": source_used, "credit_spent": credit_spent, "credits_left": credits_left}
+        response_payload["usage"] = {
+            "source": source_used,
+            "credit_spent": credit_spent,
+            "credits_left": credits_left if user_ctx else None,
+        }
 
         # Cache speichern
         try:
@@ -235,6 +251,100 @@ def analyze():
         except Exception:
             pass
 
+def _resolve_user_context():
+    try:
+        token = parse_auth_header()
+        if not token:
+            app.logger.debug("resolve_user_context: no auth header")
+            return None
+        payload = jwt.decode(token, JWT_SECRET, algorithms=["HS256"])
+        user_id = payload.get("sub")
+        if not user_id:
+            app.logger.debug("resolve_user_context: payload missing sub")
+            return None
+        db = get_session()
+        try:
+            user = db.query(User).get(int(user_id))
+            if not user:
+                app.logger.debug("resolve_user_context: user not found %s", user_id)
+                return None
+            g.current_user_id = user.id
+            g.current_user_is_premium = bool(user.is_premium)
+            g.current_user_is_admin = bool(getattr(user, "is_admin", False))
+            ensure_daily_reset(user, db)
+            db.commit()
+            return {
+                "id": user.id,
+                "is_premium": bool(user.is_premium),
+                "is_admin": bool(getattr(user, "is_admin", False)),
+            }
+        finally:
+            db.close()
+    except Exception:
+        app.logger.exception("resolve_user_context error")
+        pass
+    return None
+
+
+@app.post("/analyze")
+def analyze():
+    file = request.files.get("file")
+    media_type = (request.form.get("type") or "image").lower()
+    user_ctx = _resolve_user_context()
+    resp = _run_analysis(file, media_type, user_ctx, charge_credit=bool(user_ctx))
+    if isinstance(resp, tuple):
+        resp_obj, status = resp
+    else:
+        resp_obj, status = resp, 200
+    if hasattr(resp_obj, "get_json"):
+        data = resp_obj.get_json()
+        if data is not None:
+            resp_obj = data
+    if not isinstance(resp_obj, dict) or "usage" not in resp_obj:
+        return resp_obj, status
+    if user_ctx:
+        resp_obj["usage"]["source"] = resp_obj["usage"].get("source")
+    else:
+        resp_obj["usage"]["source"] = "guest"
+        resp_obj["usage"]["credits_left"] = None
+    return resp_obj, status
+
+print("REGISTRIERE ANALYZE-GUEST ROUTE")
+
+@app.post("/analyze/guest")
+def analyze_guest():
+    file = request.files.get("file")
+    media_type = (request.form.get("type") or "image").lower()
+
+    # Keine Auth, kein Token, keine DB Credits
+    user_ctx = None
+
+    # Analyse ohne Credit-Abzug
+    resp = _run_analysis(file, media_type, user_ctx, charge_credit=False)
+
+    # Response normalisieren
+    if isinstance(resp, tuple):
+        resp_obj, status = resp
+    else:
+        resp_obj, status = resp, 200
+
+    if hasattr(resp_obj, "get_json"):
+        data = resp_obj.get_json()
+        if data is not None:
+            resp_obj = data
+
+    # usage-Block garantieren
+    if "usage" not in resp_obj:
+        resp_obj["usage"] = {}
+
+    resp_obj["usage"]["source"] = "guest"
+    resp_obj["usage"]["credit_spent"] = False
+    resp_obj["usage"]["credits_left"] = None
+
+    return resp_obj, status
+
+
+
 
 if __name__ == "__main__":
-    app.run(host="127.0.0.1", port=5000, debug=True)
+    app.run(host="127.0.0.1", port=5001, debug=True)

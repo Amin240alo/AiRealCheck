@@ -9,7 +9,7 @@ from Backend.middleware import jwt_required, ensure_daily_reset, _error
 
 bp_credits = Blueprint("credits", __name__, url_prefix="/credits")
 
-FREE_CREDITS = int(os.getenv("AIREALCHECK_FREE_CREDITS", "5") or 5)
+FREE_CREDITS = int(os.getenv("AIREALCHECK_FREE_CREDITS", "100") or 100)
 ALLOW_ADMIN = (os.getenv("AIREALCHECK_ALLOW_ADMIN", "false").lower() in {"1", "true", "yes"})
 ADMIN_SECRET = os.getenv("AIREALCHECK_ADMIN_SECRET", "")
 
@@ -30,6 +30,10 @@ def balance():
         if not u:
             return _error("user_not_found", 404)
         _reset_if_needed(u, db)
+        if not u.is_premium and (u.credits is None or int(u.credits) < FREE_CREDITS):
+            u.credits = FREE_CREDITS
+            db.add(u)
+            db.commit()
         payload = {
             "ok": True,
             "credits": None if u.is_premium else int(u.credits),
@@ -72,4 +76,3 @@ def grant():
         return _error("server_error", 500)
     finally:
         db.close()
-

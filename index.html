@@ -31,9 +31,18 @@
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
         </svg>
-        <span id="creditsText">250 Credits</span>
+        <span id="creditsText">_</span>
       </div>
-      <button id="loginQuick" class="ac-link-btn" data-i18n="header.login">Login</button>
+      <button id="profileTrigger" class="profile-trigger" aria-haspopup="true" aria-expanded="false">
+        <span id="profileAvatar" class="profile-avatar">•</span>
+      </button>
+      <div id="profileDropdown" class="profile-dropdown" aria-hidden="true">
+        <button type="button" data-menu="profile">Profil</button>
+        <button type="button" data-menu="credits">Credits &amp; Übersicht</button>
+        <button type="button" data-menu="settings">Einstellungen</button>
+        <button type="button" data-menu="admin" id="profileAdmin" hidden>Admin Panel</button>
+        <button type="button" data-menu="logout" class="profile-danger">Abmelden</button>
+      </div>
     </div>
   </header>
 
@@ -111,6 +120,17 @@
             <span data-i18n="menu.settings">Einstellungen</span>
           </button>
 
+          <button class="ac-side-item" data-action="open:admin" id="sideAdmin" hidden>
+            <span class="ac-icon">
+              <!-- shield -->
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                <path d="M9 12l2 2 4-4"/>
+              </svg>
+            </span>
+            <span>Admin</span>
+          </button>
+
           <button class="ac-side-item" data-action="open:premium">
             <span class="ac-icon">
               <!-- diamond -->
@@ -166,7 +186,7 @@
             <div class="ac-card-title" data-i18n="start.chooseType">Medientyp wählen</div>
 
             <div class="ac-select-row">
-              <button class="ac-select-btn ac-active" id="btnVideo" data-type="video">
+              <button type="button" class="ac-select-btn" id="btnVideo" data-type="video">
                 <span class="ac-icon-sm">
                   <!-- video -->
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -177,7 +197,7 @@
                 <span data-i18n="menu.video">Video prüfen</span>
               </button>
 
-              <button class="ac-select-btn" id="btnImage" data-type="image">
+              <button type="button" class="ac-select-btn" id="btnImage" data-type="image">
                 <span class="ac-icon-sm">
                   <!-- image -->
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -189,7 +209,7 @@
                 <span data-i18n="menu.image">Bild prüfen</span>
               </button>
 
-              <button class="ac-select-btn" id="btnAudio" data-type="audio">
+              <button type="button" class="ac-select-btn" id="btnAudio" data-type="audio">
                 <span class="ac-icon-sm">
                   <!-- audio lines -->
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -200,53 +220,104 @@
               </button>
             </div>
 
+
+
+
+
+
             <!-- Upload/Link Switch (kleiner & einheitlich) -->
             <div class="ac-seg-switch ac-seg-compact" style="margin-top:8px">
               <button id="segFile" class="ac-seg ac-active" data-i18n="start.file">Datei</button>
               <button id="segLink" class="ac-seg" data-i18n="start.link">Link</button>
+
+
+              
             </div>
+<!-- Datei-Inputs -->
+<div id="fileInputs" class="ac-stack" style="margin-top:8px">
 
-            <!-- Datei-Inputs -->
-            <div id="fileInputs" class="ac-stack" style="margin-top:8px">
-              <div id="blockVideo" class="ac-upload-field">
-                <label class="ac-label" for="videoInput" data-i18n="start.pickVideo">Video auswählen</label>
-                <input id="videoInput" class="ac-input" type="file" accept="video/*" data-i18n-ph="start.pickVideo" />
-                <button class="ac-primary" data-kind="video" data-mode="file" data-i18n="start.analyzeVideo">Analysieren (20 Credits)</button>
-              </div>
+  <div id="blockVideo" class="ac-upload-field">
+    <label class="ac-label" for="videoInput" data-i18n="start.pickVideo">Video auswählen</label>
+    <input id="videoInput" class="ac-input" type="file" accept="video/*" />
+    <button
+      type="button"
+      class="ac-primary analyze-btn"
+      data-kind="video"
+      data-mode="file">
+      Analysieren (20 Credits)
+    </button>
+  </div>
 
-              <div id="blockImage" class="ac-upload-field ac-hide">
-                <label class="ac-label" for="imageInput" data-i18n="start.pickImage">Bild auswählen</label>
-                <input id="imageInput" class="ac-input" type="file" accept="image/*" data-i18n-ph="start.pickImage" />
-                <button class="ac-primary" data-kind="image" data-mode="file" data-i18n="start.analyzeImage">Analysieren (10 Credits)</button>
-              </div>
+  <div id="blockImage" class="ac-upload-field ac-hide">
+    <label class="ac-label" for="imageInput" data-i18n="start.pickImage">Bild auswählen</label>
+    <input id="imageInput" class="ac-input" type="file" accept="image/*" />
+    <button
+      type="button"
+      class="ac-primary analyze-btn"
+      data-kind="image"
+      data-mode="file">
+      Analysieren (10 Credits)
+    </button>
+  </div>
 
-              <div id="blockAudio" class="ac-upload-field ac-hide">
-                <label class="ac-label" for="audioInput" data-i18n="start.pickAudio">Audio auswählen</label>
-                <input id="audioInput" class="ac-input" type="file" accept="audio/*" data-i18n-ph="start.pickAudio" />
-                <button class="ac-primary" data-kind="audio" data-mode="file" data-i18n="start.analyzeAudio">Analysieren (15 Credits)</button>
-              </div>
-            </div>
+  <div id="blockAudio" class="ac-upload-field ac-hide">
+    <label class="ac-label" for="audioInput" data-i18n="start.pickAudio">Audio auswählen</label>
+    <input id="audioInput" class="ac-input" type="file" accept="audio/*" />
+    <button
+      type="button"
+      class="ac-primary analyze-btn"
+      data-kind="audio"
+      data-mode="file">
+      Analysieren (15 Credits)
+    </button>
+  </div>
 
-            <!-- Link-Inputs -->
-            <div id="linkInputs" class="ac-stack ac-hide" style="margin-top:8px">
-              <div id="linkVideo" class="ac-upload-field">
-                <label class="ac-label" for="videoUrl" data-i18n="start.videoUrl">Video-Link</label>
-                <input id="videoUrl" class="ac-input" type="url" placeholder="https://www.tiktok.com/… oder https://www.youtube.com/…" data-i18n-ph="start.videoUrl" />
-                <button class="ac-primary" data-kind="video" data-mode="link" data-i18n="start.analyzeVideo">Analysieren (20 Credits)</button>
-              </div>
+</div>
 
-              <div id="linkImage" class="ac-upload-field ac-hide">
-                <label class="ac-label" for="imageUrl" data-i18n="start.imageUrl">Bild-Link</label>
-                <input id="imageUrl" class="ac-input" type="url" placeholder="https://… .jpg / .png" data-i18n-ph="start.imageUrl" />
-                <button class="ac-primary" data-kind="image" data-mode="link" data-i18n="start.analyzeImage">Analysieren (10 Credits)</button>
-              </div>
+<!-- Link-Inputs -->
+<div id="linkInputs" class="ac-stack ac-hide" style="margin-top:8px">
 
-              <div id="linkAudio" class="ac-upload-field ac-hide">
-                <label class="ac-label" for="audioUrl" data-i18n="start.audioUrl">Audio-Link</label>
-                <input id="audioUrl" class="ac-input" type="url" placeholder="https://… .mp3 / .wav oder YouTube-Link" data-i18n-ph="start.audioUrl" />
-                <button class="ac-primary" data-kind="audio" data-mode="link" data-i18n="start.analyzeAudio">Analysieren (15 Credits)</button>
-              </div>
-            </div>
+  <div id="linkVideo" class="ac-upload-field">
+    <label class="ac-label" for="videoUrl" data-i18n="start.videoUrl">Video-Link</label>
+    <input id="videoUrl" class="ac-input" type="url" />
+    <button
+      type="button"
+      class="ac-primary analyze-btn"
+      data-kind="video"
+      data-mode="link">
+      Analysieren (20 Credits)
+    </button>
+  </div>
+
+  <div id="linkImage" class="ac-upload-field ac-hide">
+    <label class="ac-label" for="imageUrl" data-i18n="start.imageUrl">Bild-Link</label>
+    <input id="imageUrl" class="ac-input" type="url" />
+    <button
+      type="button"
+      class="ac-primary analyze-btn"
+      data-kind="image"
+      data-mode="link">
+      Analysieren (10 Credits)
+    </button>
+  </div>
+
+  <div id="linkAudio" class="ac-upload-field ac-hide">
+    <label class="ac-label" for="audioUrl" data-i18n="start.audioUrl">Audio-Link</label>
+    <input id="audioUrl" class="ac-input" type="url" />
+    <button
+      type="button"
+      class="ac-primary analyze-btn"
+      data-kind="audio"
+      data-mode="link">
+      Analysieren (15 Credits)
+    </button>
+  </div>
+
+</div>
+
+
+
+
 
             <div id="analysisArea" class="ac-analysis"></div>
           </div>
@@ -275,78 +346,111 @@
       <!-- PROFILE -->
       <section id="page-profile" class="ac-page ac-hide">
         <div class="ac-container">
-          <div class="ac-page-title" data-i18n="profile.title">Profil</div>
-
-          <!-- Guest -->
-          <div id="profileGuest" class="ac-card">
-            <div class="ac-stack">
-              <div class="ac-card-title" data-i18n="profile.auth">Anmelden oder registrieren</div>
-              <div class="ac-auth-row">
-                <input id="authEmail" class="ac-input" type="email" placeholder="E-Mail" data-i18n-ph="profile.emailPh"/>
-                <input id="authPass" class="ac-input" type="password" placeholder="Passwort" data-i18n-ph="profile.passPh"/>
-              </div>
-              <div class="ac-row">
-                <button id="btnLogin" class="ac-primary" data-i18n="profile.login">Login</button>
-                <button id="btnRegister" class="ac-ghost" data-i18n="profile.register">Registrieren</button>
-              </div>
-            </div>
+          <div class="ac-page-title">Profil</div>
+          <div id="profileGuestCard" class="ac-card profile-guest-card">
+      
           </div>
-
-          <!-- User -->
-          <div id="profileUser" class="ac-card ac-hide">
-            <div class="ac-profile">
-              <div class="ac-avatar" aria-hidden="true">A</div>
-              <div class="ac-profile-main">
-                <div class="ac-profile-name" id="profName">Hallo, User</div>
-                <div class="ac-profile-mail" id="profMail">user@mail.com</div>
-                <div class="ac-row">
-                  <div class="ac-badge" id="profPlan">Free</div>
-                  <div class="ac-badge ac-badge-info"><span data-i18n="profile.credits">Credits</span>: <span id="profCredits">250</span></div>
-                </div>
-                <div class="ac-subtle" id="profSince">Registriert am: —</div>
+          <div id="profileDataCard" class="ac-card profile-data-card" hidden>
+            <div class="profile-header">
+              <div class="profile-avatar profile-avatar-lg" id="profileBadge">A</div>
+              <div>
+                <p class="profile-email" id="profileEmail">user@mail.com</p>
+                <p class="profile-plan" id="profilePlan">Free</p>
               </div>
             </div>
-            <div class="ac-row">
-              <button class="ac-primary" data-action="open:history" data-i18n="profile.openHistory">Verlauf öffnen</button>
-              <button id="btnLogout" class="ac-ghost" data-i18n="profile.logout">Logout</button>
+            <div class="profile-grid">
+              <div>
+                <p class="profile-label">Credits</p>
+                <p class="profile-value" id="profileCredits">0</p>
+              </div>
+              <div>
+                <p class="profile-label">Naechster Reset</p>
+                <p class="profile-value" id="profileReset">&mdash;</p>
+              </div>
+              <div>
+                <p class="profile-label">Premium</p>
+                <p class="profile-value" id="profilePremium">Nein</p>
+              </div>
+              <div>
+                <p class="profile-label">Account erstellt</p>
+                <p class="profile-value" id="profileCreated">&mdash;</p>
+              </div>
+            </div>
+            <div class="profile-actions">
+              <button class="ac-secondary" id="profileHistory">Verlauf ffnen</button>
+              <button class="ac-primary" id="profileLogout">Ausloggen</button>
             </div>
           </div>
         </div>
       </section>
 
-      <!-- SETTINGS (neu strukturiert; Sprache hier integriert) -->
+      <!-- SETTINGS (placeholder) -->
       <section id="page-settings" class="ac-page ac-hide">
         <div class="ac-container">
-          <div class="ac-page-title" data-i18n="settings.title">Einstellungen</div>
-
-          <div class="ac-card">
-            <div class="ac-card-title">Allgemein</div>
-            <div class="ac-stack">
-              <label class="ac-setting"><input type="checkbox" id="stTheme" /><span data-i18n="settings.dark">Dunkles Design</span></label>
-              <label class="ac-setting"><input type="checkbox" id="stSound" /><span data-i18n="settings.sound">Soundeffekte</span></label>
-              <label class="ac-setting"><input type="checkbox" id="stNotify" /><span data-i18n="settings.notify">Benachrichtigungen</span></label>
-              <button id="btnSaveSettings" class="ac-primary" data-i18n="settings.save">Speichern</button>
-            </div>
+          <div class="ac-page-title">Einstellungen</div>
+          <div class="ac-card placeholder-card">
+            <div class="ac-card-title">Bald verfuegbar</div>
+            <p class="ac-subtle">Hier kannst du demnaechst Benachrichtigungen, Sprache und weitere Optionen konfigurieren.</p>
           </div>
+        </div>
+      </section>
 
+      <!-- ADMIN -->
+      <section id="page-admin" class="ac-page ac-hide">
+        <div class="ac-container">
+          <div class="ac-page-title">Admin Panel</div>
           <div class="ac-card">
-            <div class="ac-card-title" data-i18n="language.title">Sprache</div>
-            <div class="ac-subtle" data-i18n="language.note">Die Sprache wird sofort umgestellt.</div>
-            <div class="ac-lang-col" style="margin-top:8px">
-              <!-- 7 Sprachen, funktionieren über JS -->
-              <button class="ac-chip ac-lang" data-lang="de">Deutsch</button>
-              <button class="ac-chip ac-lang" data-lang="en">English</button>
-              <button class="ac-chip ac-lang" data-lang="fr">Français</button>
-              <button class="ac-chip ac-lang" data-lang="es">Español</button>
-              <button class="ac-chip ac-lang" data-lang="it">Italiano</button>
-              <button class="ac-chip ac-lang" data-lang="tr">Türkçe</button>
-              <button class="ac-chip ac-lang" data-lang="ar">العربية</button>
+            <div class="ac-card-title">Benutzerverwaltung</div>
+            <div class="admin-toolbar">
+              <button class="ac-ghost" id="adminRefresh">Aktualisieren</button>
+              <div id="adminStatus" class="admin-status" hidden></div>
+            </div>
+            <div class="admin-grid">
+              <div class="admin-list" id="adminUserList"></div>
+              <div class="admin-detail" id="adminUserDetail">
+                <div class="admin-detail-head">
+                  <div>
+                    <div class="admin-detail-email" id="adminDetailEmail">Kein Nutzer ausgewaehlt</div>
+                    <div class="admin-detail-meta" id="adminDetailMeta">Bitte Nutzer auswaehlen.</div>
+                  </div>
+                  <div class="admin-detail-badges" id="adminDetailBadges"></div>
+                </div>
+
+                <form id="adminPasswordForm" class="admin-form">
+                  <label class="admin-label" for="adminNewPassword">Neues Passwort</label>
+                  <div class="admin-inline">
+                    <input id="adminNewPassword" class="ac-input" type="password" placeholder="Mind. 8 Zeichen" disabled />
+                    <button type="submit" class="ac-secondary">Passwort setzen</button>
+                  </div>
+                </form>
+
+                <form id="adminCreditsForm" class="admin-form">
+                  <label class="admin-label" for="adminCreditsInput">Credits</label>
+                  <div class="admin-inline">
+                    <input id="adminCreditsInput" class="ac-input" type="number" disabled />
+                    <button type="submit" class="ac-secondary">Credits speichern</button>
+                  </div>
+                </form>
+
+                <form id="adminPlanForm" class="admin-form">
+                  <label class="admin-label" for="adminPlanSelect">Plan</label>
+                  <div class="admin-inline">
+                    <select id="adminPlanSelect" class="ac-input" disabled>
+                      <option value="free">Free</option>
+                      <option value="premium">Premium</option>
+                    </select>
+                    <button type="submit" class="ac-primary">Plan speichern</button>
+                  </div>
+                </form>
+
+                <div id="adminUserAlert" class="admin-alert" hidden></div>
+              </div>
             </div>
           </div>
         </div>
       </section>
 
-      <!-- PREMIUM (überarbeitet: Vergleich + Marketing) -->
+      <!-- PREMIUM -->
       <section id="page-premium" class="ac-page ac-hide">
         <div class="ac-container">
           <div class="ac-page-title">Premium</div>
@@ -428,7 +532,7 @@
         <div class="ac-container">
           <div class="ac-page-title" data-i18n="rate.title">App bewerten</div>
           <div class="ac-card">
-            <p data-i18n="rate.text">Sobald die App im Store veröffentlicht ist, kannst du uns hier bewerten.</p>
+            <p data-i18n="rate.text">SoBald verfuegbar</p>
             <button id="btnRate" class="ac-primary" data-i18n="rate.cta">Zur Bewertung</button>
           </div>
         </div>
@@ -479,28 +583,47 @@
   </footer>
 
   <!-- Auth Modal -->
-  <div id="authModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:9999;">
-    <div class="ac-card" style="max-width:420px; margin:80px auto; background:#fff; border-radius:12px; padding:16px;">
-      <div class="ac-row" style="justify-content: space-between; align-items:center;">
-        <b>Login / Registrierung</b>
-        <button id="authClose" class="ac-ghost">Schliessen</button>
+  <div id="authOverlay" class="auth-overlay" aria-hidden="true">
+    <div class="auth-modal" id="authModalCard" role="dialog" aria-modal="true">
+      <button class="auth-close" id="authClose" aria-label="Schliessen">
+        <span>&times;</span>
+      </button>
+      <div class="auth-hero">
+        <p class="auth-kicker">AIRealCheck</p>
+        <h3>Melde dich an oder erstelle kostenlos ein Konto.</h3>
+        <p>Verwalte deine Analysen, behalte deine Credits im Blick und nutze alle Funktionen von AIRealCheck.</p>
       </div>
-      <div style="margin-top:12px">
-        <label for="authEmail">E-Mail</label>
-        <input id="authEmail" type="email" placeholder="name@example.com" style="width:100%; margin-top:4px" />
+      <div class="auth-tabs">
+        <button type="button" class="auth-tab active" data-auth-mode="login">Login</button>
+        <button type="button" class="auth-tab" data-auth-mode="register">Registrieren</button>
       </div>
-      <div style="margin-top:12px">
-        <label for="authPassword">Passwort</label>
-        <input id="authPassword" type="password" placeholder="min. 8 Zeichen" style="width:100%; margin-top:4px" />
-      </div>
-      <div class="ac-row" style="gap:8px; margin-top:16px;">
-        <button id="authDoLogin" class="ac-primary">Login</button>
-        <button id="authDoRegister" class="ac-secondary">Registrieren</button>
-      </div>
-      <p class="ac-subtle" style="margin-top:8px">Mit dem Login stimmst du unseren Bedingungen zu.</p>
+      <form id="authForm" class="auth-form" novalidate>
+        <label class="auth-field">
+          <span>E-Mail</span>
+          <input id="authEmail" class="auth-input" type="email" placeholder="name@example.com" autocomplete="email" required />
+        </label>
+        <label class="auth-field">
+          <span>Passwort</span>
+          <div class="auth-input-wrap">
+            <input id="authPassword" class="auth-input" type="password" placeholder="min. 8 Zeichen" autocomplete="current-password" minlength="8" required />
+            <button type="button" class="auth-eye" id="authTogglePassword" aria-label="Passwort anzeigen">
+              <span class="eye-open" aria-hidden="true"></span>
+              <span class="eye-closed" aria-hidden="true"></span>
+            </button>
+          </div>
+        </label>
+        <button id="authSubmit" class="auth-submit" type="submit">
+          <span id="authSubmitLabel">Login</span>
+          <span class="auth-spinner" aria-hidden="true"></span>
+        </button>
+        <div id="authError" class="auth-alert" role="alert" hidden></div>
+      </form>
+      <p class="auth-note">Mit dem Login akzeptierst du unsere Bedingungen und Datenschutzrichtlinien.</p>
     </div>
   </div>
 
-  <script src="script.js" defer></script>
+  <script type="module" src="main.js"></script>
 </body>
 </html>
+
+

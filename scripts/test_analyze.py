@@ -1,7 +1,7 @@
 import os
 from io import BytesIO
 from PIL import Image
-from Backend.server import app
+from server import app
 
 
 def make_sample_image(path: str):

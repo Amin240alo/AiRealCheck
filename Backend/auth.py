@@ -8,6 +8,7 @@ from Backend.middleware import create_password_hash, check_password, create_jwt,
 
 
 bp_auth = Blueprint("auth", __name__, url_prefix="/auth")
+FREE_CREDITS_DEFAULT = int(os.getenv("AIREALCHECK_FREE_CREDITS", "100") or 100)
 
 
 def _sanitize_user(u: User):
@@ -15,8 +16,10 @@ def _sanitize_user(u: User):
         "id": u.id,
         "email": u.email,
         "is_premium": bool(u.is_premium),
+        "is_admin": bool(getattr(u, "is_admin", False)),
         "credits": int(u.credits),
         "credits_reset_at": (u.credits_reset_at.isoformat() + "Z") if u.credits_reset_at else None,
+        "created_at": (u.created_at.isoformat() + "Z") if u.created_at else None,
     }
 
 
@@ -37,7 +40,7 @@ def register():
             email=email,
             pw_hash=create_password_hash(password),
             is_premium=False,
-            credits=0,
+            credits=FREE_CREDITS_DEFAULT,
             credits_reset_at=None,
         )
         db.add(u)
@@ -92,4 +95,3 @@ def me():
             db.close()
 
     return _inner()
-

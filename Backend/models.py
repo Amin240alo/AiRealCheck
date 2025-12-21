@@ -10,6 +10,7 @@ class User(Base):
     id = Column(Integer, primary_key=True)
     email = Column(String(255), unique=True, nullable=False, index=True)
     pw_hash = Column(String(200), nullable=False)
+    is_admin = Column(Boolean, default=False, nullable=False)
     is_premium = Column(Boolean, default=False, nullable=False)
     credits = Column(Integer, default=0, nullable=False)
     credits_reset_at = Column(DateTime, nullable=True)
@@ -27,4 +28,3 @@ class CreditTx(Base):
     created_at = Column(DateTime, default=lambda: dt.datetime.utcnow(), nullable=False)
 
     user = relationship("User", back_populates="credit_txs")
-
