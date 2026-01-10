@@ -38,52 +38,66 @@ export function initAnalyze(auth, helpers) {
 
 
   const analyzeButtons = $$('.ac-primary[data-kind]');
-  analyzeButtons.forEach((btn) => {
-    btn.addEventListener('click', (e) => {
+ analyzeButtons.forEach((btn) => {
+  btn.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
 
-      activeAnalyzeBtn = e.currentTarget;
-      
+    activeAnalyzeBtn = e.currentTarget;
+    if (isAnalyzing) return;
 
+    const kind = btn.dataset.kind;
+    const mode = btn.dataset.mode || 'file';
+    const area = $('#analysisArea');
 
-      e.preventDefault();
-      e.stopPropagation();
-      const kind = btn.dataset.kind;
-      const mode = btn.dataset.mode || 'file';
-      if (isAnalyzing) return;
-      if (mode !== 'file') {
-        const area = $('#analysisArea');
-        if (area) area.innerHTML = '<div class="ac-card"><b>Nur Datei-Uploads werden aktuell unterstuetzt.</b></div>';
+    if (mode !== 'file') {
+      if (area) {
+        area.innerHTML =
+          '<div class="ac-card"><b>Nur Datei-Uploads werden aktuell unterstützt.</b></div>';
+      }
+      return;
+    }
+
+    const cost = getAnalysisCost(kind);
+    const isGuest = !authRef.isLoggedIn();
+
+    if (!isGuest && !authRef.requireSession()) {
+      return;
+    }
+
+    if (isGuest) {
+      const guestCredits =
+        typeof authRef.getGuestCredits === 'function'
+          ? authRef.getGuestCredits()
+          : 0;
+
+      if (guestCredits < cost) {
+        if (area) {
+          area.innerHTML =
+            '<div class="ac-card"><b>Keine Credits</b><p class="ac-subtle">Bitte registrieren oder einloggen.</p></div>';
+        }
         return;
       }
-      const cost = getAnalysisCost(kind);
-      const isGuest = !authRef.isLoggedIn();
-      if (!isGuest && !authRef.requireSession()) {
+    } else if (!authRef.isPremium()) {
+      const currentCredits =
+        typeof authRef.balance?.credits === 'number'
+          ? authRef.balance.credits
+          : 0;
+
+      if (currentCredits < cost) {
+        if (area) {
+          area.innerHTML =
+            '<div class="ac-card"><b>Keine Credits verfügbar</b><p class="ac-subtle">Bitte später erneut versuchen.</p></div>';
+        }
         return;
       }
-      if (isGuest) {
-        const guestCredits = typeof authRef.getGuestCredits === 'function' ? authRef.getGuestCredits() : 0;
-        if (guestCredits < cost) {
-          const area = $('#analysisArea');
-          if (area) {
-            area.innerHTML = '<div class="ac-card"><b>Keine Credits mehr</b><p class="ac-subtle">Bitte registrieren oder einloggen.</p></div>';
-          }
-         
-          return;
-        }
-      } else if (!authRef.isPremium()) {
-        const currentCredits = typeof authRef?.balance?.credits === 'number' ? authRef.balance.credits : 0;
-        if (currentCredits < cost) {
-          const area = $('#analysisArea');
-          if (area) {
-            area.innerHTML = '<div class="ac-card"><b>Keine Credits verfuegbar</b><p class="ac-subtle">Bitte spaeter erneut versuchen.</p></div>';
-          }
-         
-          return;
-        }
-      }
-      analyzeFile(kind);
-    });
+    }
+
+    // 👉 HIER KEIN isAnalyzing = true !!!
+    analyzeFile(kind);
   });
+});
+
 
 
 
@@ -131,6 +145,9 @@ export function toggleMode(mode) {
   document.querySelector('#segFile')?.classList.toggle('ac-active', isFile);
   document.querySelector('#segLink')?.classList.toggle('ac-active', !isFile);
 }
+
+
+
 
 
 async function analyzeFile(mediaType) {
@@ -245,7 +262,7 @@ async function analyzeFile(mediaType) {
           area.innerHTML = `<div class="ac-card"><b>Fehler</b><p class="ac-subtle">${msg}</p></div>`;
         }
       }
-      return;
+   
     }
 
     // ✅ Erfolgsfall – hier bleibt das Layout wie vorher
@@ -300,6 +317,7 @@ async function analyzeFile(mediaType) {
           ${usageInfo}
         </div>`;
        resultRendered = true;
+       console.log("🟢 RESULT RENDERED");
 
 
 
@@ -327,12 +345,9 @@ async function analyzeFile(mediaType) {
 
 
   } finally {
+    console.log("🔴 FINALLY");
   isAnalyzing = false;
-
-  if (!resultRendered) {
-    updateAnalyzeState();
-  }
-
+  updateAnalyzeState();
   unlockActiveButton();
 }
 

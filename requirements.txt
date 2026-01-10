@@ -1,7 +1,8 @@
 Flask
 flask-cors
 requests
-Pillow\npillow-heif
+Pillow
+pillow-heif
 numpy
 opencv-python-headless
 ImageHash

@@ -3,6 +3,9 @@ import { initUI, updateProfileView, updateCreditsUI, updateAnalyzeButtons } from
 import { initAnalyze } from './analyze.js';
 import { initAdminPanel } from './admin.js';
 
+// ← NEUE ZEILE HIER:
+if (window.ws) window.ws.close();
+
 document.addEventListener('DOMContentLoaded', async () => {
   const API_BASE = 'http://127.0.0.1:5001';
   const auth = createAuth(API_BASE);
