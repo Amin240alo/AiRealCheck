@@ -1,39 +1,27 @@
-# --------------------
-# Secrets / Env
-# --------------------
+# Secrets
 .env
 .env.*
 !.env.example
 
-# --------------------
-# Python (venv + cache)
-# --------------------
-venv/
-.venv/
+# Python
 __pycache__/
 *.py[cod]
+venv/
+.venv/
 
-# --------------------
-# Runtime uploads / temp / caches
-# (du hast temp_upload im Root UND im Backend)
-# --------------------
+# Runtime / uploads / cache
 temp_upload/
 Backend/temp_upload/
-Backend/uploads/
 results_cache.json
 *.log
 
-# --------------------
 # Local database / data
-# --------------------
 data/
 *.db
 *.sqlite
 *.sqlite3
 
-# --------------------
 # Editor / OS
-# --------------------
 .vscode/
 .idea/
 .DS_Store
