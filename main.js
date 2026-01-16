@@ -7,7 +7,7 @@ import { initAdminPanel } from './admin.js';
 if (window.ws) window.ws.close();
 
 document.addEventListener('DOMContentLoaded', async () => {
-  const API_BASE = 'http://127.0.0.1:5001';
+  const API_BASE = 'https://airealcheck.onrender.com';
   const auth = createAuth(API_BASE);
   const adminPanel = initAdminPanel(auth, API_BASE);
 
