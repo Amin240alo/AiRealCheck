@@ -31,15 +31,17 @@ load_dotenv()  # lade .env damit Flags wie AIREALCHECK_IMAGE_FALLBACK wirken
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB Upload-Limit
 
-# Restrictive CORS per requirements
-_allowed_origins = [
-    "https://amin240alo.github.io",
-    "https://amin240alo.github.io/AiRealCheck",
-    "http://127.0.0.1:5500",
-    "http://127.0.0.1:5000",
-    "http://127.0.0.1:8000",
-]
-CORS(app, resources={r"/*": {"origins": _allowed_origins}})
+# TEMPORARY OPEN CORS (for debugging / portfolio)
+from flask_cors import CORS
+
+CORS(
+    app,
+    resources={r"/*": {"origins": "*"}},
+    supports_credentials=False,
+    allow_headers=["Content-Type", "Authorization"],
+    methods=["GET", "POST", "OPTIONS"],
+)
+
 
 
 UPLOAD_DIR = "temp_upload"
