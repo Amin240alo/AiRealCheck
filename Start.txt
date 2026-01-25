@@ -1,0 +1,20 @@
+Schritt 1:
+Backend server Starten in einem Neuen Terminal: python -m Backend.server 
+
+
+
+Schritt 2:
+Neues Terminal auf machen und Frontend server (http) an machen auf port (5500): python -m http.server 5500 
+
+
+
+Schritt 3:
+Auf diese URL gehen:  http://127.0.0.1:5500
+
+
+
+Hinweis: 
+Beide Server immer im Jeweiligen Terminal mit "Strg + c" Schließen
+
+
+
