@@ -1,4 +1,4 @@
-from server import app
+from Backend.server import app
 
 with app.test_client() as c:
     r = c.get("/health")
