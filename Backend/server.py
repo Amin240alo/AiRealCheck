@@ -24,10 +24,10 @@ sys.path.insert(0, os.path.join(BASE_DIR, "Backend"))
 print("LOADED SERVER.PY FROM:", __file__)
 
 
+load_dotenv()
 JWT_SECRET = os.getenv("AIREALCHECK_JWT_SECRET", "dev_change_me")
 
 
-load_dotenv()  # lade .env damit Flags wie AIREALCHECK_IMAGE_FALLBACK wirken
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB Upload-Limit
 
@@ -164,22 +164,38 @@ def _run_analysis(file_storage, media_type="image", user_ctx=None, charge_credit
         if _is_image_ext(filename):
             # Cache-Hit?
             use_cache = (os.getenv("AIREALCHECK_CACHE", "true").lower() in {"1", "true", "yes"})
+            force = (request.args.get("force") or request.form.get("force") or "").lower() in {"1", "true", "yes", "force"}
             file_hash = _sha256_of_file(dst_path)
-            if use_cache and file_hash in _RESULT_CACHE:
+            if use_cache and (not force) and file_hash in _RESULT_CACHE:
                 cached = dict(_RESULT_CACHE[file_hash])
                 cached["usage"] = {"source": cached.get("source"), "credit_spent": False, "credits_left": None}
                 return jsonify(cached)
 
-            # Standard: Nur Hive für Konsistenz; Fallback per ENV steuerbar
+            # Standard: Hive als Hauptquelle; Forensics als Fallback bei Fehler
             use_fallback = (os.getenv("AIREALCHECK_IMAGE_FALLBACK", "false").lower() in {"1", "true", "yes"})
-            result = analyze_with_hive(dst_path)
-            if result.get("error") and use_fallback:
-                result = analyze_image(dst_path)
-                result["source"] = "forensics"
-                source_used = "forensics"
+            hive_result = analyze_with_hive(dst_path)
+            hive_success = bool(hive_result) and hive_result.get("ok") is True and ("real" in hive_result) and ("fake" in hive_result)
+            if hive_success:
+                result = hive_result
+                result["source"] = "hive"
+                source_used = "hive"
             else:
-                result["source"] = result.get("source", "hive")
-                source_used = result["source"]
+                if use_fallback:
+                    reason = hive_result.get("message") or hive_result.get("error") or "Hive returned no valid result"
+                    result = analyze_image(dst_path)
+                    result["source"] = "forensics"
+                    result["confidence"] = "low"
+                    f_details = list(result.get("details", []))
+                    f_details.insert(0, f"Hive fehlgeschlagen: {reason}")
+                    hive_details = hive_result.get("details") or []
+                    for d in hive_details[:2]:
+                        f_details.append(f"Hive detail: {d}")
+                    result["details"] = f_details
+                    source_used = "forensics"
+                else:
+                    result = hive_result
+                    result["source"] = result.get("source", "hive")
+                    source_used = result["source"]
         else:
             return jsonify({"ok": False, "error": "Nicht unterstützter Dateityp"}), 415
 
@@ -208,6 +224,12 @@ def _run_analysis(file_storage, media_type="image", user_ctx=None, charge_credit
             real_out = round(real, 2)
             fake_out = round(fake, 2)
 
+        confidence_value = result.get("confidence")
+        if source_used == "forensics":
+            confidence_value = confidence_value or "low"
+        if not confidence_value:
+            confidence_value = "low"
+
         response_payload = {
             "ok": True,
             "real": real_out,
@@ -215,6 +237,7 @@ def _run_analysis(file_storage, media_type="image", user_ctx=None, charge_credit
             "message": result.get("message"),
             "details": result.get("details", []),
             "source": result.get("source"),
+            "confidence": confidence_value,
         }
 
         # Spend credit atomically after successful analysis for hive/forensics
@@ -348,3 +371,7 @@ def analyze_guest():
 
 if __name__ == "__main__":
     app.run(host="127.0.0.1", port=5001, debug=True)
+
+
+
+

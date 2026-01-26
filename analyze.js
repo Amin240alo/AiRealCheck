@@ -14,6 +14,7 @@ let isAnalyzing = false;
 let reqCounter = 0;
 let activeAnalyzeBtn = null;
 let resultRendered = false;
+let forceNextAnalyze = false;
 
 
 
@@ -81,6 +82,7 @@ export function initAnalyze(auth, helpers) {
           return;
         }
       }
+      forceNextAnalyze = String(activeAnalyzeBtn?.textContent || '').toLowerCase().includes('erneut');
       analyzeFile(kind);
     });
   });
@@ -158,7 +160,9 @@ async function analyzeFile(mediaType) {
   if (!file) {
     alert('Bitte zuerst eine Datei auswaehlen!');
     isAnalyzing = false;
+    forceNextAnalyze = false;
     updateAnalyzeState();
+    unlockActiveButton();
     return;
   }
 
@@ -168,7 +172,9 @@ async function analyzeFile(mediaType) {
       area.innerHTML = '<div class="ac-card"><b>Nur Bilder werden aktuell unterstuetzt.</b></div>';
     }
     isAnalyzing = false;
+    forceNextAnalyze = false;
     updateAnalyzeState();
+    unlockActiveButton();
     return;
   }
 
@@ -185,6 +191,11 @@ async function analyzeFile(mediaType) {
   const formData = new FormData();
   formData.append('file', file);
   formData.append('type', mediaType);
+  if (forceNextAnalyze) {
+    formData.append('force', '1');
+    forceNextAnalyze = false;
+  }
+  formData.append('nonce', String(Date.now()));
 
   const controller = new AbortController();
   const timeoutHandle = setTimeout(() => controller.abort(), 60000);
@@ -202,6 +213,7 @@ async function analyzeFile(mediaType) {
       method: 'POST',
       body: formData,
       headers,
+      cache: 'no-store',
       signal: controller.signal,
     });
 
@@ -251,8 +263,47 @@ async function analyzeFile(mediaType) {
     // ✅ Erfolgsfall – hier bleibt das Layout wie vorher
     const real = data.real;
     const fake = data.fake;
-    const msg = data.message || '';
     const details = Array.isArray(data.details) ? data.details : [];
+    const source = String(data.source || '').toLowerCase();
+    let msg = data.message || '';
+    const confidence = (data && data.confidence) ? String(data.confidence).toLowerCase() : '';
+    const hiveIssue = details.some((d) => {
+      const s = String(d || '');
+      return s.startsWith('Hive fehlgeschlagen:') || s.includes('Hive Auth Fehler') || s.includes('Token authentication required');
+    });
+
+    if (hiveIssue) {
+      msg = 'Unsicher – Hauptanalyse (Hive) nicht verfügbar, Fallback genutzt';
+    } else if (source === 'forensics' && confidence === 'low') {
+      msg = 'Unsicher – weitere Prüfung empfohlen';
+    } else if (confidence === 'low') {
+      msg = 'Unsicher – Mischsignale, weitere Prüfung empfohlen';
+    } else if (confidence === 'medium') {
+      msg = real >= fake ? 'Eher echt' : 'Eher KI-generiert';
+    } else if (confidence === 'high') {
+      msg = real >= fake ? 'Echt mit hoher Wahrscheinlichkeit' : 'KI-generiert mit hoher Wahrscheinlichkeit';
+    }
+
+    let confidenceLabel = '';
+    if (confidence === 'high') confidenceLabel = 'hoch';
+    else if (confidence === 'medium') confidenceLabel = 'mittel';
+    else if (confidence === 'low') confidenceLabel = 'niedrig';
+
+    const confidenceLine = confidenceLabel
+      ? `<div class="ac-subtle" style="margin-top:6px">Sicherheit: <b>${confidenceLabel}</b></div>`
+      : '';
+
+    const hiveHintLine = hiveIssue
+      ? '<div class="ac-subtle" style="margin-top:6px">Hinweis: Hive nicht verbunden (API-Key/Authorization). Ergebnisse sind weniger verlässlich.</div>'
+      : '';
+
+    const tendencyLine = confidence === 'low'
+      ? `<div class="ac-subtle" style="margin-top:6px">Tendenz: ${real >= fake ? 'eher echt' : 'eher KI-generiert'} (Schätzung: ${real}% echt / ${fake}% KI)</div>`
+      : '';
+
+    const fallbackBadge = (hiveIssue || source === 'forensics')
+      ? '<span class="ac-subtle" style="margin-left:6px">Fallback: Forensics</span>'
+      : '';
     const cost = getAnalysisCost(mediaType);
     let usageInfo = '';
 
@@ -287,8 +338,11 @@ async function analyzeFile(mediaType) {
         <div class="ac-card">
           <div class="ac-row" style="justify-content: space-between; align-items: baseline;">
             <div>
-              <b>${real}% echt / ${fake}% KI</b>
+              <b>${real}% echt / ${fake}% KI</b>${fallbackBadge}
               <p class="ac-subtle" style="margin:4px 0 0 0">${msg}</p>
+              ${hiveHintLine}
+              ${tendencyLine}
+              ${confidenceLine}
             </div>
             <button id="toggleDetails" class="ac-ghost" style="font-size:12px;padding:4px 8px">Details</button>
           </div>
@@ -300,6 +354,12 @@ async function analyzeFile(mediaType) {
           ${usageInfo}
         </div>`;
        resultRendered = true;
+      if (fileInput) {
+        fileInput.value = '';
+      }
+      if (activeAnalyzeBtn) {
+        activeAnalyzeBtn.textContent = 'Erneut analysieren';
+      }
 
 
 
@@ -329,9 +389,7 @@ async function analyzeFile(mediaType) {
   } finally {
   isAnalyzing = false;
 
-  if (!resultRendered) {
-    updateAnalyzeState();
-  }
+  updateAnalyzeState();
 
   unlockActiveButton();
 }
@@ -346,7 +404,18 @@ async function analyzeFile(mediaType) {
 
 
 function updateAnalyzeState() {
-
+  const buttons = $$('.ac-primary');
+  if (isAnalyzing) {
+    buttons.forEach((btn) => { btn.disabled = true; });
+    return;
+  }
+  buttons.forEach((btn) => {
+    const kind = btn.dataset.kind;
+    const inputSel = idMap[kind];
+    const inputEl = inputSel ? document.querySelector(inputSel) : null;
+    const hasFile = !!(inputEl && inputEl.files && inputEl.files.length > 0);
+    btn.disabled = !hasFile;
+  });
 }
 function lockActiveButton() {
   if (!activeAnalyzeBtn) return;
@@ -358,5 +427,8 @@ function unlockActiveButton() {
   activeAnalyzeBtn.disabled = false;
   activeAnalyzeBtn = null;
 }
+
+
+
 
 

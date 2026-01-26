@@ -1,11 +1,11 @@
-import os
+﻿import os
 import io
 import base64
 import requests
 from dotenv import load_dotenv
 from PIL import Image, ImageOps
 try:
-    import pillow_heif  # optional für HEIC/AVIF
+    import pillow_heif  # optional fÃ¼r HEIC/AVIF
     pillow_heif.register_heif_opener()
 except Exception:
     pass
@@ -15,7 +15,7 @@ load_dotenv()
 
 # API-Key aus Umgebung lesen (bevorzugt "HIVE_API_KEY")
 HIVE_API_KEY = os.getenv("HIVE_API_KEY") or os.getenv("AIREALCHECK_HIVE_API_KEY") or ""
-# Modell-Priorität: zuerst allgemeine KI-Bild-Detektion, dann Deepfake als Fallback
+# Modell-PrioritÃ¤t: zuerst allgemeine KI-Bild-Detektion, dann Deepfake als Fallback
 _default_models = [
     "ai-generated-image-detection",
     "synthetic-image-detection",
@@ -54,7 +54,7 @@ def _normalize_classes(classes):
     if real is None and fake is None:
         real, fake = 50.0, 50.0
 
-    # Numerisch säubern und auf 2 Nachkommastellen runden
+    # Numerisch sÃ¤ubern und auf 2 Nachkommastellen runden
     real = max(0.0, min(100.0, float(real)))
     fake = max(0.0, min(100.0, float(fake)))
 
@@ -69,9 +69,8 @@ def _normalize_classes(classes):
 
 def analyze_with_hive(file_path: str):
     """
-    Sendet das Bild an Hive AI zur Analyse (Real vs Fake).
-    Erwartet einen Pfad zu einer existierenden Bilddatei.
-    Rückgabe: Dict mit Schlüsseln: real, fake, message, details | bei Fehler: error, message, details
+    Global AI detection (works for any image) + optional Face/Deepfake signal (only when needed).
+    Rückgabe bleibt kompatibel: real, fake, message, details, source | bei Fehler: error, message, details
     """
     if not os.path.exists(file_path):
         return {"error": True, "message": "Datei existiert nicht", "details": [file_path]}
@@ -79,21 +78,19 @@ def analyze_with_hive(file_path: str):
     if not HIVE_API_KEY:
         return {
             "error": True,
+            "ok": False,
             "message": "HIVE_API_KEY fehlt. Bitte .env setzen.",
-            "details": [
-                "Setze HIVE_API_KEY in der Umgebung oder .env",
-                "Alternativ: AIREALCHECK_HIVE_API_KEY",
-            ],
+            "details": ["Hive: API Key fehlt oder ist leer"],
         }
 
-    # Standardisierte Vorverarbeitung: RGB, Skalierung, JPEG(qual=95)
+    # --- Preprocessing Varianten (TTA) ---
     max_edge = int(os.getenv("AIREALCHECK_MAX_EDGE", "1024") or 1024)
+
     def _prep_variants(path: str):
         variants = []
         try:
             base = Image.open(path).convert("RGB")
             w, h = base.size
-            scale = 1.0
             if max(w, h) > max_edge:
                 scale = max_edge / float(max(w, h))
                 base = base.resize((int(w * scale), int(h * scale)))
@@ -106,6 +103,7 @@ def analyze_with_hive(file_path: str):
                 imgs.append(base.rotate(5, resample=Image.BICUBIC, expand=False))
             if TTA_COUNT >= 5:
                 imgs.append(base.rotate(-5, resample=Image.BICUBIC, expand=False))
+
             for im in imgs[:max(1, TTA_COUNT)]:
                 buf = io.BytesIO()
                 im.save(buf, format="JPEG", quality=95, optimize=True)
@@ -125,39 +123,47 @@ def analyze_with_hive(file_path: str):
         "Authorization": f"Token {HIVE_API_KEY}",
         "Content-Type": "application/json",
     }
-    # Wir versuchen die Modelle in vorgegebener Reihenfolge, bis eins klappt
-    errors = []
 
-    for model_name in HIVE_MODELS:
+    debug_raw = os.getenv("AIREALCHECK_DEBUG_RAW", "false").lower() in {"1", "true", "yes"}
+    if debug_raw and HIVE_API_KEY:
+        print(f"HIVE_API_KEY prefix: {HIVE_API_KEY[:6]}...")
+    force_face = os.getenv("AIREALCHECK_FORCE_FACE", "false").lower() in {"1", "true", "yes"}
+
+    # --- Modellgruppen ---
+    # global: funktioniert auch ohne Gesicht
+    global_candidates = [m for m in HIVE_MODELS if m in {"ai-generated-image-detection", "synthetic-image-detection"}]
+    # face/deepfake: eher nur sinnvoll bei Faces/Manipulationen
+    face_candidates = [m for m in HIVE_MODELS if m in {"deepfake-detection"}]
+
+    # Fallback: falls User HIVE_MODELS leer/anders gesetzt hat
+    if not global_candidates:
+        global_candidates = ["ai-generated-image-detection", "synthetic-image-detection"]
+    if not face_candidates:
+        face_candidates = ["deepfake-detection"]
+
+    errors = []
+    details = [f"Preprocessing: {prep_details}"]
+    auth_error = None
+
+    def _call_model(model_name: str):
+        nonlocal auth_error
         payload = {"model": model_name, "input": [{"image": v} for v in variants]}
         try:
-            response = requests.post(url, headers=headers, json=payload, timeout=45)
+            r = requests.post(url, headers=headers, json=payload, timeout=45)
         except requests.RequestException as e:
-            errors.append(f"{model_name}: {str(e)}")
-            continue
+            return None, [f"{model_name}: {str(e)}"]
 
-        if response.status_code != 200:
-            errors.append(f"{model_name}: {response.status_code} {response.text[:200]}")
-            # Bei 403 evtl. Bearer versuchen
-            if response.status_code == 403 and "Invalid Auth Token" in (response.text or ""):
-                try:
-                    headers_retry = dict(headers)
-                    headers_retry["Authorization"] = f"Bearer {HIVE_API_KEY}"
-                    response = requests.post(url, headers=headers_retry, json=payload, timeout=45)
-                except requests.RequestException as e:
-                    errors.append(f"{model_name} retry: {str(e)}")
-                    continue
-                if response.status_code != 200:
-                    errors.append(f"{model_name} retry: {response.status_code} {response.text[:200]}")
-                    continue
-            else:
-                continue
+        if r.status_code in {401, 403}:
+            auth_error = "Hive Auth Fehler (401/403) – prüfe API Key / Authorization Header"
+            return None, [auth_error]
+
+        if r.status_code != 200:
+            return None, [f"{model_name}: {r.status_code} {(r.text or '')[:200]}"]
 
         try:
-            data = response.json()
+            data = r.json()
         except ValueError:
-            errors.append(f"{model_name}: invalid JSON")
-            continue
+            return None, [f"{model_name}: invalid JSON"]
 
         try:
             status = data.get("status") or []
@@ -168,7 +174,6 @@ def analyze_with_hive(file_path: str):
             if not outputs:
                 raise KeyError("output fehlt")
 
-            # Aggregate über TTA-Outputs
             agg_real, agg_fake = 0.0, 0.0
             raws = []
             for out in outputs:
@@ -181,21 +186,119 @@ def analyze_with_hive(file_path: str):
             real_score = round(agg_real / n, 2)
             fake_score = round(agg_fake / n, 2)
 
-            msg = "Echt mit hoher Wahrscheinlichkeit" if real_score > fake_score else "Wahrscheinlich KI-generiert"
             return {
+                "model": model_name,
                 "real": real_score,
                 "fake": fake_score,
-                "message": msg,
-                "details": [
-                    f"Hive Model: {model_name}",
-                    f"Preprocessing: {prep_details}",
-                    f"TTA: {n} variants (avg)",
-                    f"Raw: {raws}",
-                ],
-                "source": "hive",
-            }
+                "tta": n,
+                "raws": raws if debug_raw else None,
+            }, []
         except Exception as e:
-            errors.append(f"{model_name}: parse error {str(e)}")
-            continue
+            return None, [f"{model_name}: parse error {str(e)}"]
 
-    return {"error": True, "message": "Hive-Analyse fehlgeschlagen (alle Modelle)", "details": errors}
+    # --- 1) GLOBAL FIRST ---
+    global_result = None
+    for m in global_candidates:
+        res, errs = _call_model(m)
+        if errs:
+            errors.extend(errs)
+        if res:
+            global_result = res
+            break
+        if auth_error:
+            return {"ok": False, "error": True, "message": auth_error, "details": [auth_error]}
+
+    if global_result:
+        details.append(f"Hive Global Model: {global_result['model']}")
+        details.append(f"Global Score: {global_result['real']}% real / {global_result['fake']}% KI")
+        details.append(f"TTA: {global_result['tta']} variants (avg)")
+        if debug_raw and global_result.get("raws") is not None:
+            details.append(f"Raw(Global): {global_result['raws']}")
+    else:
+        details.append("Hive Global: nicht verfügbar (alle Modelle fehlgeschlagen)")
+
+    # --- Entscheid, ob wir Face/Deepfake callen ---
+    # Unsicherheitszone: 40-60% KI (oder wenn global fehlt)
+    need_face = force_face
+    if not need_face:
+        if global_result is None:
+            need_face = True
+        else:
+            gf = float(global_result["fake"])
+            need_face = (40.0 <= gf <= 60.0)
+
+    face_result = None
+    if need_face:
+        for m in face_candidates:
+            res, errs = _call_model(m)
+            if errs:
+                errors.extend(errs)
+            if res:
+                face_result = res
+                break
+            if auth_error:
+                return {"ok": False, "error": True, "message": auth_error, "details": [auth_error]}
+
+        if face_result:
+            details.append(f"Hive Face Model: {face_result['model']}")
+            details.append(f"Face/Deepfake Score: {face_result['real']}% real / {face_result['fake']}% KI")
+            details.append(f"TTA: {face_result['tta']} variants (avg)")
+            if debug_raw and face_result.get("raws") is not None:
+                details.append(f"Raw(Face): {face_result['raws']}")
+        else:
+            details.append("Hive Face/Deepfake: nicht verfügbar")
+
+    # --- Overall Fusion (konservativ, ohne “Fake-Mathe”) ---
+    # Regel:
+    # - Nimm primär Global
+    # - Wenn Face sehr stark "KI" sagt (>=85), erhöhe Overall auf max(Global, Face)
+    # - Wenn Global fehlt, nimm Face
+    if global_result is None and face_result is None:
+        return {"error": True, "message": "Hive-Analyse fehlgeschlagen (alle Modelle)", "details": errors or details}
+
+    if global_result is not None:
+        overall_fake = float(global_result["fake"])
+    else:
+        overall_fake = float(face_result["fake"])
+
+    if face_result is not None and float(face_result["fake"]) >= 85.0:
+        overall_fake = max(overall_fake, float(face_result["fake"]))
+
+    overall_fake = max(0.0, min(100.0, overall_fake))
+    overall_real = round(100.0 - overall_fake, 2)
+    overall_fake = round(overall_fake, 2)
+
+    # --- Confidence (hoch/mittel/niedrig) ---
+    # basiert auf Abstand + Stärke, nicht als “echte Wahrscheinlichkeit” verkauft
+    gap = abs(overall_real - overall_fake)
+    top = max(overall_real, overall_fake)
+    if top >= 80.0 and gap >= 30.0:
+        confidence = "high"
+    elif top >= 65.0 and gap >= 15.0:
+        confidence = "medium"
+    else:
+        confidence = "low"
+
+    # Message kompatibel halten, aber besser formulieren
+    if confidence == "high":
+        msg = "Hohe Sicherheit: wahrscheinlich echt" if overall_real > overall_fake else "Hohe Sicherheit: wahrscheinlich KI-generiert"
+    elif confidence == "medium":
+        msg = "Mittlere Sicherheit: eher echt" if overall_real > overall_fake else "Mittlere Sicherheit: eher KI-generiert"
+    else:
+        msg = "Mischsignale – weitere Prüfung empfohlen"
+
+    details.append(f"Overall: {overall_real}% echt / {overall_fake}% KI (confidence={confidence})")
+
+    # Optional: Fehlerliste nur anhängen, wenn vorhanden
+    if errors:
+        details.append(f"Hive Notes: {len(errors)} issues (siehe Debug/Logs)")
+
+    return {
+        "real": overall_real,
+        "fake": overall_fake,
+        "message": msg,
+        "details": details,
+        "source": "hive",
+        "confidence": confidence,  # frontend ignoriert das erstmal, aber wir haben es
+    }
+
