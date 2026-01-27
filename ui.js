@@ -41,6 +41,7 @@ const brandHome = $('#brandHome');
 const menuList = $('#menuList');
 
 let currentAnalyzing = false;
+let expertToggleBound = false;
 
 export function showPage(name) {
   Object.values(pages).forEach((p) => p && p.classList.add('ac-hide'));
@@ -54,6 +55,132 @@ const getGuestCredits = (auth) =>
   (typeof auth?.getGuestCredits === 'function' ? auth.getGuestCredits() : null);
 const ANALYSIS_COSTS = { image: 10, video: 15, audio: 20 };
 const getAnalysisCost = (kind = 'image') => ANALYSIS_COSTS[kind] || 10;
+
+function clampPercent(value) {
+  const v = Number(value);
+  if (Number.isNaN(v)) return 0;
+  return Math.max(0, Math.min(100, Math.round(v)));
+}
+
+function verdictFromAi(aiLikelihood) {
+  const ai = clampPercent(aiLikelihood);
+  if (ai <= 30) {
+    return { verdict: 'likely_real', traffic: 'green', label: 'Ueberwiegend echt' };
+  }
+  if (ai <= 69) {
+    return { verdict: 'uncertain', traffic: 'yellow', label: 'Unsicher' };
+  }
+  return { verdict: 'likely_ai', traffic: 'red', label: 'Ueberwiegend KI' };
+}
+
+function computeConflict(engineResults) {
+  const values = (engineResults || [])
+    .filter((e) => e && e.available)
+    .map((e) => Number(e.ai_likelihood))
+    .filter((v) => Number.isFinite(v));
+  if (values.length < 2) return false;
+  return (Math.max(...values) - Math.min(...values)) >= 40;
+}
+
+function normalizeResult(data) {
+  const aiLikelihood = (typeof data?.ai_likelihood === 'number')
+    ? data.ai_likelihood
+    : (typeof data?.fake === 'number' ? data.fake : 0);
+  const realLikelihood = (typeof data?.real_likelihood === 'number')
+    ? data.real_likelihood
+    : (typeof data?.real === 'number' ? data.real : (100 - aiLikelihood));
+
+  const verdictInfo = data?.verdict && data?.traffic_light && data?.label_de
+    ? { verdict: data.verdict, traffic: data.traffic_light, label: data.label_de }
+    : verdictFromAi(aiLikelihood);
+
+  const engineResults = Array.isArray(data?.engine_results) ? data.engine_results : [];
+  const conflict = typeof data?.conflict === 'boolean' ? data.conflict : computeConflict(engineResults);
+  const reasons = Array.isArray(data?.reasons) ? data.reasons : [];
+
+  return {
+    ai_likelihood: clampPercent(aiLikelihood),
+    real_likelihood: clampPercent(realLikelihood),
+    verdict: verdictInfo.verdict,
+    traffic_light: verdictInfo.traffic,
+    label_de: verdictInfo.label,
+    conflict,
+    reasons,
+    confidence: typeof data?.confidence === 'number' ? data.confidence : null,
+    engine_results: engineResults,
+  };
+}
+
+export function renderAnalysisResult(resultJson, { expertMode = false } = {}) {
+  const r = normalizeResult(resultJson || {});
+  const showAi = r.verdict === 'likely_ai' || (r.verdict === 'uncertain' && r.ai_likelihood >= 50);
+  const headlinePercent = showAi ? r.ai_likelihood : r.real_likelihood;
+  const headlineText = showAi ? 'wahrscheinlich KI' : 'wahrscheinlich echt';
+  const badgeClass = r.traffic_light === 'green'
+    ? 'badge-green'
+    : (r.traffic_light === 'red' ? 'badge-red' : 'badge-yellow');
+
+  const reasonsList = (r.reasons && r.reasons.length)
+    ? r.reasons.slice(0, 3).map((reason) => `<li>${String(reason)}</li>`).join('')
+    : '<li>Keine weiteren Hinweise.</li>';
+
+  const conflictHtml = r.conflict
+    ? `
+      <div class="ac-conflict">
+        <div class="ac-conflict-title">Modelle uneinig</div>
+        <div class="ac-conflict-sub">Empfehlung: zweiten Check machen.</div>
+      </div>
+    `
+    : '';
+
+  const enginesHtml = (r.engine_results || []).map((engine) => {
+    const name = String(engine?.engine || 'engine');
+    const available = engine?.available !== false;
+    const score = available ? `${clampPercent(engine?.ai_likelihood)}% KI` : 'nicht verfuegbar';
+    const notes = String(engine?.notes || '');
+    const signals = Array.isArray(engine?.signals) ? engine.signals : [];
+    const signalsHtml = signals.length
+      ? `<ul class="ac-engine-signals">${signals.map((s) => `<li>${String(s)}</li>`).join('')}</ul>`
+      : '<div class="ac-engine-notes ac-subtle">Keine Signale.</div>';
+    const confText = typeof engine?.confidence === 'number'
+      ? `Sicherheit: ${Math.round(engine.confidence * 100)}%`
+      : '';
+    return `
+      <div class="ac-engine-item">
+        <div class="ac-engine-head">
+          <div class="ac-engine-name">${name}</div>
+          <div class="ac-engine-score">${score}</div>
+        </div>
+        ${confText ? `<div class="ac-engine-meta">${confText}</div>` : ''}
+        ${notes ? `<div class="ac-engine-notes">${notes}</div>` : ''}
+        ${signalsHtml}
+      </div>
+    `;
+  }).join('');
+
+  return `
+    <div class="ac-card ac-result-card" role="status" aria-live="polite">
+      <div class="ac-result-hero">
+        <div class="ac-result-percent">${headlinePercent}%</div>
+        <div class="ac-result-headline">${headlineText}</div>
+      </div>
+      <div class="ac-result-row">
+        <span class="ac-traffic-badge ${badgeClass}">${r.label_de}</span>
+        <span class="ac-result-sub">Status</span>
+      </div>
+      ${conflictHtml}
+      <div class="ac-result-reasons">
+        <div class="ac-subtle"><b>Warum?</b></div>
+        <ul class="ac-compare-list">${reasonsList}</ul>
+      </div>
+      <button id="resultDetailsToggle" class="ac-secondary ac-details-btn" type="button">Details anzeigen</button>
+      <div id="resultDetails" class="ac-result-details" style="display:none">
+        <div class="ac-subtle"><b>Modelle &amp; Signale</b></div>
+        <div class="ac-engine-list">${enginesHtml || '<div class="ac-subtle">Keine Engines verfuegbar.</div>'}</div>
+      </div>
+    </div>
+  `;
+}
 
 export function updateCreditsUI(auth) {
   if (!creditsLabel) return;
@@ -321,6 +448,7 @@ export function initUI(auth, extras = {}) {
     updateAdminVisibility(auth);
   });
 
+  setupExpertModeToggle();
   updateCreditsUI(auth);
   updateProfileView(auth);
   updateAnalyzeButtons(auth, false);
@@ -328,4 +456,32 @@ export function initUI(auth, extras = {}) {
   showPage('start');
 }
 
+function setupExpertModeToggle() {
+  if (expertToggleBound) return;
+  const settingsPage = pages.settings;
+  if (!settingsPage) return;
+  const card = settingsPage.querySelector('.placeholder-card') || settingsPage.querySelector('.ac-card');
+  if (!card || card.querySelector('#expertModeToggle')) return;
 
+  const wrap = document.createElement('div');
+  wrap.className = 'ac-setting ac-setting-row';
+  wrap.innerHTML = `
+    <input type="checkbox" id="expertModeToggle" />
+    <label for="expertModeToggle">Expert Mode (Details fuer Profis)</label>
+  `;
+  card.appendChild(wrap);
+  const input = wrap.querySelector('#expertModeToggle');
+  try {
+    input.checked = localStorage.getItem('ac_expert_mode') === '1';
+  } catch (e) {
+    input.checked = false;
+  }
+  input.addEventListener('change', () => {
+    try {
+      localStorage.setItem('ac_expert_mode', input.checked ? '1' : '0');
+    } catch (e) {
+      // ignore storage errors
+    }
+  });
+  expertToggleBound = true;
+}

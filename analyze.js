@@ -1,3 +1,4 @@
+import { renderAnalysisResult } from './ui.js';
 
 console.log("I AM THE REAL ANALYZE.JS");
 console.log("REAL FILE PATH:", import.meta?.url || document.currentScript?.src);
@@ -15,6 +16,107 @@ let reqCounter = 0;
 let activeAnalyzeBtn = null;
 let resultRendered = false;
 let forceNextAnalyze = false;
+
+function getExpertMode() {
+  try {
+    return localStorage.getItem('ac_expert_mode') === '1';
+  } catch (e) {
+    return false;
+  }
+}
+
+function renderResultCard(data, expertMode = false) {
+  const real = Number(data.real || 0);
+  const fake = Number(data.fake || 0);
+  const confidence = String(data.confidence || '').toLowerCase();
+
+  const verdict = (fake >= 70 && confidence !== 'low')
+    ? 'fake'
+    : (real >= 70 && confidence !== 'low' ? 'real' : 'uncertain');
+
+  const verdictLabel = verdict === 'real'
+    ? 'Wahrscheinlich echt'
+    : verdict === 'fake'
+      ? 'Wahrscheinlich KI'
+      : 'Unklar';
+
+  const icon = verdict === 'real' ? '✓' : (verdict === 'fake' ? '!' : '?');
+  const iconClass = verdict === 'real'
+    ? 'ac-result-icon is-real'
+    : (verdict === 'fake' ? 'ac-result-icon is-fake' : 'ac-result-icon is-uncertain');
+
+  const metricLabel = verdict === 'real'
+    ? `Echt: ${real}%`
+    : `KI: ${fake}%`;
+
+  const confidenceLabel = confidence === 'high' ? 'Hoch' : (confidence === 'medium' ? 'Mittel' : 'Niedrig');
+  const confidenceHint = 'Niedrig bedeutet: Ergebnis unsicher / gemischte Signale';
+
+  const explanation = verdict === 'uncertain'
+    ? 'Unklar - bitte zusaetzliche Pruefung oder bessere Qualitaet (hoehere Aufloesung, Originaldatei).'
+    : (verdict === 'real'
+      ? 'Die Analyse spricht eher fuer eine echte Aufnahme.'
+      : 'Die Analyse spricht eher fuer KI/Manipulation.');
+
+  const summaryLines = Array.isArray(data.user_summary) && data.user_summary.length
+    ? data.user_summary
+    : (data.message ? [data.message] : []);
+  const summaryList = (summaryLines.length ? summaryLines : [explanation])
+    .slice(0, 2)
+    .map((d) => `<li>${String(d)}</li>`)
+    .join('');
+
+  const detailsObj = data.details || {};
+  const techLines = [];
+  if (expertMode) {
+    const primary = data.primary_source || data.source;
+    if (primary) techLines.push(`Primary Source: ${primary}`);
+    if (Array.isArray(data.sources_used) && data.sources_used.length) {
+      techLines.push(`Engines: ${data.sources_used.join(', ')}`);
+    }
+    if (Array.isArray(data.warnings) && data.warnings.length) {
+      data.warnings.forEach((w) => techLines.push(`Warnung: ${w}`));
+    }
+    const addDetails = (label, arr) => {
+      if (!arr) return;
+      const list = Array.isArray(arr) ? arr : [arr];
+      list.forEach((d) => techLines.push(`${label}: ${d}`));
+    };
+    addDetails('Hive', detailsObj.hive);
+    addDetails('Forensics', detailsObj.forensics);
+    addDetails('Model', detailsObj.model);
+  }
+  const techList = techLines.map((d) => `<li>${String(d)}</li>`).join('');
+
+  const detailsBody = expertMode
+    ? `
+        <div class="ac-subtle"><b>Warum?</b></div>
+        <ul class="ac-compare-list">${summaryList}</ul>
+        <div class="ac-subtle" style="margin-top:8px"><b>Technische Rohdaten</b></div>
+        <ul class="ac-compare-list">${techList || '<li>Keine Rohdaten verfuegbar.</li>'}</ul>
+      `
+    : `
+        <div class="ac-subtle"><b>Warum?</b></div>
+        <ul class="ac-compare-list">${summaryList}</ul>
+      `;
+
+  return `
+    <div class="ac-card ac-result-card" role="status" aria-live="polite">
+      <div class="ac-result-header">
+        <span class="${iconClass}" aria-hidden="true">${icon}</span>
+        <div class="ac-result-title">${verdictLabel}</div>
+      </div>
+      <div class="ac-result-chips">
+        <span class="ac-chip ac-chip-metric">${metricLabel}</span>
+        <span class="ac-chip ac-chip-metric" title="${confidenceHint}">Sicherheit: ${confidenceLabel}</span>
+      </div>
+      <div class="ac-result-expl">${explanation}</div>
+      <button id="toggleDetails" class="ac-secondary ac-details-btn" type="button">Details </button>
+      <div id="inlineDetails" class="ac-subtle" style="display:none; margin-top:8px">
+        ${detailsBody}
+      </div>
+    </div>`;
+}
 
 
 
@@ -260,52 +362,9 @@ async function analyzeFile(mediaType) {
       return;
     }
 
-    // ✅ Erfolgsfall – hier bleibt das Layout wie vorher
-    const real = data.real;
-    const fake = data.fake;
-    const details = Array.isArray(data.details) ? data.details : [];
-    const source = String(data.source || '').toLowerCase();
-    let msg = data.message || '';
-    const confidence = (data && data.confidence) ? String(data.confidence).toLowerCase() : '';
-    const hiveIssue = details.some((d) => {
-      const s = String(d || '');
-      return s.startsWith('Hive fehlgeschlagen:') || s.includes('Hive Auth Fehler') || s.includes('Token authentication required');
-    });
-
-    if (hiveIssue) {
-      msg = 'Unsicher – Hauptanalyse (Hive) nicht verfügbar, Fallback genutzt';
-    } else if (source === 'forensics' && confidence === 'low') {
-      msg = 'Unsicher – weitere Prüfung empfohlen';
-    } else if (confidence === 'low') {
-      msg = 'Unsicher – Mischsignale, weitere Prüfung empfohlen';
-    } else if (confidence === 'medium') {
-      msg = real >= fake ? 'Eher echt' : 'Eher KI-generiert';
-    } else if (confidence === 'high') {
-      msg = real >= fake ? 'Echt mit hoher Wahrscheinlichkeit' : 'KI-generiert mit hoher Wahrscheinlichkeit';
-    }
-
-    let confidenceLabel = '';
-    if (confidence === 'high') confidenceLabel = 'hoch';
-    else if (confidence === 'medium') confidenceLabel = 'mittel';
-    else if (confidence === 'low') confidenceLabel = 'niedrig';
-
-    const confidenceLine = confidenceLabel
-      ? `<div class="ac-subtle" style="margin-top:6px">Sicherheit: <b>${confidenceLabel}</b></div>`
-      : '';
-
-    const hiveHintLine = hiveIssue
-      ? '<div class="ac-subtle" style="margin-top:6px">Hinweis: Hive nicht verbunden (API-Key/Authorization). Ergebnisse sind weniger verlässlich.</div>'
-      : '';
-
-    const tendencyLine = confidence === 'low'
-      ? `<div class="ac-subtle" style="margin-top:6px">Tendenz: ${real >= fake ? 'eher echt' : 'eher KI-generiert'} (Schätzung: ${real}% echt / ${fake}% KI)</div>`
-      : '';
-
-    const fallbackBadge = (hiveIssue || source === 'forensics')
-      ? '<span class="ac-subtle" style="margin-left:6px">Fallback: Forensics</span>'
-      : '';
+    // ✅ Erfolgsfall – neues, reduziertes Ergebnis-UI
+    const expertMode = getExpertMode();
     const cost = getAnalysisCost(mediaType);
-    let usageInfo = '';
 
     if (data.usage) {
       if (authRef.isPremium()) {
@@ -319,59 +378,36 @@ async function analyzeFile(mediaType) {
       helpersRef?.updateCreditsUI?.(authRef);
     
       helpersRef?.renderProfileView?.(authRef);
-      usageInfo = `<div class="ac-subtle" style="margin-top:8px">Quelle: ${
-        String(data.usage.source || 'n/a')
-      } &bull; Credits verbleibend: ${
-        data.usage.credits_left == null ? '&infin;' : String(data.usage.credits_left)
-      }</div>`;
+
     }
 
     if (!authRef.isLoggedIn()) {
       const currentGuest = typeof authRef.getGuestCredits === 'function' ? authRef.getGuestCredits() : 0;
       authRef.setGuestCredits?.(currentGuest - cost);
       helpersRef?.updateCreditsUI?.(authRef);
-      
     }
 
     if (area) {
-      area.innerHTML = `
-        <div class="ac-card">
-          <div class="ac-row" style="justify-content: space-between; align-items: baseline;">
-            <div>
-              <b>${real}% echt / ${fake}% KI</b>${fallbackBadge}
-              <p class="ac-subtle" style="margin:4px 0 0 0">${msg}</p>
-              ${hiveHintLine}
-              ${tendencyLine}
-              ${confidenceLine}
-            </div>
-            <button id="toggleDetails" class="ac-ghost" style="font-size:12px;padding:4px 8px">Details</button>
-          </div>
-          <div id="inlineDetails" class="ac-subtle" style="display:none; margin-top:8px">
-            <ul class="ac-compare-list">
-              ${details.map((d) => `<li>${String(d)}</li>`).join('')}
-            </ul>
-          </div>
-          ${usageInfo}
-        </div>`;
-       resultRendered = true;
+      area.innerHTML = renderAnalysisResult(data, { expertMode });
+      resultRendered = true;
       if (fileInput) {
         fileInput.value = '';
       }
       if (activeAnalyzeBtn) {
-        activeAnalyzeBtn.textContent = 'Erneut analysieren';
+        activeAnalyzeBtn.textContent = 'Analysieren ';
       }
 
 
 
 
 
-      const btn = document.querySelector('#toggleDetails');
-      const box = document.querySelector('#inlineDetails');
+      const btn = document.querySelector('#resultDetailsToggle');
+      const box = document.querySelector('#resultDetails');
       if (btn && box) {
         btn.addEventListener('click', () => {
           const open = box.style.display !== 'none';
           box.style.display = open ? 'none' : 'block';
-          btn.textContent = open ? 'Details' : 'Details verbergen';
+          btn.textContent = open ? 'Details anzeigen' : 'Details schliessen';
         });
       }
     }
@@ -427,6 +463,23 @@ function unlockActiveButton() {
   activeAnalyzeBtn.disabled = false;
   activeAnalyzeBtn = null;
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

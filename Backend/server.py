@@ -7,8 +7,7 @@ from typing import Tuple
 from dotenv import load_dotenv
 import jwt
 
-from Backend.image_forensics import analyze_image
-from Backend.deepfake_api import analyze_with_hive
+from Backend.ensemble import run_ensemble, build_standard_result
 from Backend.db import init_db
 from Backend.models import Base, User
 from Backend.auth import bp_auth
@@ -160,6 +159,7 @@ def _run_analysis(file_storage, media_type="image", user_ctx=None, charge_credit
 
     result = None
     source_used = None
+    file_hash = None
     try:
         if _is_image_ext(filename):
             # Cache-Hit?
@@ -168,38 +168,19 @@ def _run_analysis(file_storage, media_type="image", user_ctx=None, charge_credit
             file_hash = _sha256_of_file(dst_path)
             if use_cache and (not force) and file_hash in _RESULT_CACHE:
                 cached = dict(_RESULT_CACHE[file_hash])
-                cached["usage"] = {"source": cached.get("source"), "credit_spent": False, "credits_left": None}
-                return jsonify(cached)
-
-            # Standard: Hive als Hauptquelle; Forensics als Fallback bei Fehler
-            use_fallback = (os.getenv("AIREALCHECK_IMAGE_FALLBACK", "false").lower() in {"1", "true", "yes"})
-            hive_result = analyze_with_hive(dst_path)
-            hive_success = bool(hive_result) and hive_result.get("ok") is True and ("real" in hive_result) and ("fake" in hive_result)
-            if hive_success:
-                result = hive_result
-                result["source"] = "hive"
-                source_used = "hive"
-            else:
-                if use_fallback:
-                    reason = hive_result.get("message") or hive_result.get("error") or "Hive returned no valid result"
-                    result = analyze_image(dst_path)
-                    result["source"] = "forensics"
-                    result["confidence"] = "low"
-                    f_details = list(result.get("details", []))
-                    f_details.insert(0, f"Hive fehlgeschlagen: {reason}")
-                    hive_details = hive_result.get("details") or []
-                    for d in hive_details[:2]:
-                        f_details.append(f"Hive detail: {d}")
-                    result["details"] = f_details
-                    source_used = "forensics"
+                if "ai_likelihood" not in cached or "engine_results" not in cached:
+                    _RESULT_CACHE.pop(file_hash, None)
                 else:
-                    result = hive_result
-                    result["source"] = result.get("source", "hive")
-                    source_used = result["source"]
+                    cached["usage"] = {"source": cached.get("source"), "credit_spent": False, "credits_left": None}
+                    return jsonify(cached)
+
+            # Standard: Ensemble-Auswertung (Hive + Forensics)
+            result = run_ensemble(dst_path)
+            source_used = result.get("primary_source")
         else:
             return jsonify({"ok": False, "error": "Nicht unterstützter Dateityp"}), 415
 
-        if result.get("error"):
+        if result.get("error") or result.get("ok") is False:
             return jsonify({"ok": False, "error": result.get("message", "analyse_failed"), "details": result.get("details", [])}), 502
 
         # Score-Shaping optional anwenden
@@ -224,21 +205,34 @@ def _run_analysis(file_storage, media_type="image", user_ctx=None, charge_credit
             real_out = round(real, 2)
             fake_out = round(fake, 2)
 
-        confidence_value = result.get("confidence")
-        if source_used == "forensics":
-            confidence_value = confidence_value or "low"
-        if not confidence_value:
-            confidence_value = "low"
+        confidence_value = result.get("confidence") or "low"
 
-        response_payload = {
-            "ok": True,
+        analysis_id = file_hash or _sha256_of_file(dst_path)
+        created_at_iso = __import__("datetime").datetime.utcnow().isoformat() + "Z"
+        standard_payload = build_standard_result(
+            media_type=media_type,
+            engine_results_raw=result.get("engine_results_raw", []),
+            analysis_id=analysis_id,
+            ai_likelihood=fake_out,
+            reasons=None,
+            created_at=created_at_iso,
+        )
+
+        response_payload = dict(standard_payload)
+        response_payload["legacy"] = {
+            "verdict": result.get("verdict"),
             "real": real_out,
             "fake": fake_out,
-            "message": result.get("message"),
-            "details": result.get("details", []),
-            "source": result.get("source"),
             "confidence": confidence_value,
+            "primary_source": result.get("primary_source"),
+            "sources_used": result.get("sources_used", []),
+            "user_summary": result.get("user_summary", []),
+            "details": result.get("details", {}),
+            "warnings": result.get("warnings", []),
+            "source": result.get("primary_source"),
         }
+        response_payload["real"] = real_out
+        response_payload["fake"] = fake_out
 
         # Spend credit atomically after successful analysis for hive/forensics
         credit_spent = False
@@ -371,6 +365,8 @@ def analyze_guest():
 
 if __name__ == "__main__":
     app.run(host="127.0.0.1", port=5001, debug=True)
+
+
 
 
 

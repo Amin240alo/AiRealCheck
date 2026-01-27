@@ -4,6 +4,9 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>AIRealCheck — Verify real vs. AI</title>
+  <link rel="icon" type="image/png" sizes="32x32" href="Assets/Logos/airealcheck-Favicon.png" />
+  <link rel="icon" type="image/png" sizes="192x192" href="Assets/Logos/airealcheck-Favicon.png" />
+  <link rel="apple-touch-icon" sizes="180x180" href="Assets/Logos/airealcheck-Favicon.png" />
   <link rel="stylesheet" href="style.css" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
@@ -22,7 +25,11 @@
           <line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/>
         </svg>
       </button>
-      <button class="ac-brand-btn" id="brandHome" aria-label="Start">AIRealCheck</button>
+    </div>
+    <div class="ac-header-center">
+      <button class="ac-brand-btn" id="brandHome" aria-label="Start">
+        <img class="ac-brand-logo" src="Assets/Logos/airealcheck-secondary.png" alt="AIRealCheck" />
+      </button>
     </div>
 
     <div class="ac-header-right">
@@ -319,7 +326,9 @@
 
 
 
-            <div id="analysisArea" class="ac-analysis"></div>
+            <div id="analysisArea" class="ac-analysis">
+              <div id="resultMount"></div>
+            </div>
           </div>
         </div>
       </section>
@@ -377,7 +386,7 @@
               </div>
             </div>
             <div class="profile-actions">
-              <button class="ac-secondary" id="profileHistory">Verlauf ffnen</button>
+              <button class="ac-secondary" id="profileHistory">Verlauf öffnen</button>
               <button class="ac-primary" id="profileLogout">Ausloggen</button>
             </div>
           </div>
@@ -389,7 +398,7 @@
         <div class="ac-container">
           <div class="ac-page-title">Einstellungen</div>
           <div class="ac-card placeholder-card">
-            <div class="ac-card-title">Bald verfuegbar</div>
+            <div class="ac-card-title">Bald verfügbar</div>
             <p class="ac-subtle">Hier kannst du demnaechst Benachrichtigungen, Sprache und weitere Optionen konfigurieren.</p>
           </div>
         </div>
