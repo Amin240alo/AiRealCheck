@@ -1,7 +1,8 @@
 Flask
 flask-cors
 requests
-Pillow\npillow-heif
+Pillow
+pillow-heif
 numpy
 opencv-python-headless
 ImageHash
@@ -12,4 +13,6 @@ python-dotenv
 torch
 timm
 c2pa-python
+yt-dlp
+pytest
 

@@ -70,6 +70,30 @@ function percentFromValue(value) {
   return clampPercent(v);
 }
 
+function scoreZone(aiPercent) {
+  if (aiPercent === null || aiPercent === undefined) return 'unknown';
+  if (aiPercent <= 20) return 'real';
+  if (aiPercent <= 60) return 'uncertain';
+  return 'ai';
+}
+
+function summaryText(aiPercent, confidenceLabel) {
+  const zone = scoreZone(aiPercent);
+  if (zone === 'unknown') return 'Keine ausreichenden Signale fuer eine Einschaetzung.';
+  const conf = (confidenceLabel || 'low').toLowerCase();
+  const prefix = conf === 'high'
+    ? 'Hohe Sicherheit: '
+    : (conf === 'medium' ? 'Mittlere Sicherheit: ' : 'Niedrige Sicherheit: ');
+
+  if (zone === 'real') {
+    return `${prefix}Tendenz zu echter Aufnahme.`;
+  }
+  if (zone === 'ai') {
+    return `${prefix}Tendenz zu KI/Manipulation.`;
+  }
+  return `${prefix}Unklare Lage, weitere Pruefung empfohlen.`;
+}
+
 function normalizeEngineResults(engineResults) {
   return (Array.isArray(engineResults) ? engineResults : [])
     .filter((e) => e && typeof e === 'object')
@@ -79,6 +103,7 @@ function normalizeEngineResults(engineResults) {
       confidence: e.confidence,
       signals: Array.isArray(e.signals) ? e.signals : [],
       notes: e.notes,
+      status: e.status,
       available: e.available !== false,
     }));
 }
@@ -93,6 +118,7 @@ function normalizeResult(data) {
     : null;
 
   return {
+    media_type: typeof data?.media_type === 'string' ? data.media_type.toLowerCase() : 'image',
     final_ai: finalAi,
     final_real: finalReal,
     confidence_label: confidenceLabel,
@@ -103,8 +129,10 @@ function normalizeResult(data) {
 
 export function renderAnalysisResult(resultJson, { expertMode = false } = {}) {
   const r = normalizeResult(resultJson || {});
+  const mediaType = r.media_type || 'image';
   const finalAiPercent = percentFromValue(r.final_ai);
   const finalRealPercent = percentFromValue(r.final_real !== null ? r.final_real : (r.final_ai !== null ? 1 - r.final_ai : null));
+  const summaryLine = summaryText(finalAiPercent, r.confidence_label);
 
   const confidenceMap = {
     high: { label: 'Hoch', badge: 'badge-green' },
@@ -117,7 +145,9 @@ export function renderAnalysisResult(resultJson, { expertMode = false } = {}) {
     ? r.reasons.slice(0, 3).map((reason) => `<li>${String(reason)}</li>`).join('')
     : '<li>Keine weiteren Hinweise.</li>';
 
-  const detectorEngines = new Set(['sightengine', 'reality_defender', 'hive']);
+  const detectorEngines = mediaType === 'video'
+    ? new Set(['reality_defender_video'])
+    : new Set(['sightengine', 'reality_defender', 'hive']);
   const detectors = r.engine_results.filter((e) => detectorEngines.has(e.engine));
   const detectorsHtml = detectors.length
     ? detectors.map((engine) => {
@@ -170,22 +200,55 @@ export function renderAnalysisResult(resultJson, { expertMode = false } = {}) {
   }
   const watermarkNotes = watermark ? String(watermark.notes || '') : '';
 
-  const forensics = r.engine_results.find((e) => e.engine === 'forensics');
+  const forensicsEngine = mediaType === 'video' ? 'video_forensics' : 'forensics';
+  const forensics = r.engine_results.find((e) => e.engine === forensicsEngine);
+  const technicalSignals = (forensics?.signals || []).map((s) => String(s));
+  const formatSignal = (signal) => {
+    const match = signal.match(/^frames_analyzed\\s*:\\s*(\\d+)/i);
+    if (match) {
+      return `Frames analysiert: ${match[1]}`;
+    }
+    const sampling = signal.match(/^sampling_breakdown\\s*:\\s*(.+)$/i);
+    if (sampling) {
+      return `Sampling: ${sampling[1]}`;
+    }
+    return signal;
+  };
+  const signalsHtml = technicalSignals.length
+    ? `<ul class="ac-compare-list">${technicalSignals.map((s) => `<li>${formatSignal(s)}</li>`).join('')}</ul>`
+    : '';
   const forensicsHtml = forensics
     ? (() => {
       const available = forensics.available !== false;
       const score = available
         ? (percentFromValue(forensics.ai_likelihood) !== null ? `${percentFromValue(forensics.ai_likelihood)}% KI` : '—')
         : 'nicht verfuegbar';
-      const notes = String(forensics?.notes || '');
+      const notesRaw = String(forensics?.notes || '');
+      let notes = notesRaw;
+      if (mediaType === 'video') {
+        const riskMatch = notesRaw.match(/risk_level\\s*[:=]\\s*(low|medium|high)/i);
+        const riskLevel = riskMatch ? riskMatch[1].toLowerCase() : null;
+        const riskLabel = riskLevel === 'high'
+          ? 'Hoch'
+          : (riskLevel === 'medium' ? 'Mittel' : (riskLevel === 'low' ? 'Niedrig' : null));
+        const extraNotes = notesRaw
+          .split(/[;,]/)
+          .map((t) => t.trim())
+          .filter((t) => t && !t.toLowerCase().startsWith('risk_level'));
+        const notesLines = [];
+        if (riskLabel) notesLines.push(`Forensik-Risiko: ${riskLabel}`);
+        if (extraNotes.length) notesLines.push(`Hinweis: ${extraNotes.slice(0, 2).join(', ')}`);
+        notes = notesLines.join(' • ');
+      }
       return `
         <div class="ac-engine-item ${available ? '' : 'is-disabled'}">
           <div class="ac-engine-head">
-            <div class="ac-engine-name">forensics</div>
+            <div class="ac-engine-name">${forensicsEngine}</div>
             <div class="ac-engine-score">${score}</div>
           </div>
           <div class="ac-engine-meta">Status: ${available ? 'verfuegbar' : 'nicht verfuegbar'}</div>
           ${notes ? `<div class="ac-engine-notes">${notes}</div>` : ''}
+          ${signalsHtml || ''}
         </div>
       `;
     })()
@@ -201,6 +264,7 @@ export function renderAnalysisResult(resultJson, { expertMode = false } = {}) {
       <div class="ac-result-row">
         <span class="ac-traffic-badge ${confidenceInfo.badge}">Sicherheit: ${confidenceInfo.label}</span>
       </div>
+      <div class="ac-result-expl">${summaryLine}</div>
       <div class="ac-result-reasons">
         <div class="ac-subtle"><b>Warum?</b></div>
         <ul class="ac-compare-list">${reasonsList}</ul>
@@ -212,31 +276,33 @@ export function renderAnalysisResult(resultJson, { expertMode = false } = {}) {
       <div class="ac-engine-list">${detectorsHtml}</div>
     </div>
 
-    <div class="ac-card">
-      <div class="ac-card-title">Provenance (C2PA)</div>
-      <div class="ac-engine-list">
-        <div class="ac-engine-item ${c2pa && c2pa.available === false ? 'is-disabled' : ''}">
-          <div class="ac-engine-head">
-            <div class="ac-engine-name">c2pa</div>
-            <div class="ac-engine-score">${c2paStatus}</div>
+    ${mediaType === 'video' ? '' : `
+      <div class="ac-card">
+        <div class="ac-card-title">Provenance (C2PA)</div>
+        <div class="ac-engine-list">
+          <div class="ac-engine-item ${c2pa && c2pa.available === false ? 'is-disabled' : ''}">
+            <div class="ac-engine-head">
+              <div class="ac-engine-name">c2pa</div>
+              <div class="ac-engine-score">${c2paStatus}</div>
+            </div>
+            ${c2paNotes ? `<div class="ac-engine-notes">${c2paNotes}</div>` : ''}
           </div>
-          ${c2paNotes ? `<div class="ac-engine-notes">${c2paNotes}</div>` : ''}
         </div>
       </div>
-    </div>
 
-    <div class="ac-card">
-      <div class="ac-card-title">Watermarks &amp; Metadata</div>
-      <div class="ac-engine-list">
-        <div class="ac-engine-item ${watermark && watermark.available === false ? 'is-disabled' : ''}">
-          <div class="ac-engine-head">
-            <div class="ac-engine-name">watermark</div>
-            <div class="ac-engine-score">${watermarkStatus}</div>
+      <div class="ac-card">
+        <div class="ac-card-title">Watermarks &amp; Metadata</div>
+        <div class="ac-engine-list">
+          <div class="ac-engine-item ${watermark && watermark.available === false ? 'is-disabled' : ''}">
+            <div class="ac-engine-head">
+              <div class="ac-engine-name">watermark</div>
+              <div class="ac-engine-score">${watermarkStatus}</div>
+            </div>
+            ${watermarkNotes ? `<div class="ac-engine-notes">${watermarkNotes}</div>` : ''}
           </div>
-          ${watermarkNotes ? `<div class="ac-engine-notes">${watermarkNotes}</div>` : ''}
         </div>
       </div>
-    </div>
+    `}
 
     ${forensicsHtml ? `
       <div class="ac-card">

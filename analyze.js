@@ -6,6 +6,7 @@ const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => Array.from(document.querySelectorAll(sel));
 
 const idMap = { image: '#imageInput', video: '#videoInput', audio: '#audioInput' };
+const urlIdMap = { image: '#imageUrl', video: '#videoUrl', audio: '#audioUrl' };
 const ANALYSIS_COSTS = { image: 10, video: 15, audio: 20 };
 const DEFAULT_API_BASE = 'http://127.0.0.1:5001';
 let authRef = null;
@@ -140,6 +141,15 @@ export function initAnalyze(auth, helpers) {
       updateAnalyzeState();
     });
   });
+  const urlInputs = Object.values(urlIdMap)
+    .map((sel) => document.querySelector(sel))
+    .filter(Boolean);
+  urlInputs.forEach((input) => {
+    input.addEventListener('input', () => {
+      resultRendered = false;
+      updateAnalyzeState();
+    });
+  });
 
 
 
@@ -162,11 +172,6 @@ export function initAnalyze(auth, helpers) {
       const kind = btn.dataset.kind;
       const mode = btn.dataset.mode || 'file';
       if (isAnalyzing) return;
-      if (mode !== 'file') {
-        const area = $('#analysisArea');
-        if (area) area.innerHTML = '<div class="ac-card"><b>Nur Datei-Uploads werden aktuell unterstuetzt.</b></div>';
-        return;
-      }
       const cost = getAnalysisCost(kind);
       const isGuest = !authRef.isLoggedIn();
       if (!isGuest && !authRef.requireSession()) {
@@ -193,7 +198,11 @@ export function initAnalyze(auth, helpers) {
           return;
         }
       }
-      analyzeFile(kind);
+      if (mode === 'file') {
+        analyzeFile(kind);
+      } else {
+        analyzeLink(kind);
+      }
     });
   });
 
@@ -243,6 +252,7 @@ export function toggleMode(mode) {
 
   document.querySelector('#segFile')?.classList.toggle('ac-active', isFile);
   document.querySelector('#segLink')?.classList.toggle('ac-active', !isFile);
+  updateAnalyzeState();
 }
 
 
@@ -250,7 +260,6 @@ async function analyzeFile(mediaType) {
     console.log("🔥 ENTER ANALYZEFILE — THIS LOG CANNOT BE SKIPPED");
     console.log("mediaType sofort_am_anfang:", mediaType);
 
-    try {
         console.log("🔥 TRY BLOCK START");
 
 
@@ -278,10 +287,10 @@ async function analyzeFile(mediaType) {
     return;
   }
 
-  // aktuell nur Bilder erlauben (wie vorher)
-  if (mediaType !== 'image') {
+  // Audio vorerst blockieren
+  if (mediaType === 'audio') {
     if (area) {
-      area.innerHTML = '<div class="ac-card"><b>Nur Bilder werden aktuell unterstuetzt.</b></div>';
+      area.innerHTML = '<div class="ac-card"><b>Audio wird aktuell nicht unterstuetzt.</b></div>';
     }
     isAnalyzing = false;
     updateAnalyzeState();
@@ -435,12 +444,163 @@ async function analyzeFile(mediaType) {
   unlockActiveButton();
 }
 
-
-      } catch (err) {
-        console.error("🔥 FATAL ANALYZE ERROR:", err);
-        throw err;
-    }
 }
+
+async function analyzeLink(mediaType) {
+  if (isAnalyzing) return;
+  isAnalyzing = true;
+  reqCounter += 1;
+  const myReq = reqCounter;
+  updateAnalyzeState();
+  lockActiveButton();
+
+  const area = $('#analysisArea');
+  const urlInput = document.querySelector(urlIdMap[mediaType] || '#videoUrl');
+  const url = (urlInput?.value || '').trim();
+
+  if (!url) {
+    if (area) {
+      area.innerHTML = '<div class="ac-card"><b>Bitte einen Link eingeben.</b></div>';
+    }
+    isAnalyzing = false;
+    updateAnalyzeState();
+    unlockActiveButton();
+    return;
+  }
+
+  if (!/^https?:\/\//i.test(url)) {
+    if (area) {
+      area.innerHTML = '<div class="ac-card"><b>Nur http/https Links sind erlaubt.</b></div>';
+    }
+    isAnalyzing = false;
+    updateAnalyzeState();
+    unlockActiveButton();
+    return;
+  }
+
+  if (mediaType !== 'video') {
+    if (area) {
+      area.innerHTML = '<div class="ac-card"><b>Link-Analyse ist aktuell nur fuer Videos verfuegbar.</b></div>';
+    }
+    isAnalyzing = false;
+    updateAnalyzeState();
+    unlockActiveButton();
+    return;
+  }
+
+  if (area) {
+    area.innerHTML = `
+      <div class="ac-card">
+        <b>Analyse laeuft...</b>
+        <p class="ac-subtle">Bitte warten</p>
+        <progress max="100" value="30" style="width:100%;height:10px"></progress>
+      </div>`;
+  }
+
+  const controller = new AbortController();
+  const timeoutHandle = setTimeout(() => controller.abort(), 60000);
+
+  try {
+    const isGuest = !authRef.isLoggedIn();
+    const endpoint = isGuest ? '/analyze/video-url/guest' : '/analyze/video-url';
+    const urlReq = `${apiBase}${endpoint}?t=${Date.now()}`;
+
+    const headers = isGuest
+      ? { Accept: 'application/json', 'Content-Type': 'application/json' }
+      : Object.assign({ Accept: 'application/json', 'Content-Type': 'application/json' }, authRef.authHeaders());
+
+    const resp = await fetch(urlReq, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ url }),
+      cache: 'no-store',
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeoutHandle);
+
+    let data = null;
+    try {
+      data = await resp.clone().json();
+    } catch (e) {
+      const txt = await resp.text();
+      if (myReq === reqCounter && area) {
+        area.innerHTML = `<div class="ac-card"><b>Fehler</b><p class="ac-subtle">${txt || 'Unerwartete Server-Antwort'}</p></div>`;
+      }
+      return;
+    }
+
+    if (myReq !== reqCounter) {
+      return;
+    }
+
+    if (!resp.ok || !data || data.ok === false) {
+      if (resp.status === 401 && authRef.isLoggedIn()) {
+        await authRef.logout('Bitte erneut einloggen.');
+        if (area) {
+          area.innerHTML = '<div class="ac-card"><b>Login erforderlich</b><p class="ac-subtle">Deine Session ist beendet.</p></div>';
+        }
+      } else if (resp.status === 402 && data?.error === 'no_credits') {
+        authRef.balance = Object.assign({}, authRef.balance || {}, { credits: 0, is_premium: false });
+        helpersRef?.updateCreditsUI?.(authRef);
+        helpersRef?.renderProfileView?.(authRef);
+        if (area) {
+          area.innerHTML = '<div class="ac-card"><b>Keine Credits mehr</b><p class="ac-subtle">Bitte warte auf den naechsten Reset oder upgrade.</p></div>';
+        }
+      } else {
+        const msg = (data && (data.error || data.message || (data.details && data.details[0]))) || 'Analyse fehlgeschlagen';
+        if (area) {
+          area.innerHTML = `<div class="ac-card"><b>Fehler</b><p class="ac-subtle">${msg}</p></div>`;
+        }
+      }
+      return;
+    }
+
+    const expertMode = getExpertMode();
+    const cost = getAnalysisCost(mediaType);
+
+    if (data.usage) {
+      if (authRef.isPremium()) {
+        authRef.balance = Object.assign({}, authRef.balance || {}, { credits: null, is_premium: true });
+      } else if (typeof data.usage.credits_left === 'number') {
+        authRef.balance = Object.assign({}, authRef.balance || {}, {
+          credits: data.usage.credits_left,
+          is_premium: false,
+        });
+      }
+      helpersRef?.updateCreditsUI?.(authRef);
+      helpersRef?.renderProfileView?.(authRef);
+    }
+
+    if (!authRef.isLoggedIn()) {
+      const currentGuest = typeof authRef.getGuestCredits === 'function' ? authRef.getGuestCredits() : 0;
+      authRef.setGuestCredits?.(currentGuest - cost);
+      helpersRef?.updateCreditsUI?.(authRef);
+    }
+
+    if (area) {
+      area.innerHTML = renderAnalysisResult(data, { expertMode });
+      resultRendered = true;
+      if (activeAnalyzeBtn) {
+        activeAnalyzeBtn.textContent = 'Analysieren ';
+      }
+    }
+  } catch (err) {
+    if (myReq === reqCounter && area) {
+      const msg = (err && err.name === 'AbortError')
+        ? 'Zeitueberschreitung bei der Verbindung.'
+        : 'Verbindung zum Server fehlgeschlagen.';
+      area.innerHTML = `<div class="ac-card"><b>Fehler</b><p class="ac-subtle">${msg}</p></div>`;
+    }
+    console.error('Analyse-Fehler:', err);
+  } finally {
+    isAnalyzing = false;
+    updateAnalyzeState();
+    unlockActiveButton();
+  }
+}
+
+
 
 
 
@@ -452,10 +612,18 @@ function updateAnalyzeState() {
   }
   buttons.forEach((btn) => {
     const kind = btn.dataset.kind;
-    const inputSel = idMap[kind];
-    const inputEl = inputSel ? document.querySelector(inputSel) : null;
-    const hasFile = !!(inputEl && inputEl.files && inputEl.files.length > 0);
-    btn.disabled = !hasFile;
+    const mode = btn.dataset.mode || 'file';
+    if (mode === 'file') {
+      const inputSel = idMap[kind];
+      const inputEl = inputSel ? document.querySelector(inputSel) : null;
+      const hasFile = !!(inputEl && inputEl.files && inputEl.files.length > 0);
+      btn.disabled = !hasFile;
+    } else {
+      const inputSel = urlIdMap[kind];
+      const inputEl = inputSel ? document.querySelector(inputSel) : null;
+      const value = (inputEl && inputEl.value || '').trim();
+      btn.disabled = !value;
+    }
   });
 }
 function lockActiveButton() {

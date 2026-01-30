@@ -9,6 +9,8 @@ import jwt
 import uuid
 
 from Backend.ensemble import run_ensemble, build_standard_result
+from Backend.engines.video_forensics_engine import run_video_forensics
+from Backend.video_url_fetcher import fetch_video_from_url, VideoUrlError
 from Backend.db import init_db
 from Backend.models import Base, User
 from Backend.auth import bp_auth
@@ -45,6 +47,10 @@ ALLOWED_IMAGE_EXTS = {
     ".heic", ".heif", ".avif",
     ".jp2", ".j2k", ".jpf", ".jpx",
     ".ico"
+}
+
+ALLOWED_VIDEO_EXTS = {
+    ".mp4", ".mov", ".m4v", ".webm", ".mkv", ".avi", ".mpg", ".mpeg", ".3gp", ".ogv"
 }
 
 CACHE_PATH = os.path.join(UPLOAD_DIR, "results_cache.json")
@@ -103,6 +109,11 @@ app.register_blueprint(bp_admin)
 def _is_image_ext(filename: str) -> bool:
     _, ext = os.path.splitext((filename or "").lower())
     return ext in ALLOWED_IMAGE_EXTS
+
+
+def _is_video_ext(filename: str) -> bool:
+    _, ext = os.path.splitext((filename or "").lower())
+    return ext in ALLOWED_VIDEO_EXTS
 
 
 def _sha256_of_file(path: str) -> str:
@@ -164,7 +175,17 @@ def _run_analysis(file_storage, media_type="image", user_ctx=None, charge_credit
     dst_path = os.path.join(UPLOAD_DIR, filename)
     os.makedirs(UPLOAD_DIR, exist_ok=True)
     file_storage.save(dst_path)
+    try:
+        return _run_analysis_path(dst_path, filename, media_type, user_ctx, charge_credit)
+    finally:
+        try:
+            if os.path.exists(dst_path):
+                os.remove(dst_path)
+        except Exception:
+            pass
 
+
+def _run_analysis_path(file_path, filename, media_type="image", user_ctx=None, charge_credit=False):
     result = None
     source_used = None
     file_hash = None
@@ -172,10 +193,10 @@ def _run_analysis(file_storage, media_type="image", user_ctx=None, charge_credit
     analysis_id = str(uuid.uuid4())
     created_at_iso = __import__("datetime").datetime.utcnow().isoformat() + "Z"
     try:
-        if _is_image_ext(filename):
+        if _is_image_ext(filename) and media_type == "image":
             # Cache-Hit?
             use_cache = (os.getenv("AIREALCHECK_CACHE", "false").lower() in {"1", "true", "yes"})
-            file_hash = _sha256_of_file(dst_path)
+            file_hash = _sha256_of_file(file_path)
             if use_cache and (not force) and file_hash in _RESULT_CACHE:
                 cached = dict(_RESULT_CACHE[file_hash])
                 if "ai_likelihood" not in cached or "engine_results" not in cached:
@@ -191,10 +212,52 @@ def _run_analysis(file_storage, media_type="image", user_ctx=None, charge_credit
                     return jsonify(cached)
 
             # Standard: Ensemble-Auswertung (Hive + Forensics)
-            result = run_ensemble(dst_path)
+            result = run_ensemble(file_path)
             source_used = result.get("primary_source")
+        elif _is_video_ext(filename) and media_type == "video":
+            video_forensics = run_video_forensics(file_path)
+            engine_results_raw = [video_forensics]
+
+            standard_payload = build_standard_result(
+                media_type=media_type,
+                engine_results_raw=engine_results_raw,
+                analysis_id=analysis_id,
+                ai_likelihood=None,
+                reasons=None,
+                created_at=created_at_iso,
+            )
+
+            response_payload = dict(standard_payload)
+            response_payload["created_at"] = created_at_iso
+            response_payload["real"] = response_payload.get("real_likelihood")
+            response_payload["fake"] = response_payload.get("ai_likelihood")
+            response_payload["legacy"] = {
+                "verdict": response_payload.get("verdict"),
+                "real": response_payload.get("real_likelihood"),
+                "fake": response_payload.get("ai_likelihood"),
+                "confidence": response_payload.get("confidence_label"),
+                "primary_source": "video_forensics",
+                "sources_used": [e.get("engine") for e in engine_results_raw if isinstance(e, dict) and e.get("available")],
+                "user_summary": response_payload.get("reasons", []),
+                "details": {},
+                "warnings": [],
+                "source": "video_forensics",
+            }
+            response_payload["usage"] = {
+                "source": "video_forensics",
+                "credit_spent": False,
+                "credits_left": None,
+            }
+            if os.getenv("FLASK_ENV", "").lower() == "development":
+                response_payload["debug_flags"] = {
+                    "video_forensics": {
+                        "available": bool(video_forensics.get("available")),
+                        "status": video_forensics.get("status"),
+                    }
+                }
+            return jsonify(response_payload)
         else:
-            return jsonify({"ok": False, "error": "Nicht unterstützter Dateityp"}), 415
+            return jsonify({"ok": False, "error": "Nicht unterstuetzter Dateityp"}), 415
 
         if result.get("error") or result.get("ok") is False:
             return jsonify({"ok": False, "error": result.get("message", "analyse_failed"), "details": result.get("details", [])}), 502
@@ -204,7 +267,7 @@ def _run_analysis(file_storage, media_type="image", user_ctx=None, charge_credit
         fake = float(result.get("fake", 0))
         real, fake = _apply_score_shaping(real, fake)
 
-        # Runden (ganzzahliger Prozentwert gewünscht?)
+        # Runden (ganzzahliger Prozentwert gewuenscht?)
         as_int = (os.getenv("AIREALCHECK_RETURN_INTS", "true").lower() in {"1", "true", "yes"})
         if as_int:
             real_out = int(round(real))
@@ -212,7 +275,7 @@ def _run_analysis(file_storage, media_type="image", user_ctx=None, charge_credit
             # Korrigiere Summenfehler
             diff = 100 - (real_out + fake_out)
             if diff != 0:
-                # justiere die größere Klasse
+                # justiere die groessere Klasse
                 if real_out >= fake_out:
                     real_out += diff
                 else:
@@ -276,12 +339,6 @@ def _run_analysis(file_storage, media_type="image", user_ctx=None, charge_credit
         return jsonify(response_payload)
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
-    finally:
-        try:
-            if os.path.exists(dst_path):
-                os.remove(dst_path)
-        except Exception:
-            pass
 
 def _resolve_user_context():
     try:
@@ -380,6 +437,69 @@ def analyze_guest():
 
     resp_final = make_response(jsonify(resp_obj), status)
     return _apply_no_cache_headers(resp_final)
+
+
+@app.post("/analyze/video-url")
+def analyze_video_url():
+    user_ctx = _resolve_user_context()
+    resp = _handle_video_url_request(user_ctx, charge_credit=bool(user_ctx), as_guest=False)
+    if isinstance(resp, tuple):
+        resp_obj, status = resp
+    else:
+        resp_obj, status = resp, 200
+    resp_final = make_response(resp_obj, status)
+    return _apply_no_cache_headers(resp_final)
+
+
+@app.post("/analyze/video-url/guest")
+def analyze_video_url_guest():
+    resp = _handle_video_url_request(None, charge_credit=False, as_guest=True)
+    if isinstance(resp, tuple):
+        resp_obj, status = resp
+    else:
+        resp_obj, status = resp, 200
+    resp_final = make_response(resp_obj, status)
+    return _apply_no_cache_headers(resp_final)
+
+
+def _handle_video_url_request(user_ctx, charge_credit=False, as_guest=False):
+    data = request.get_json(silent=True) or request.form or {}
+    url = (data.get("url") or data.get("video_url") or "").strip()
+    if not url:
+        return jsonify({"ok": False, "error": "url_missing", "details": ["URL fehlt"]}), 400
+    try:
+        path, info = fetch_video_from_url(url)
+    except VideoUrlError as e:
+        return jsonify({"ok": False, "error": e.code, "details": [e.message]}), e.status
+    except Exception:
+        return jsonify({"ok": False, "error": "download_failed", "details": ["Download fehlgeschlagen"]}), 502
+
+    filename = os.path.basename(path)
+    try:
+        resp = _run_analysis_path(path, filename, media_type="video", user_ctx=user_ctx, charge_credit=charge_credit)
+        if isinstance(resp, tuple):
+            resp_obj, status = resp
+        else:
+            resp_obj, status = resp, 200
+        if hasattr(resp_obj, "get_json"):
+            data = resp_obj.get_json()
+            if data is not None:
+                resp_obj = data
+        if not isinstance(resp_obj, dict):
+            return resp_obj, status
+        if "usage" not in resp_obj:
+            resp_obj["usage"] = {}
+        if as_guest:
+            resp_obj["usage"]["source"] = "guest"
+            resp_obj["usage"]["credit_spent"] = False
+            resp_obj["usage"]["credits_left"] = None
+        return jsonify(resp_obj), status
+    finally:
+        try:
+            if os.path.exists(path):
+                os.remove(path)
+        except Exception:
+            pass
 
 
 
