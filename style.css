@@ -13,6 +13,7 @@
   --shadow: 0 8px 24px rgba(0,0,0,.04);
   --transition: all .25s ease;
   --font: 'Inter', sans-serif;
+  --footer-offset: 140px;
 }
 
 /* ===== DARK MODE ===== */
@@ -45,8 +46,8 @@ body {
 
 /* ===== HEADER ===== */
 .ac-header {
-  display: grid;
-  grid-template-columns: auto 1fr auto;
+  display: flex;
+  justify-content: space-between;
   align-items: center;
   background: var(--panel);
   padding: 12px 18px;
@@ -63,6 +64,9 @@ body {
   gap: 10px;
 }
 .ac-header-center {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
   display: flex;
   justify-content: center;
 }
@@ -72,7 +76,6 @@ body {
   align-items: center;
   gap: 14px;
   position: relative;
-  justify-self: end;
 }
 
 .ac-brand-btn {
@@ -942,26 +945,29 @@ html, body {
 .ac-app {
   display: flex;
   flex-direction: column;
-  min-height: 100vh;
+  flex: 1 0 auto;
+  min-height: calc(100vh + var(--footer-offset));
 }
 
 .ac-main {
-  flex: 1;
+  flex: 1 0 auto;
+  padding-bottom: var(--footer-offset);
 }
 
   .ac-footer {
     margin-top: auto;
+    position: static;
   }
 
 @media (max-width: 640px) {
   .ac-header {
     padding: 10px 14px;
-    display: flex;
-    justify-content: space-between;
   }
   .ac-header-center {
-    flex: 1;
-    justify-content: center;
+    position: absolute;
+    left: 52px;
+    transform: none;
+    justify-content: flex-start;
   }
   .ac-credits {
     font-size: .8rem;

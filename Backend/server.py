@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify, g
+from flask import Flask, request, jsonify, g, make_response
 from flask_cors import CORS
 import os
 import hashlib
@@ -6,6 +6,7 @@ import json
 from typing import Tuple
 from dotenv import load_dotenv
 import jwt
+import uuid
 
 from Backend.ensemble import run_ensemble, build_standard_result
 from Backend.db import init_db
@@ -148,6 +149,13 @@ def health():
     return jsonify({"ok": True})
 
 
+def _apply_no_cache_headers(resp):
+    resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    resp.headers["Pragma"] = "no-cache"
+    resp.headers["Expires"] = "0"
+    return resp
+
+
 def _run_analysis(file_storage, media_type="image", user_ctx=None, charge_credit=False):
     if not file_storage or not getattr(file_storage, "filename", None):
         return jsonify({"ok": False, "error": "no_file", "details": ["Keine Datei hochgeladen"]}), 400
@@ -160,17 +168,25 @@ def _run_analysis(file_storage, media_type="image", user_ctx=None, charge_credit
     result = None
     source_used = None
     file_hash = None
+    force = (request.args.get("force") or request.form.get("force") or "").lower() in {"1", "true", "yes", "force"}
+    analysis_id = str(uuid.uuid4())
+    created_at_iso = __import__("datetime").datetime.utcnow().isoformat() + "Z"
     try:
         if _is_image_ext(filename):
             # Cache-Hit?
-            use_cache = (os.getenv("AIREALCHECK_CACHE", "true").lower() in {"1", "true", "yes"})
-            force = (request.args.get("force") or request.form.get("force") or "").lower() in {"1", "true", "yes", "force"}
+            use_cache = (os.getenv("AIREALCHECK_CACHE", "false").lower() in {"1", "true", "yes"})
             file_hash = _sha256_of_file(dst_path)
             if use_cache and (not force) and file_hash in _RESULT_CACHE:
                 cached = dict(_RESULT_CACHE[file_hash])
                 if "ai_likelihood" not in cached or "engine_results" not in cached:
                     _RESULT_CACHE.pop(file_hash, None)
                 else:
+                    cached["analysis_id"] = analysis_id
+                    cached["created_at"] = created_at_iso
+                    if isinstance(cached.get("timestamps"), dict):
+                        cached["timestamps"]["created_at"] = created_at_iso
+                    else:
+                        cached["timestamps"] = {"created_at": created_at_iso}
                     cached["usage"] = {"source": cached.get("source"), "credit_spent": False, "credits_left": None}
                     return jsonify(cached)
 
@@ -207,8 +223,6 @@ def _run_analysis(file_storage, media_type="image", user_ctx=None, charge_credit
 
         confidence_value = result.get("confidence") or "low"
 
-        analysis_id = file_hash or _sha256_of_file(dst_path)
-        created_at_iso = __import__("datetime").datetime.utcnow().isoformat() + "Z"
         standard_payload = build_standard_result(
             media_type=media_type,
             engine_results_raw=result.get("engine_results_raw", []),
@@ -219,6 +233,7 @@ def _run_analysis(file_storage, media_type="image", user_ctx=None, charge_credit
         )
 
         response_payload = dict(standard_payload)
+        response_payload["created_at"] = created_at_iso
         response_payload["legacy"] = {
             "verdict": result.get("verdict"),
             "real": real_out,
@@ -318,13 +333,15 @@ def analyze():
         if data is not None:
             resp_obj = data
     if not isinstance(resp_obj, dict) or "usage" not in resp_obj:
-        return resp_obj, status
+        resp_final = make_response(resp_obj, status)
+        return _apply_no_cache_headers(resp_final)
     if user_ctx:
         resp_obj["usage"]["source"] = resp_obj["usage"].get("source")
     else:
         resp_obj["usage"]["source"] = "guest"
         resp_obj["usage"]["credits_left"] = None
-    return resp_obj, status
+    resp_final = make_response(jsonify(resp_obj), status)
+    return _apply_no_cache_headers(resp_final)
 
 print("REGISTRIERE ANALYZE-GUEST ROUTE")
 
@@ -351,6 +368,9 @@ def analyze_guest():
             resp_obj = data
 
     # usage-Block garantieren
+    if not isinstance(resp_obj, dict):
+        resp_final = make_response(resp_obj, status)
+        return _apply_no_cache_headers(resp_final)
     if "usage" not in resp_obj:
         resp_obj["usage"] = {}
 
@@ -358,7 +378,8 @@ def analyze_guest():
     resp_obj["usage"]["credit_spent"] = False
     resp_obj["usage"]["credits_left"] = None
 
-    return resp_obj, status
+    resp_final = make_response(jsonify(resp_obj), status)
+    return _apply_no_cache_headers(resp_final)
 
 
 

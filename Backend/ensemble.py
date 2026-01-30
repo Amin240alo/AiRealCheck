@@ -1,9 +1,12 @@
 import os
 
 from Backend.engines.hive_engine import run_hive, hive_health_check
+from Backend.engines.sightengine_engine import run_sightengine
+from Backend.engines.reality_defender_engine import analyze_reality_defender
 from Backend.engines.forensics_engine import run_forensics
+from Backend.engines.c2pa_engine import analyze_c2pa
 
-KNOWN_ENGINES = ["hive", "forensics"]
+KNOWN_ENGINES = ["hive", "forensics", "sightengine", "reality_defender", "c2pa"]
 
 
 def _clamp(value, lo=0.0, hi=100.0):
@@ -35,10 +38,36 @@ def _normalize_confidence(value):
 
 def _normalize_engine_result(raw, engine_name):
     raw = raw or {}
+    if (
+        raw.get("engine") == engine_name
+        and "ai_likelihood" in raw
+        and "confidence" in raw
+        and "signals" in raw
+        and "notes" in raw
+    ):
+        ai = raw.get("ai_likelihood")
+        confidence = _normalize_confidence(raw.get("confidence"))
+        signals = raw.get("signals") if isinstance(raw.get("signals"), list) else []
+        signals = [str(d) for d in signals if d is not None]
+        notes = raw.get("notes") or ""
+        available = raw.get("available")
+        if available is None:
+            available = notes != "not_available"
+        return {
+            "engine": engine_name,
+            "ai_likelihood": ai if isinstance(ai, (int, float)) else None,
+            "confidence": confidence,
+            "signals": signals[:6],
+            "notes": str(notes),
+            "available": bool(available),
+        }
+
     ok = bool(raw.get("ok"))
     ai = None
     if ok and raw.get("fake") is not None:
         ai = _clamp(raw.get("fake"))
+    if engine_name == "c2pa":
+        ai = None
 
     details = raw.get("details")
     signals = []
@@ -59,9 +88,10 @@ def _normalize_engine_result(raw, engine_name):
     if not ok:
         confidence = 0.0
 
+    ai_value = None if engine_name == "c2pa" else (ai if ai is not None else 0)
     return {
         "engine": engine_name,
-        "ai_likelihood": ai if ai is not None else 0,
+        "ai_likelihood": ai_value,
         "confidence": confidence,
         "signals": signals[:6],
         "notes": notes,
@@ -115,40 +145,152 @@ def _build_reasons(verdict, conflict, engine_count, reasons_in=None):
     return reasons[:3]
 
 
+def _normalize_ai01(value):
+    if value is None:
+        return None
+    try:
+        v = float(value)
+    except Exception:
+        return None
+    if v < 0.0:
+        v = 0.0
+    if v > 1.0:
+        v = v / 100.0 if v <= 100.0 else 1.0
+    if v > 1.0:
+        v = 1.0
+    return v
+
+
+def _median(values):
+    if not values:
+        return None
+    vals = sorted(values)
+    mid = len(vals) // 2
+    if len(vals) % 2 == 1:
+        return vals[mid]
+    return (vals[mid - 1] + vals[mid]) / 2.0
+
+
+def compute_final_score(engine_results):
+    detector_engines = {"sightengine", "reality_defender", "hive"}
+    detector_values = []
+    for entry in engine_results or []:
+        if not isinstance(entry, dict):
+            continue
+        if entry.get("engine") not in detector_engines:
+            continue
+        if not entry.get("available"):
+            continue
+        ai_value = _normalize_ai01(entry.get("ai_likelihood"))
+        if ai_value is not None:
+            detector_values.append(ai_value)
+
+    if len(detector_values) >= 2:
+        return _median(detector_values)
+    if len(detector_values) == 1:
+        return detector_values[0]
+
+    for entry in engine_results or []:
+        if not isinstance(entry, dict):
+            continue
+        if entry.get("engine") != "forensics":
+            continue
+        if not entry.get("available"):
+            continue
+        return _normalize_ai01(entry.get("ai_likelihood"))
+    return None
+
+
+def compute_confidence(engine_results, final_ai):
+    c2pa_verified = False
+    detector_engines = {"sightengine", "reality_defender", "hive"}
+    detector_values = []
+
+    for entry in engine_results or []:
+        if not isinstance(entry, dict):
+            continue
+        engine = entry.get("engine")
+        if engine == "c2pa":
+            signals = entry.get("signals") or []
+            if any(str(s).strip().lower() == "signature_verified" for s in signals):
+                c2pa_verified = True
+        if engine in detector_engines and entry.get("available"):
+            ai_value = _normalize_ai01(entry.get("ai_likelihood"))
+            if ai_value is not None:
+                detector_values.append(ai_value)
+
+    if c2pa_verified:
+        return "high", ["Content Credentials verifiziert"]
+
+    if len(detector_values) >= 2:
+        diff = max(detector_values) - min(detector_values)
+        if diff <= 0.15:
+            return "high", ["Modelle stimmen ueberein"]
+        return "medium", ["Modelle uneinig", "Zweiten Check empfohlen"]
+
+    return "low", ["Nur wenige Signale verfuegbar"]
+
+
 def build_standard_result(media_type, engine_results_raw, analysis_id, ai_likelihood, reasons=None, created_at=None):
     engine_results_raw = engine_results_raw or []
     by_engine = {r.get("engine"): r for r in engine_results_raw if isinstance(r, dict) and r.get("engine")}
     normalized = [_normalize_engine_result(by_engine.get(name), name) for name in KNOWN_ENGINES]
 
-    ai_values = [e["ai_likelihood"] for e in normalized if e.get("available")]
+    ai_values = [
+        e["ai_likelihood"]
+        for e in normalized
+        if e.get("available") and isinstance(e.get("ai_likelihood"), (int, float))
+    ]
     spread = 0.0
     if len(ai_values) >= 2:
         spread = max(ai_values) - min(ai_values)
     conflict = bool(len(ai_values) >= 2 and spread >= 40.0)
 
-    verdict, traffic_light, label_de, label_en = _verdict_from_ai(ai_likelihood)
+    final_ai = compute_final_score(normalized)
+    ai_for_output = final_ai if final_ai is not None else _normalize_ai01(ai_likelihood)
+    if ai_for_output is None:
+        verdict, traffic_light, label_de, label_en = "uncertain", "yellow", "Unsicher", "Uncertain"
+    else:
+        verdict, traffic_light, label_de, label_en = _verdict_from_ai(ai_for_output * 100.0)
     confidence = _compute_overall_confidence(spread, len(ai_values), conflict)
-    reasons_out = _build_reasons(verdict, conflict, len(ai_values), reasons_in=reasons)
+    confidence_label, confidence_reasons = compute_confidence(normalized, final_ai)
+    if isinstance(reasons, list) and reasons:
+        reasons_out = _build_reasons(verdict, conflict, len(ai_values), reasons_in=reasons)
+    else:
+        reasons_out = confidence_reasons
 
     created_at_value = created_at or __import__("datetime").datetime.utcnow().isoformat() + "Z"
+
+    ai_percent = None
+    real_percent = None
+    if ai_for_output is not None:
+        ai_percent = float(ai_for_output) * 100.0
+        real_percent = 100.0 - ai_percent
 
     return {
         "ok": True,
         "media_type": media_type,
         "analysis_id": analysis_id,
-        "ai_likelihood": int(round(_clamp(ai_likelihood))),
-        "real_likelihood": int(round(100.0 - _clamp(ai_likelihood))),
+        "ai_likelihood": int(round(ai_percent)) if ai_percent is not None else None,
+        "real_likelihood": int(round(real_percent)) if real_percent is not None else None,
         "verdict": verdict,
         "traffic_light": traffic_light,
         "label_de": label_de,
         "label_en": label_en,
         "conflict": conflict,
         "confidence": round(confidence, 3),
+        "confidence_label": confidence_label,
         "reasons": reasons_out,
+        "final_ai": final_ai,
+        "final_real": (1.0 - final_ai) if final_ai is not None else None,
         "engine_results": [
             {
                 "engine": e["engine"],
-                "ai_likelihood": int(round(e["ai_likelihood"])),
+                "ai_likelihood": (
+                    int(round(e["ai_likelihood"]))
+                    if isinstance(e.get("ai_likelihood"), (int, float))
+                    else None
+                ),
                 "confidence": round(float(e["confidence"]), 3),
                 "signals": e["signals"],
                 "notes": e["notes"],
@@ -190,6 +332,9 @@ def run_ensemble(file_path: str):
 
     hive_result = run_hive(file_path) if use_hive else {"ok": False, "engine": "hive", "details": [], "warnings": []}
     forensics_result = run_forensics(file_path) if use_forensics else {"ok": False, "engine": "forensics", "details": [], "warnings": []}
+    c2pa_result = analyze_c2pa(file_path)
+    sightengine_result = run_sightengine(file_path)
+    reality_defender_result = analyze_reality_defender(file_path)
 
     engines = []
     warnings = []
@@ -273,5 +418,5 @@ def run_ensemble(file_path: str):
         "details": details,
         "warnings": warnings,
         "health": {"hive": hive_health_check()},
-        "engine_results_raw": [hive_result, forensics_result],
+        "engine_results_raw": [hive_result, forensics_result, sightengine_result, reality_defender_result, c2pa_result],
     }

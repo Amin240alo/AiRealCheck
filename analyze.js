@@ -15,7 +15,6 @@ let isAnalyzing = false;
 let reqCounter = 0;
 let activeAnalyzeBtn = null;
 let resultRendered = false;
-let forceNextAnalyze = false;
 
 function getExpertMode() {
   try {
@@ -132,6 +131,16 @@ export function initAnalyze(auth, helpers) {
   helpersRef = helpers;
   setApiBase(helpers?.apiBase);
 
+  const fileInputs = Object.values(idMap)
+    .map((sel) => document.querySelector(sel))
+    .filter(Boolean);
+  fileInputs.forEach((input) => {
+    input.addEventListener('change', () => {
+      resultRendered = false;
+      updateAnalyzeState();
+    });
+  });
+
 
 
 
@@ -184,7 +193,6 @@ export function initAnalyze(auth, helpers) {
           return;
         }
       }
-      forceNextAnalyze = String(activeAnalyzeBtn?.textContent || '').toLowerCase().includes('erneut');
       analyzeFile(kind);
     });
   });
@@ -209,6 +217,7 @@ document.querySelector('#segLink')?.addEventListener('click', () => toggleMode('
 // Optional: Standardtyp setzen
 setMediaType('image');
 
+  updateAnalyzeState();
 }
 
 export function setMediaType(type) {
@@ -260,9 +269,10 @@ async function analyzeFile(mediaType) {
   const area = $('#analysisArea');
 
   if (!file) {
-    alert('Bitte zuerst eine Datei auswaehlen!');
+    if (area) {
+      area.innerHTML = '<div class="ac-card"><b>Bitte zuerst eine Datei auswaehlen.</b></div>';
+    }
     isAnalyzing = false;
-    forceNextAnalyze = false;
     updateAnalyzeState();
     unlockActiveButton();
     return;
@@ -274,7 +284,6 @@ async function analyzeFile(mediaType) {
       area.innerHTML = '<div class="ac-card"><b>Nur Bilder werden aktuell unterstuetzt.</b></div>';
     }
     isAnalyzing = false;
-    forceNextAnalyze = false;
     updateAnalyzeState();
     unlockActiveButton();
     return;
@@ -293,11 +302,9 @@ async function analyzeFile(mediaType) {
   const formData = new FormData();
   formData.append('file', file);
   formData.append('type', mediaType);
-  if (forceNextAnalyze) {
-    formData.append('force', '1');
-    forceNextAnalyze = false;
-  }
-  formData.append('nonce', String(Date.now()));
+  formData.append('force', 'true');
+  const nonce = Date.now();
+  formData.append('nonce', String(nonce));
 
   const controller = new AbortController();
   const timeoutHandle = setTimeout(() => controller.abort(), 60000);
@@ -305,7 +312,7 @@ async function analyzeFile(mediaType) {
   try {
     const isGuest = !authRef.isLoggedIn();
     const endpoint = isGuest ? '/analyze/guest' : '/analyze';
-    const url = `${apiBase}${endpoint}`;
+    const url = `${apiBase}${endpoint}?t=${nonce}`;
 
     const headers = isGuest
       ? { Accept: 'application/json' }
@@ -390,9 +397,7 @@ async function analyzeFile(mediaType) {
     if (area) {
       area.innerHTML = renderAnalysisResult(data, { expertMode });
       resultRendered = true;
-      if (fileInput) {
-        fileInput.value = '';
-      }
+      // Datei behalten, damit erneute Analyse ohne Neuauswahl moeglich ist
       if (activeAnalyzeBtn) {
         activeAnalyzeBtn.textContent = 'Analysieren ';
       }

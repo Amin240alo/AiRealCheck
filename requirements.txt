@@ -11,4 +11,5 @@ SQLAlchemy
 python-dotenv
 torch
 timm
+c2pa-python
 
