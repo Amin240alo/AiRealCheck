@@ -5,8 +5,9 @@ from Backend.engines.sightengine_engine import run_sightengine
 from Backend.engines.reality_defender_engine import analyze_reality_defender
 from Backend.engines.forensics_engine import run_forensics
 from Backend.engines.c2pa_engine import analyze_c2pa
+from Backend.engines.watermark_engine import analyze_watermark
 
-KNOWN_ENGINES = ["hive", "forensics", "sightengine", "reality_defender", "c2pa"]
+KNOWN_ENGINES = ["hive", "forensics", "sightengine", "reality_defender", "c2pa", "watermark"]
 
 
 def _clamp(value, lo=0.0, hi=100.0):
@@ -333,6 +334,7 @@ def run_ensemble(file_path: str):
     hive_result = run_hive(file_path) if use_hive else {"ok": False, "engine": "hive", "details": [], "warnings": []}
     forensics_result = run_forensics(file_path) if use_forensics else {"ok": False, "engine": "forensics", "details": [], "warnings": []}
     c2pa_result = analyze_c2pa(file_path)
+    watermark_result = analyze_watermark(file_path)
     sightengine_result = run_sightengine(file_path)
     reality_defender_result = analyze_reality_defender(file_path)
 
@@ -418,5 +420,12 @@ def run_ensemble(file_path: str):
         "details": details,
         "warnings": warnings,
         "health": {"hive": hive_health_check()},
-        "engine_results_raw": [hive_result, forensics_result, sightengine_result, reality_defender_result, c2pa_result],
+        "engine_results_raw": [
+            hive_result,
+            forensics_result,
+            sightengine_result,
+            reality_defender_result,
+            c2pa_result,
+            watermark_result,
+        ],
     }

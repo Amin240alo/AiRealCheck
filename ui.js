@@ -58,127 +58,192 @@ const getAnalysisCost = (kind = 'image') => ANALYSIS_COSTS[kind] || 10;
 
 function clampPercent(value) {
   const v = Number(value);
-  if (Number.isNaN(v)) return 0;
+  if (Number.isNaN(v)) return null;
   return Math.max(0, Math.min(100, Math.round(v)));
 }
 
-function verdictFromAi(aiLikelihood) {
-  const ai = clampPercent(aiLikelihood);
-  if (ai <= 30) {
-    return { verdict: 'likely_real', traffic: 'green', label: 'Ueberwiegend echt' };
-  }
-  if (ai <= 69) {
-    return { verdict: 'uncertain', traffic: 'yellow', label: 'Unsicher' };
-  }
-  return { verdict: 'likely_ai', traffic: 'red', label: 'Ueberwiegend KI' };
+function percentFromValue(value) {
+  if (value === null || value === undefined) return null;
+  const v = Number(value);
+  if (!Number.isFinite(v)) return null;
+  if (v <= 1) return clampPercent(v * 100);
+  return clampPercent(v);
 }
 
-function computeConflict(engineResults) {
-  const values = (engineResults || [])
-    .filter((e) => e && e.available)
-    .map((e) => Number(e.ai_likelihood))
-    .filter((v) => Number.isFinite(v));
-  if (values.length < 2) return false;
-  return (Math.max(...values) - Math.min(...values)) >= 40;
+function normalizeEngineResults(engineResults) {
+  return (Array.isArray(engineResults) ? engineResults : [])
+    .filter((e) => e && typeof e === 'object')
+    .map((e) => ({
+      engine: String(e.engine || 'engine'),
+      ai_likelihood: e.ai_likelihood,
+      confidence: e.confidence,
+      signals: Array.isArray(e.signals) ? e.signals : [],
+      notes: e.notes,
+      available: e.available !== false,
+    }));
 }
 
 function normalizeResult(data) {
-  const aiLikelihood = (typeof data?.ai_likelihood === 'number')
-    ? data.ai_likelihood
-    : (typeof data?.fake === 'number' ? data.fake : 0);
-  const realLikelihood = (typeof data?.real_likelihood === 'number')
-    ? data.real_likelihood
-    : (typeof data?.real === 'number' ? data.real : (100 - aiLikelihood));
-
-  const verdictInfo = data?.verdict && data?.traffic_light && data?.label_de
-    ? { verdict: data.verdict, traffic: data.traffic_light, label: data.label_de }
-    : verdictFromAi(aiLikelihood);
-
-  const engineResults = Array.isArray(data?.engine_results) ? data.engine_results : [];
-  const conflict = typeof data?.conflict === 'boolean' ? data.conflict : computeConflict(engineResults);
+  const engineResults = normalizeEngineResults(data?.engine_results);
+  const finalAi = (typeof data?.final_ai === 'number') ? data.final_ai : null;
+  const finalReal = (typeof data?.final_real === 'number') ? data.final_real : null;
   const reasons = Array.isArray(data?.reasons) ? data.reasons : [];
+  const confidenceLabel = typeof data?.confidence_label === 'string'
+    ? data.confidence_label.toLowerCase()
+    : null;
 
   return {
-    ai_likelihood: clampPercent(aiLikelihood),
-    real_likelihood: clampPercent(realLikelihood),
-    verdict: verdictInfo.verdict,
-    traffic_light: verdictInfo.traffic,
-    label_de: verdictInfo.label,
-    conflict,
+    final_ai: finalAi,
+    final_real: finalReal,
+    confidence_label: confidenceLabel,
     reasons,
-    confidence: typeof data?.confidence === 'number' ? data.confidence : null,
     engine_results: engineResults,
   };
 }
 
 export function renderAnalysisResult(resultJson, { expertMode = false } = {}) {
   const r = normalizeResult(resultJson || {});
-  const showAi = r.verdict === 'likely_ai' || (r.verdict === 'uncertain' && r.ai_likelihood >= 50);
-  const headlinePercent = showAi ? r.ai_likelihood : r.real_likelihood;
-  const headlineText = showAi ? 'wahrscheinlich KI' : 'wahrscheinlich echt';
-  const badgeClass = r.traffic_light === 'green'
-    ? 'badge-green'
-    : (r.traffic_light === 'red' ? 'badge-red' : 'badge-yellow');
+  const finalAiPercent = percentFromValue(r.final_ai);
+  const finalRealPercent = percentFromValue(r.final_real !== null ? r.final_real : (r.final_ai !== null ? 1 - r.final_ai : null));
+
+  const confidenceMap = {
+    high: { label: 'Hoch', badge: 'badge-green' },
+    medium: { label: 'Mittel', badge: 'badge-yellow' },
+    low: { label: 'Niedrig', badge: 'badge-red' },
+  };
+  const confidenceInfo = confidenceMap[r.confidence_label] || { label: 'Unbekannt', badge: 'badge-yellow' };
 
   const reasonsList = (r.reasons && r.reasons.length)
     ? r.reasons.slice(0, 3).map((reason) => `<li>${String(reason)}</li>`).join('')
     : '<li>Keine weiteren Hinweise.</li>';
 
-  const conflictHtml = r.conflict
-    ? `
-      <div class="ac-conflict">
-        <div class="ac-conflict-title">Modelle uneinig</div>
-        <div class="ac-conflict-sub">Empfehlung: zweiten Check machen.</div>
-      </div>
-    `
-    : '';
-
-  const enginesHtml = (r.engine_results || []).map((engine) => {
-    const name = String(engine?.engine || 'engine');
-    const available = engine?.available !== false;
-    const score = available ? `${clampPercent(engine?.ai_likelihood)}% KI` : 'nicht verfuegbar';
-    const notes = String(engine?.notes || '');
-    const signals = Array.isArray(engine?.signals) ? engine.signals : [];
-    const signalsHtml = signals.length
-      ? `<ul class="ac-engine-signals">${signals.map((s) => `<li>${String(s)}</li>`).join('')}</ul>`
-      : '<div class="ac-engine-notes ac-subtle">Keine Signale.</div>';
-    const confText = typeof engine?.confidence === 'number'
-      ? `Sicherheit: ${Math.round(engine.confidence * 100)}%`
-      : '';
-    return `
-      <div class="ac-engine-item">
-        <div class="ac-engine-head">
-          <div class="ac-engine-name">${name}</div>
-          <div class="ac-engine-score">${score}</div>
+  const detectorEngines = new Set(['sightengine', 'reality_defender', 'hive']);
+  const detectors = r.engine_results.filter((e) => detectorEngines.has(e.engine));
+  const detectorsHtml = detectors.length
+    ? detectors.map((engine) => {
+      const available = engine.available !== false;
+      const score = available
+        ? (percentFromValue(engine.ai_likelihood) !== null ? `${percentFromValue(engine.ai_likelihood)}% KI` : '—')
+        : 'nicht verfuegbar';
+      const notes = String(engine?.notes || '');
+      return `
+        <div class="ac-engine-item ${available ? '' : 'is-disabled'}">
+          <div class="ac-engine-head">
+            <div class="ac-engine-name">${engine.engine}</div>
+            <div class="ac-engine-score">${score}</div>
+          </div>
+          <div class="ac-engine-meta">Status: ${available ? 'verfuegbar' : 'nicht verfuegbar'}</div>
+          ${notes ? `<div class="ac-engine-notes">${notes}</div>` : ''}
         </div>
-        ${confText ? `<div class="ac-engine-meta">${confText}</div>` : ''}
-        ${notes ? `<div class="ac-engine-notes">${notes}</div>` : ''}
-        ${signalsHtml}
-      </div>
-    `;
-  }).join('');
+      `;
+    }).join('')
+    : '<div class="ac-subtle">Keine Detector-Engines verfuegbar.</div>';
+
+  const c2pa = r.engine_results.find((e) => e.engine === 'c2pa');
+  let c2paStatus = 'kein Nachweis';
+  if (c2pa && c2pa.available === false) {
+    c2paStatus = 'nicht verfuegbar';
+  } else if (c2pa) {
+    const signals = (c2pa.signals || []).map((s) => String(s).toLowerCase());
+    if (signals.includes('signature_verified')) {
+      c2paStatus = 'verifiziert';
+    } else if (signals.includes('content_credentials_present')) {
+      c2paStatus = 'vorhanden (nicht verifiziert)';
+    } else if (signals.includes('no_content_credentials')) {
+      c2paStatus = 'kein Nachweis';
+    }
+  }
+  const c2paNotes = c2pa ? String(c2pa.notes || '') : '';
+
+  const watermark = r.engine_results.find((e) => e.engine === 'watermark');
+  let watermarkStatus = 'kein Nachweis (neutral)';
+  if (watermark && watermark.available === false) {
+    watermarkStatus = 'nicht verfuegbar';
+  } else if (watermark) {
+    const signals = (watermark.signals || []).map((s) => String(s).toLowerCase());
+    const hint = signals.find((s) => s.startsWith('metadata_ai_hint'));
+    if (hint) {
+      watermarkStatus = 'Hinweise gefunden';
+    } else if (signals.includes('no_watermark_detected')) {
+      watermarkStatus = 'kein Nachweis (neutral)';
+    }
+  }
+  const watermarkNotes = watermark ? String(watermark.notes || '') : '';
+
+  const forensics = r.engine_results.find((e) => e.engine === 'forensics');
+  const forensicsHtml = forensics
+    ? (() => {
+      const available = forensics.available !== false;
+      const score = available
+        ? (percentFromValue(forensics.ai_likelihood) !== null ? `${percentFromValue(forensics.ai_likelihood)}% KI` : '—')
+        : 'nicht verfuegbar';
+      const notes = String(forensics?.notes || '');
+      return `
+        <div class="ac-engine-item ${available ? '' : 'is-disabled'}">
+          <div class="ac-engine-head">
+            <div class="ac-engine-name">forensics</div>
+            <div class="ac-engine-score">${score}</div>
+          </div>
+          <div class="ac-engine-meta">Status: ${available ? 'verfuegbar' : 'nicht verfuegbar'}</div>
+          ${notes ? `<div class="ac-engine-notes">${notes}</div>` : ''}
+        </div>
+      `;
+    })()
+    : '';
 
   return `
     <div class="ac-card ac-result-card" role="status" aria-live="polite">
+      <div class="ac-card-title">Final</div>
       <div class="ac-result-hero">
-        <div class="ac-result-percent">${headlinePercent}%</div>
-        <div class="ac-result-headline">${headlineText}</div>
+        <div class="ac-result-percent">KI: ${finalAiPercent !== null ? `${finalAiPercent}%` : '—'}</div>
+        <div class="ac-result-percent">Echt: ${finalRealPercent !== null ? `${finalRealPercent}%` : '—'}</div>
       </div>
       <div class="ac-result-row">
-        <span class="ac-traffic-badge ${badgeClass}">${r.label_de}</span>
-        <span class="ac-result-sub">Status</span>
+        <span class="ac-traffic-badge ${confidenceInfo.badge}">Sicherheit: ${confidenceInfo.label}</span>
       </div>
-      ${conflictHtml}
       <div class="ac-result-reasons">
         <div class="ac-subtle"><b>Warum?</b></div>
         <ul class="ac-compare-list">${reasonsList}</ul>
       </div>
-      <button id="resultDetailsToggle" class="ac-secondary ac-details-btn" type="button">Details anzeigen</button>
-      <div id="resultDetails" class="ac-result-details" style="display:none">
-        <div class="ac-subtle"><b>Modelle &amp; Signale</b></div>
-        <div class="ac-engine-list">${enginesHtml || '<div class="ac-subtle">Keine Engines verfuegbar.</div>'}</div>
+    </div>
+
+    <div class="ac-card">
+      <div class="ac-card-title">Detectors</div>
+      <div class="ac-engine-list">${detectorsHtml}</div>
+    </div>
+
+    <div class="ac-card">
+      <div class="ac-card-title">Provenance (C2PA)</div>
+      <div class="ac-engine-list">
+        <div class="ac-engine-item ${c2pa && c2pa.available === false ? 'is-disabled' : ''}">
+          <div class="ac-engine-head">
+            <div class="ac-engine-name">c2pa</div>
+            <div class="ac-engine-score">${c2paStatus}</div>
+          </div>
+          ${c2paNotes ? `<div class="ac-engine-notes">${c2paNotes}</div>` : ''}
+        </div>
       </div>
     </div>
+
+    <div class="ac-card">
+      <div class="ac-card-title">Watermarks &amp; Metadata</div>
+      <div class="ac-engine-list">
+        <div class="ac-engine-item ${watermark && watermark.available === false ? 'is-disabled' : ''}">
+          <div class="ac-engine-head">
+            <div class="ac-engine-name">watermark</div>
+            <div class="ac-engine-score">${watermarkStatus}</div>
+          </div>
+          ${watermarkNotes ? `<div class="ac-engine-notes">${watermarkNotes}</div>` : ''}
+        </div>
+      </div>
+    </div>
+
+    ${forensicsHtml ? `
+      <div class="ac-card">
+        <div class="ac-card-title">Technische Hinweise</div>
+        <div class="ac-engine-list">${forensicsHtml}</div>
+      </div>
+    ` : ''}
   `;
 }
 

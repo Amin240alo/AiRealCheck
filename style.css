@@ -419,6 +419,10 @@ body {
   padding: 10px 12px;
   background: var(--panel);
 }
+.ac-engine-item.is-disabled {
+  opacity: 0.55;
+  filter: grayscale(0.15);
+}
 .ac-engine-head {
   display: flex;
   justify-content: space-between;
