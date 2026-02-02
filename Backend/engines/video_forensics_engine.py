@@ -3,7 +3,9 @@ import shutil
 import subprocess
 import tempfile
 import time
+import traceback
 from statistics import mean, median
+from pathlib import Path
 
 import cv2
 import numpy as np
@@ -39,6 +41,21 @@ def _error(notes="error"):
         "notes": notes,
         "status": "error",
         "available": False,
+    }
+
+
+def _no_frames_result(stderr_snippet=""):
+    signals = ["no_frames"]
+    if stderr_snippet:
+        signals.append(f"ffmpeg_stderr:{stderr_snippet}")
+    return {
+        "engine": "video_forensics",
+        "ai_likelihood": None,
+        "confidence": 0.0,
+        "signals": signals[:6],
+        "notes": "no_frames",
+        "status": "ok",
+        "available": True,
     }
 
 
@@ -148,6 +165,154 @@ def _log_debug(message: str):
         pass
 
 
+_FFMPEG_PATH_LOGGED = False
+_FFPROBE_PATH_LOGGED = False
+
+
+def _candidate_windows_ffmpeg_paths(exe_name: str):
+    localapp = os.getenv("LOCALAPPDATA") or ""
+    programdata = os.getenv("PROGRAMDATA") or ""
+    candidates = [
+        os.path.join(localapp, "Microsoft", "WinGet", "Links", exe_name),
+        os.path.join(programdata, "chocolatey", "bin", exe_name),
+        os.path.join("C:\\", "ffmpeg", "bin", exe_name),
+        os.path.join("C:\\", "Program Files", "ffmpeg", "bin", exe_name),
+        os.path.join("C:\\", "Program Files (x86)", "ffmpeg", "bin", exe_name),
+    ]
+    return [p for p in candidates if p and os.path.exists(p)]
+
+
+def _powershell_get_command(exe_name: str):
+    try:
+        proc = subprocess.run(
+            [
+                "powershell",
+                "-NoProfile",
+                "-Command",
+                f"(Get-Command {exe_name} -ErrorAction SilentlyContinue).Source",
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=2,
+            check=False,
+        )
+    except Exception:
+        return ""
+    if proc.returncode != 0:
+        return ""
+    output = (proc.stdout.decode("utf-8", errors="ignore") or "").strip()
+    return output if output and os.path.exists(output) else ""
+
+
+def _resolve_ffmpeg_path(exe_name: str):
+    env_path = (os.getenv("FFMPEG_PATH") or "").strip()
+    if env_path:
+        if os.path.isdir(env_path):
+            candidate = os.path.join(env_path, exe_name)
+            if os.path.exists(candidate):
+                return candidate
+        if os.path.exists(env_path):
+            return env_path
+    which_path = shutil.which(exe_name.replace(".exe", "")) or shutil.which(exe_name)
+    if which_path:
+        return which_path
+    ps_path = _powershell_get_command(exe_name)
+    if ps_path:
+        return ps_path
+    candidates = _candidate_windows_ffmpeg_paths(exe_name)
+    return candidates[0] if candidates else ""
+
+
+def _ffmpeg_path():
+    return _resolve_ffmpeg_path("ffmpeg.exe")
+
+
+def _ffprobe_path():
+    env_path = (os.getenv("FFMPEG_PATH") or "").strip()
+    if env_path:
+        base_dir = os.path.dirname(env_path) if os.path.isfile(env_path) else env_path
+        candidate = os.path.join(base_dir, "ffprobe.exe")
+        if os.path.exists(candidate):
+            return candidate
+    return _resolve_ffmpeg_path("ffprobe.exe")
+
+
+def _format_cmd(cmd):
+    try:
+        return " ".join([f'"{c}"' if " " in str(c) else str(c) for c in cmd])
+    except Exception:
+        return "<unprintable>"
+
+
+def _log_ffmpeg_path(path):
+    global _FFMPEG_PATH_LOGGED
+    if _FFMPEG_PATH_LOGGED:
+        return
+    _FFMPEG_PATH_LOGGED = True
+    _log_debug(f"ffmpeg_path={path}")
+
+
+def _log_ffprobe_path(path):
+    global _FFPROBE_PATH_LOGGED
+    if _FFPROBE_PATH_LOGGED:
+        return
+    _FFPROBE_PATH_LOGGED = True
+    _log_debug(f"ffprobe_path={path}")
+
+
+def log_ffmpeg_diagnostics():
+    ffmpeg = _ffmpeg_path()
+    ffprobe = _ffprobe_path()
+    _log_ffmpeg_path(ffmpeg)
+    _log_ffprobe_path(ffprobe)
+    if ffmpeg and os.path.exists(ffmpeg):
+        cmd = [ffmpeg, "-version"]
+        _log_debug(f"ffmpeg_selftest_cmd={_format_cmd(cmd)}")
+        try:
+            proc = subprocess.run(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                timeout=4,
+                check=False,
+            )
+        except Exception as exc:
+            _log_debug(f"ffmpeg_selftest_exit=error err={type(exc).__name__}")
+            return
+        stderr = _safe_stderr_snippet(proc.stderr.decode("utf-8", errors="ignore") if proc.stderr else "")
+        _log_debug(f"ffmpeg_selftest_exit={proc.returncode} stderr='{stderr}'")
+    else:
+        _log_debug("ffmpeg_selftest_exit=not_found")
+    selftest_video = (os.getenv("AIREALCHECK_FFMPEG_SELFTEST_VIDEO") or "").strip()
+    if selftest_video and os.path.exists(selftest_video):
+        frames, meta = _extract_first_frame_ffmpeg(selftest_video, 6)
+        if frames and meta.get("frames_extracted_count") == 1:
+            _log_debug("ffmpeg_selftest_frame=PASS")
+        else:
+            stderr = _safe_stderr_snippet(meta.get("stderr") or "")
+            _log_debug(f"ffmpeg_selftest_frame=FAIL stderr='{stderr}'")
+
+
+def _ffmpeg_available(timeout_sec=5):
+    ffmpeg = _ffmpeg_path()
+    _log_ffmpeg_path(ffmpeg)
+    if not ffmpeg or not os.path.exists(ffmpeg):
+        return False
+    if not os.access(ffmpeg, os.X_OK):
+        return False
+    try:
+        proc = subprocess.run(
+            [ffmpeg, "-version"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=timeout_sec,
+            check=False,
+        )
+    except Exception:
+        return False
+    return proc.returncode == 0
+
+
 def _safe_stderr_snippet(text: str, limit=200):
     if not isinstance(text, str):
         return ""
@@ -161,12 +326,85 @@ def _limit_note(text: str, limit=200):
     return text[:limit]
 
 
-def _extract_frames_ffmpeg(file_path, max_frames, scan_fps, timeout_sec):
-    ffmpeg = shutil.which("ffmpeg")
-    if not ffmpeg:
-        return [], {"note": "ffmpeg_not_installed", "ffmpeg_exit": None, "stderr": ""}
+def _collect_frame_files(frames_dir: str):
+    path = Path(frames_dir)
+    patterns = ["frame-*.jpg", "frame_*.jpg", "*.jpg", "*.jpeg", "*.png"]
+    files = []
+    for pattern in patterns:
+        files.extend(path.glob(pattern))
+    unique = {}
+    for item in files:
+        try:
+            suffix = item.suffix.lower()
+        except Exception:
+            continue
+        if suffix not in {".jpg", ".jpeg", ".png"}:
+            continue
+        unique[str(item.resolve())] = item
+    return [unique[key] for key in sorted(unique.keys())]
 
-    with tempfile.TemporaryDirectory() as tmpdir:
+
+def _try_pil_open(frame_path: str):
+    try:
+        with Image.open(frame_path) as img:
+            return img.convert("RGB"), None
+    except Exception as exc:
+        return None, exc
+
+
+def _probe_codec_info(file_path, timeout_sec):
+    ffprobe = _ffprobe_path()
+    _log_ffprobe_path(ffprobe)
+    if not ffprobe:
+        return {"codec": None, "pix_fmt": None, "decoder": None}
+    cmd = [
+        ffprobe,
+        "-v",
+        "error",
+        "-select_streams",
+        "v:0",
+        "-show_entries",
+        "stream=codec_name,pix_fmt,codec_tag_string",
+        "-of",
+        "default=nokey=1:noprint_wrappers=1",
+        file_path,
+    ]
+    _log_debug(f"ffprobe_cmd={_format_cmd(cmd)}")
+    try:
+        proc = subprocess.run(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=timeout_sec,
+            check=False,
+        )
+    except Exception:
+        return {"codec": None, "pix_fmt": None, "decoder": None}
+
+    lines = (proc.stdout.decode("utf-8", errors="ignore") or "").splitlines()
+    codec = lines[0].strip() if len(lines) > 0 else None
+    pix_fmt = lines[1].strip() if len(lines) > 1 else None
+    decoder = None
+    return {"codec": codec or None, "pix_fmt": pix_fmt or None, "decoder": decoder}
+
+
+def _extract_frames_ffmpeg(file_path, max_frames, scan_fps, timeout_sec):
+    ffmpeg = _ffmpeg_path()
+    _log_ffmpeg_path(ffmpeg)
+    if not ffmpeg or not os.path.exists(ffmpeg) or not os.access(ffmpeg, os.X_OK):
+        return [], {"note": "ffmpeg_not_installed", "ffmpeg_exit": None, "stderr": ""}
+    if not os.path.exists(file_path):
+        return [], {"note": "file_missing", "ffmpeg_exit": None, "stderr": ""}
+    try:
+        if os.path.getsize(file_path) <= 0:
+            return [], {"note": "file_size_0", "ffmpeg_exit": None, "stderr": ""}
+    except Exception:
+        return [], {"note": "file_size_0", "ffmpeg_exit": None, "stderr": ""}
+
+    base_tmp = tempfile.gettempdir()
+    os.makedirs(base_tmp, exist_ok=True)
+    with tempfile.TemporaryDirectory(dir=base_tmp) as tmpdir:
+        _log_debug(f"ffmpeg_tmpdir={tmpdir}")
         out_pattern = os.path.join(tmpdir, "frame-%04d.jpg")
         vf_parts = []
         if scan_fps and scan_fps > 0:
@@ -192,7 +430,16 @@ def _extract_frames_ffmpeg(file_path, max_frames, scan_fps, timeout_sec):
             out_pattern,
         ]
 
-        _log_debug(f"ffmpeg_cmd_exit=running path={file_path}")
+        codec_info = _probe_codec_info(file_path, timeout_sec)
+        codec_log = ",".join(
+            [
+                f"codec={codec_info.get('codec') or 'unknown'}",
+                f"pix_fmt={codec_info.get('pix_fmt') or 'unknown'}",
+                f"decoder={codec_info.get('decoder') or 'unknown'}",
+            ]
+        )
+        _log_debug(f"ffmpeg_cmd={_format_cmd(cmd)}")
+        _log_debug(f"ffmpeg_cmd_exit=running path={file_path} {codec_log}")
         try:
             proc = subprocess.run(
                 cmd,
@@ -203,53 +450,52 @@ def _extract_frames_ffmpeg(file_path, max_frames, scan_fps, timeout_sec):
             )
         except subprocess.TimeoutExpired as exc:
             stderr = _safe_stderr_snippet(exc.stderr.decode("utf-8", errors="ignore") if exc.stderr else "")
-            _log_debug(f"ffmpeg_cmd_exit=timeout stderr='{stderr}'")
-            return [], {"note": "timeout", "ffmpeg_exit": None, "stderr": stderr}
+            stdout = _safe_stderr_snippet(exc.stdout.decode("utf-8", errors="ignore") if exc.stdout else "")
+            _log_debug(f"ffmpeg_cmd_exit=timeout stderr='{stderr}' stdout='{stdout}'")
+            return [], {"note": "timeout", "ffmpeg_exit": None, "stderr": stderr, "stdout": stdout}
         except Exception as exc:
             _log_debug(f"ffmpeg_cmd_exit=error err={type(exc).__name__}")
             return [], {"note": "ffmpeg_error", "ffmpeg_exit": None, "stderr": ""}
 
         stderr = _safe_stderr_snippet(proc.stderr.decode("utf-8", errors="ignore") if proc.stderr else "")
-        _log_debug(f"ffmpeg_cmd_exit={proc.returncode} stderr='{stderr}'")
+        stdout = _safe_stderr_snippet(proc.stdout.decode("utf-8", errors="ignore") if proc.stdout else "")
+        _log_debug(f"ffmpeg_cmd_exit={proc.returncode} stderr='{stderr}' stdout='{stdout}'")
         if proc.returncode != 0:
             note = f"ffmpeg_extract_failed:{stderr}" if stderr else "ffmpeg_extract_failed"
-            return [], {"note": note, "ffmpeg_exit": proc.returncode, "stderr": stderr}
+            return [], {"note": note, "ffmpeg_exit": proc.returncode, "stderr": stderr, "stdout": stdout}
+
+        frames_dir = os.path.abspath(tmpdir)
+        _log_debug(f"frames_dir={frames_dir}")
+        _log_debug(f"frames_pattern={out_pattern}")
+        frame_files = _collect_frame_files(frames_dir)
+        frames_extracted_count = len(frame_files)
+        names_preview = ", ".join([p.name for p in frame_files[:10]])
+        _log_debug(f"frames_files_total={frames_extracted_count} first_10=[{names_preview}]")
 
         frames = []
-        for name in sorted(os.listdir(tmpdir)):
-            if not name.lower().endswith((".jpg", ".jpeg", ".png")):
-                continue
-            frame_path = os.path.join(tmpdir, name)
-            img = cv2.imread(frame_path, cv2.IMREAD_COLOR)
+        frame_paths = []
+        for frame_path in frame_files:
+            img = cv2.imread(str(frame_path), cv2.IMREAD_COLOR)
             if img is not None:
                 frames.append(img)
-        return frames, {"note": "ok", "ffmpeg_exit": proc.returncode, "stderr": stderr}
-
-
-def _extract_frames_opencv(file_path, max_frames, scan_fps, timeout_sec):
-    cap = cv2.VideoCapture(file_path)
-    if not cap.isOpened():
-        return [], {"note": "video_open_failed"}
-    frames = []
-    try:
-        fps = cap.get(cv2.CAP_PROP_FPS) or 0.0
-        step = 1
-        if scan_fps and scan_fps > 0 and fps and fps > 0:
-            step = max(1, int(round(fps / scan_fps)))
-        frame_idx = 0
-        start = time.time()
-        while len(frames) < max_frames:
-            if time.time() - start > timeout_sec:
-                return frames, {"note": "timeout"}
-            ok, frame = cap.read()
-            if not ok or frame is None:
-                break
-            if frame_idx % step == 0:
-                frames.append(frame)
-            frame_idx += 1
-        return frames, {"note": "ok"}
-    finally:
-        cap.release()
+                frame_paths.append(str(frame_path))
+        _log_debug(f"frames_extracted={len(frames)}")
+        if frames_extracted_count == 0:
+            return [], {
+                "note": "no_frames",
+                "ffmpeg_exit": proc.returncode,
+                "stderr": stderr,
+                "stdout": stdout,
+                "frames_extracted_count": 0,
+            }
+        return frames, {
+            "note": "ok",
+            "ffmpeg_exit": proc.returncode,
+            "stderr": stderr,
+            "stdout": stdout,
+            "frames_extracted_count": frames_extracted_count,
+            "frame_paths": frame_paths,
+        }
 
 
 def extract_video_frames(file_path, max_frames, scan_fps, timeout_sec):
@@ -261,18 +507,171 @@ def extract_video_frames(file_path, max_frames, scan_fps, timeout_sec):
         _log_debug("ffmpeg_not_installed")
     elif meta.get("note"):
         _log_debug(f"ffmpeg_failed_note={meta.get('note')}")
+    meta["method"] = "ffmpeg"
+    return frames, meta
 
-    frames, meta_cv = _extract_frames_opencv(file_path, max_frames, scan_fps, timeout_sec)
-    meta_cv["method"] = "opencv"
-    if not frames:
-        ffmpeg_note = meta.get("note")
-        if ffmpeg_note == "timeout":
-            meta_cv["note"] = "timeout"
-        elif isinstance(ffmpeg_note, str) and ffmpeg_note.startswith("ffmpeg_extract_failed"):
-            meta_cv["note"] = ffmpeg_note
-        elif ffmpeg_note in {"ffmpeg_error", "ffmpeg_not_installed"} and meta_cv.get("note") != "ok":
-            meta_cv["note"] = ffmpeg_note
-    return frames, meta_cv
+
+def _extract_frames_ffmpeg_fallback(file_path, max_frames, timeout_sec):
+    ffmpeg = _ffmpeg_path()
+    _log_ffmpeg_path(ffmpeg)
+    if not ffmpeg or not os.path.exists(ffmpeg) or not os.access(ffmpeg, os.X_OK):
+        return [], {"note": "ffmpeg_not_installed", "ffmpeg_exit": None, "stderr": ""}
+    if not os.path.exists(file_path):
+        return [], {"note": "file_missing", "ffmpeg_exit": None, "stderr": ""}
+    try:
+        if os.path.getsize(file_path) <= 0:
+            return [], {"note": "file_size_0", "ffmpeg_exit": None, "stderr": ""}
+    except Exception:
+        return [], {"note": "file_size_0", "ffmpeg_exit": None, "stderr": ""}
+
+    base_tmp = tempfile.gettempdir()
+    os.makedirs(base_tmp, exist_ok=True)
+    with tempfile.TemporaryDirectory(dir=base_tmp) as tmpdir:
+        _log_debug(f"ffmpeg_fallback_tmpdir={tmpdir}")
+        out_pattern = os.path.join(tmpdir, "frame-%04d.jpg")
+        cmd = [
+            ffmpeg,
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-i",
+            file_path,
+            "-an",
+            "-sn",
+            "-dn",
+            "-vsync",
+            "0",
+            "-frames:v",
+            str(max_frames),
+            out_pattern,
+        ]
+        _log_debug(f"ffmpeg_fallback_cmd={_format_cmd(cmd)}")
+        _log_debug("ffmpeg_fallback=running")
+        try:
+            proc = subprocess.run(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                timeout=timeout_sec,
+                check=False,
+            )
+        except subprocess.TimeoutExpired as exc:
+            stderr = _safe_stderr_snippet(exc.stderr.decode("utf-8", errors="ignore") if exc.stderr else "")
+            stdout = _safe_stderr_snippet(exc.stdout.decode("utf-8", errors="ignore") if exc.stdout else "")
+            _log_debug(f"ffmpeg_fallback_exit=timeout stderr='{stderr}' stdout='{stdout}'")
+            return [], {"note": "timeout", "ffmpeg_exit": None, "stderr": stderr, "stdout": stdout}
+        except Exception as exc:
+            _log_debug(f"ffmpeg_fallback_exit=error err={type(exc).__name__}")
+            return [], {"note": "ffmpeg_error", "ffmpeg_exit": None, "stderr": ""}
+
+        stderr = _safe_stderr_snippet(proc.stderr.decode("utf-8", errors="ignore") if proc.stderr else "")
+        stdout = _safe_stderr_snippet(proc.stdout.decode("utf-8", errors="ignore") if proc.stdout else "")
+        _log_debug(f"ffmpeg_fallback_exit={proc.returncode} stderr='{stderr}' stdout='{stdout}'")
+        if proc.returncode != 0:
+            note = f"ffmpeg_extract_failed:{stderr}" if stderr else "ffmpeg_extract_failed"
+            return [], {"note": note, "ffmpeg_exit": proc.returncode, "stderr": stderr, "stdout": stdout}
+
+        frames_dir = os.path.abspath(tmpdir)
+        _log_debug(f"frames_fallback_dir={frames_dir}")
+        _log_debug(f"frames_fallback_pattern={out_pattern}")
+        frame_files = _collect_frame_files(frames_dir)
+        frames_extracted_count = len(frame_files)
+        names_preview = ", ".join([p.name for p in frame_files[:10]])
+        _log_debug(f"frames_fallback_files_total={frames_extracted_count} first_10=[{names_preview}]")
+
+        frames = []
+        frame_paths = []
+        for frame_path in frame_files:
+            img = cv2.imread(str(frame_path), cv2.IMREAD_COLOR)
+            if img is not None:
+                frames.append(img)
+                frame_paths.append(str(frame_path))
+        _log_debug(f"frames_extracted_fallback={len(frames)}")
+        if frames_extracted_count == 0:
+            return [], {
+                "note": "no_frames",
+                "ffmpeg_exit": proc.returncode,
+                "stderr": stderr,
+                "stdout": stdout,
+                "frames_extracted_count": 0,
+            }
+        return frames, {
+            "note": "ok",
+            "ffmpeg_exit": proc.returncode,
+            "stderr": stderr,
+            "stdout": stdout,
+            "frames_extracted_count": frames_extracted_count,
+            "frame_paths": frame_paths,
+        }
+
+
+def _extract_first_frame_ffmpeg(file_path, timeout_sec):
+    ffmpeg = _ffmpeg_path()
+    _log_ffmpeg_path(ffmpeg)
+    if not ffmpeg or not os.path.exists(ffmpeg) or not os.access(ffmpeg, os.X_OK):
+        return [], {"note": "ffmpeg_not_installed", "ffmpeg_exit": None, "stderr": ""}
+    if not os.path.exists(file_path):
+        return [], {"note": "file_missing", "ffmpeg_exit": None, "stderr": ""}
+    base_tmp = tempfile.gettempdir()
+    os.makedirs(base_tmp, exist_ok=True)
+    with tempfile.TemporaryDirectory(dir=base_tmp) as tmpdir:
+        _log_debug(f"ffmpeg_single_tmpdir={tmpdir}")
+        out_path = os.path.join(tmpdir, "frame-0001.jpg")
+        cmd = [
+            ffmpeg,
+            "-y",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-i",
+            file_path,
+            "-vf",
+            "select=eq(n\\,0)",
+            "-frames:v",
+            "1",
+            out_path,
+        ]
+        _log_debug(f"ffmpeg_single_cmd={_format_cmd(cmd)}")
+        try:
+            proc = subprocess.run(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                timeout=timeout_sec,
+                check=False,
+            )
+        except subprocess.TimeoutExpired as exc:
+            stderr = _safe_stderr_snippet(exc.stderr.decode("utf-8", errors="ignore") if exc.stderr else "")
+            stdout = _safe_stderr_snippet(exc.stdout.decode("utf-8", errors="ignore") if exc.stdout else "")
+            _log_debug(f"ffmpeg_single_exit=timeout stderr='{stderr}' stdout='{stdout}'")
+            return [], {"note": "timeout", "ffmpeg_exit": None, "stderr": stderr, "stdout": stdout}
+        except Exception as exc:
+            _log_debug(f"ffmpeg_single_exit=error err={type(exc).__name__}")
+            return [], {"note": "ffmpeg_error", "ffmpeg_exit": None, "stderr": ""}
+
+        stderr = _safe_stderr_snippet(proc.stderr.decode("utf-8", errors="ignore") if proc.stderr else "")
+        stdout = _safe_stderr_snippet(proc.stdout.decode("utf-8", errors="ignore") if proc.stdout else "")
+        _log_debug(f"ffmpeg_single_exit={proc.returncode} stderr='{stderr}' stdout='{stdout}'")
+        if proc.returncode != 0:
+            note = f"ffmpeg_extract_failed:{stderr}" if stderr else "ffmpeg_extract_failed"
+            return [], {"note": note, "ffmpeg_exit": proc.returncode, "stderr": stderr, "stdout": stdout}
+        img = cv2.imread(out_path, cv2.IMREAD_COLOR)
+        if img is None:
+            return [], {
+                "note": "no_frames",
+                "ffmpeg_exit": proc.returncode,
+                "stderr": stderr,
+                "stdout": stdout,
+                "frames_extracted_count": 0,
+            }
+        return [img], {
+            "note": "ok",
+            "ffmpeg_exit": proc.returncode,
+            "stderr": stderr,
+            "stdout": stdout,
+            "frames_extracted_count": 1,
+            "frame_paths": [out_path],
+        }
 
 
 def _video_duration_sec(file_path):
@@ -316,6 +715,19 @@ def run_video_forensics(file_path: str):
     if not _clamp_file_size(file_path, max_mb):
         return _not_available("file_too_large")
 
+    if not _ffmpeg_available():
+        return {
+            "engine": "video_forensics",
+            "ai_likelihood": None,
+            "confidence": 0.0,
+            "signals": [
+                "install_hint:Installiere FFmpeg und setze PATH (Windows: winget install ffmpeg; danach ffmpeg -version)"
+            ],
+            "notes": "ffmpeg_not_installed",
+            "status": "error",
+            "available": False,
+        }
+
     start = time.time()
     frames, extract_meta = extract_video_frames(
         file_path,
@@ -325,11 +737,25 @@ def run_video_forensics(file_path: str):
     )
     if not frames:
         note = extract_meta.get("note") or "frame_extract_failed"
-        if note == "timeout":
-            return _error("frame_extract_failed:timeout")
+        frames_extracted_count = int(extract_meta.get("frames_extracted_count") or 0)
         if note == "ffmpeg_not_installed":
-            return _error("frame_extract_failed:ffmpeg_not_installed")
-        return _error(_limit_note(f"frame_extract_failed:{note}"))
+            return _error("ffmpeg_decode_failed:ffmpeg_not_installed")
+        if note == "file_missing":
+            return _error("ffmpeg_decode_failed:file_missing")
+        if note == "file_size_0":
+            return _error("ffmpeg_decode_failed:file_size_0")
+        stderr = extract_meta.get("stderr") or ""
+        single_frames, single_meta = _extract_first_frame_ffmpeg(file_path, max_seconds)
+        if single_frames:
+            frames = single_frames
+            extract_meta = single_meta
+        else:
+            single_stderr = single_meta.get("stderr") or stderr
+            if note == "timeout":
+                return _error("ffmpeg_decode_failed:timeout")
+            if frames_extracted_count > 0:
+                return _error("ffmpeg_decode_failed:frames_unreadable")
+            return _no_frames_result(_safe_stderr_snippet(single_stderr))
 
     timed_out = False
     scene_scores = []
@@ -352,6 +778,7 @@ def run_video_forensics(file_path: str):
         prev_gray = gray_small
         prev_hist = hist
 
+    extracted_count = int(extract_meta.get("frames_extracted_count") or len(frames))
     total_frames = len(frames)
     uniform_idx = _uniform_indices(total_frames, uniform_count)
     scene_idx = _select_top_indices(scene_scores, scene_count)
@@ -362,6 +789,15 @@ def run_video_forensics(file_path: str):
         combined = _uniform_indices(total_frames, max_frames)
 
     indices = _downsample_indices(combined, max_frames)
+    fallback_selected = False
+    if extracted_count > 0 and not indices:
+        fallback_count = min(12, extracted_count)
+        indices = list(range(fallback_count))
+        fallback_selected = True
+    _log_debug(
+        f"frame_counts extracted={extracted_count} selected={len(indices)} "
+        f"fallback_selected={str(fallback_selected).lower()}"
+    )
 
     ela_means = []
     ela_maxes = []
@@ -382,10 +818,18 @@ def run_video_forensics(file_path: str):
         except Exception:
             face_cascade = None
 
-    def _process_frame(frame):
+    def _process_frame(frame, frame_path=None):
         nonlocal frames_ok, faces_found
         try:
-            pil = _frame_to_pil(frame)
+            if frame_path:
+                # Sanity-check frame decoding via PIL before analysis.
+                pil, pil_err = _try_pil_open(frame_path)
+                if pil_err is not None:
+                    _log_debug(f"frame_pil_open_error path={frame_path} err={repr(pil_err)}")
+                    _log_debug(traceback.format_exc())
+                    return False
+            else:
+                pil = _frame_to_pil(frame)
             gray = _to_cv_gray(pil)
             ela_mean, ela_max = _ela_score(pil)
             ela_means.append(float(ela_mean))
@@ -402,47 +846,83 @@ def run_video_forensics(file_path: str):
                     faces_found += 1
             frames_ok += 1
             return True
-        except Exception:
+        except Exception as exc:
+            path_info = f" path={frame_path}" if frame_path else ""
+            _log_debug(f"frame_process_error{path_info} err={repr(exc)}")
+            _log_debug(traceback.format_exc())
             return False
 
+    frame_paths = extract_meta.get("frame_paths") or []
     for idx in indices:
         if time.time() - start > max_seconds:
             timed_out = True
             break
         if idx < 0 or idx >= len(frames):
             continue
-        _process_frame(frames[idx])
+        frame_path = frame_paths[idx] if idx < len(frame_paths) else None
+        _process_frame(frames[idx], frame_path=frame_path)
+    _log_debug(f"frames_analyzed_count={frames_ok}")
 
     duration_sec = _video_duration_sec(file_path)
 
-    if frames_ok == 0:
-        breakdown = {
-            "uniform": 0,
-            "scene": 0,
-            "motion": 0,
-            "final": 0,
-        }
-        signals = [
-            "frames_analyzed:0",
-            (
-                "sampling_breakdown:"
-                f"uniform={breakdown['uniform']},"
-                f"scene={breakdown['scene']},"
-                f"motion={breakdown['motion']},"
-                f"final={breakdown['final']}"
-            ),
-        ]
-        if duration_sec is not None:
-            signals.append(f"duration_sec:{duration_sec:.2f}")
+    min_required = min(5, len(frames))
+    if frames_ok == 0 and len(frames) >= min_required and not timed_out:
+        _log_debug("frames_analyzed_fallback=first_frames")
+        for idx in range(min_required):
+            if time.time() - start > max_seconds:
+                timed_out = True
+                break
+            _process_frame(frames[idx])
+        _log_debug(f"frames_analyzed_fallback_count={frames_ok}")
+
+    if frames_ok == 0 and len(frames) > 0:
+        frames_extracted_count = int(extract_meta.get("frames_extracted_count") or len(frames))
+        frames_selected_count = len(indices)
         return {
             "engine": "video_forensics",
             "ai_likelihood": None,
             "confidence": 0.0,
-            "signals": signals[:6],
-            "notes": "no_frames",
+            "signals": [
+                "forensics_only",
+                f"frames_extracted:{frames_extracted_count}",
+                f"frames_selected:{frames_selected_count}",
+                f"frames_analyzed:{frames_ok}",
+            ],
+            "notes": "forensics_only",
             "status": "ok",
             "available": True,
         }
+
+    if frames_ok == 0:
+        fallback_frames, fallback_meta = _extract_frames_ffmpeg_fallback(
+            file_path,
+            5,
+            max_seconds,
+        )
+        if not fallback_frames:
+            return _no_frames_result(_safe_stderr_snippet(fallback_meta.get("stderr") or ""))
+        frames = fallback_frames
+        indices = list(range(min(5, len(frames))))
+        frames_ok = 0
+        ela_means = []
+        ela_maxes = []
+        sharpness = []
+        hf_ratios = []
+        phash_dists = []
+        blockiness = []
+        residual_std = []
+        faces_found = 0
+        frame_paths = fallback_meta.get("frame_paths") or []
+        for idx in indices:
+            if time.time() - start > max_seconds:
+                timed_out = True
+                break
+            if idx < 0 or idx >= len(frames):
+                continue
+            frame_path = frame_paths[idx] if idx < len(frame_paths) else None
+            _process_frame(frames[idx], frame_path=frame_path)
+        if frames_ok == 0:
+            return _no_frames_result(_safe_stderr_snippet(fallback_meta.get("stderr") or ""))
 
     temporal_summary = {
         "ela_mean_cv": _cv_ratio(ela_means),
@@ -482,6 +962,13 @@ def run_video_forensics(file_path: str):
     else:
         risk_level = "low"
 
+    breakdown = {
+        "uniform": len([i for i in indices if i in uniform_idx]),
+        "scene": len([i for i in indices if i in scene_idx]),
+        "motion": len([i for i in indices if i in motion_idx]),
+        "final": len(indices),
+    }
+
     notes_parts = [
         "hint:ok",
         f"risk_level:{risk_level}",
@@ -498,16 +985,16 @@ def run_video_forensics(file_path: str):
         notes_parts.extend(risk_reasons[:2])
     if timed_out:
         notes_parts.append("partial_timeout")
+    if fallback_selected:
+        notes_parts.append("fallback_selected_first_frames")
 
-    breakdown = {
-        "uniform": len([i for i in indices if i in uniform_idx]),
-        "scene": len([i for i in indices if i in scene_idx]),
-        "motion": len([i for i in indices if i in motion_idx]),
-        "final": len(indices),
-    }
+    frames_extracted_count = int(extract_meta.get("frames_extracted_count") or len(frames))
+    frames_selected_count = len(indices)
 
     signals = [
         f"frames_analyzed:{frames_ok}",
+        f"frames_extracted:{frames_extracted_count}",
+        f"frames_selected:{frames_selected_count}",
         (
             "sampling_breakdown:"
             f"uniform={breakdown['uniform']},"

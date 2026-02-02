@@ -94,6 +94,13 @@ function summaryText(aiPercent, confidenceLabel) {
   return `${prefix}Unklare Lage, weitere Pruefung empfohlen.`;
 }
 
+function extractSignalValue(signals, key) {
+  const match = (signals || []).find((s) => String(s).toLowerCase().startsWith(`${key}:`));
+  if (!match) return null;
+  const raw = String(match).split(':').slice(1).join(':');
+  return raw ? raw.trim() : null;
+}
+
 function normalizeEngineResults(engineResults) {
   return (Array.isArray(engineResults) ? engineResults : [])
     .filter((e) => e && typeof e === 'object')
@@ -130,6 +137,11 @@ function normalizeResult(data) {
 export function renderAnalysisResult(resultJson, { expertMode = false } = {}) {
   const r = normalizeResult(resultJson || {});
   const mediaType = r.media_type || 'image';
+  const videoForensics = r.engine_results.find((e) => e.engine === 'video_forensics');
+  const frameDetectors = r.engine_results.find((e) => e.engine === 'video_frame_detectors');
+  const ffmpegMissing = mediaType === 'video'
+    && videoForensics
+    && String(videoForensics.notes || '').includes('ffmpeg_not_installed');
   const finalAiPercent = percentFromValue(r.final_ai);
   const finalRealPercent = percentFromValue(r.final_real !== null ? r.final_real : (r.final_ai !== null ? 1 - r.final_ai : null));
   const summaryLine = summaryText(finalAiPercent, r.confidence_label);
@@ -146,7 +158,7 @@ export function renderAnalysisResult(resultJson, { expertMode = false } = {}) {
     : '<li>Keine weiteren Hinweise.</li>';
 
   const detectorEngines = mediaType === 'video'
-    ? new Set(['reality_defender_video'])
+    ? new Set(['video_frame_detectors', 'reality_defender_video'])
     : new Set(['sightengine', 'reality_defender', 'hive']);
   const detectors = r.engine_results.filter((e) => detectorEngines.has(e.engine));
   const detectorsHtml = detectors.length
@@ -254,15 +266,52 @@ export function renderAnalysisResult(resultJson, { expertMode = false } = {}) {
     })()
     : '';
 
+  const framesScored = frameDetectors
+    ? Number(extractSignalValue(frameDetectors.signals || [], 'frames_scored'))
+    : null;
+  const enginesUsed = frameDetectors
+    ? extractSignalValue(frameDetectors.signals || [], 'engines_used')
+    : null;
+  const medianAi = frameDetectors
+    ? extractSignalValue(frameDetectors.signals || [], 'median_ai')
+    : null;
+  const variance = frameDetectors
+    ? extractSignalValue(frameDetectors.signals || [], 'variance')
+    : null;
+
+  const frameDetailsHtml = frameDetectors
+    ? `
+      <div class="ac-engine-item ${frameDetectors.available !== false ? '' : 'is-disabled'}">
+        <div class="ac-engine-head">
+          <div class="ac-engine-name">video_frame_detectors</div>
+          <div class="ac-engine-score">${finalAiPercent !== null ? `${finalAiPercent}% KI` : "--"}</div>
+        </div>
+        <div class="ac-engine-meta">Status: ${frameDetectors.available !== false ? 'verfuegbar' : 'nicht verfuegbar'}</div>
+        <div class="ac-engine-notes">
+          ${framesScored !== null ? `Frames bewertet: ${framesScored}` : "Frames bewertet: --"}<br/>
+          ${enginesUsed ? `Engines: ${enginesUsed}` : "Engines: --"}<br/>
+          ${medianAi ? `Median KI: ${medianAi}` : "Median KI: --"}<br/>
+          ${variance ? `Varianz: ${variance}` : "Varianz: --"}
+        </div>
+      </div>
+    `
+    : '';
+
   return `
+    ${ffmpegMissing ? `
+      <div class="ac-card">
+        <div class="ac-result-title" style="color:#b42318">FFmpeg fehlt – Video-Frames koennen nicht extrahiert werden. Installiere FFmpeg und starte den Server neu.</div>
+      </div>
+    ` : ''}
     <div class="ac-card ac-result-card" role="status" aria-live="polite">
       <div class="ac-card-title">Final</div>
       <div class="ac-result-hero">
-        <div class="ac-result-percent">KI: ${finalAiPercent !== null ? `${finalAiPercent}%` : '—'}</div>
+        <div class="ac-result-percent">${mediaType === 'video' ? 'Video KI' : 'KI'}: ${finalAiPercent !== null ? `${finalAiPercent}%` : "--"}</div>
         <div class="ac-result-percent">Echt: ${finalRealPercent !== null ? `${finalRealPercent}%` : '—'}</div>
       </div>
       <div class="ac-result-row">
         <span class="ac-traffic-badge ${confidenceInfo.badge}">Sicherheit: ${confidenceInfo.label}</span>
+        ${mediaType === 'video' && framesScored !== null ? `<span class="ac-subtle">Basierend auf ${framesScored} Frames</span>` : ''}
       </div>
       <div class="ac-result-expl">${summaryLine}</div>
       <div class="ac-result-reasons">
@@ -275,6 +324,13 @@ export function renderAnalysisResult(resultJson, { expertMode = false } = {}) {
       <div class="ac-card-title">Detectors</div>
       <div class="ac-engine-list">${detectorsHtml}</div>
     </div>
+
+    ${mediaType === 'video' && frameDetailsHtml ? `
+      <div class="ac-card">
+        <div class="ac-card-title">Frame-Detectors</div>
+        <div class="ac-engine-list">${frameDetailsHtml}</div>
+      </div>
+    ` : ''}
 
     ${mediaType === 'video' ? '' : `
       <div class="ac-card">

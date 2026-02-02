@@ -9,7 +9,8 @@ import jwt
 import uuid
 
 from Backend.ensemble import run_ensemble, build_standard_result
-from Backend.engines.video_forensics_engine import run_video_forensics
+from Backend.engines.video_forensics_engine import run_video_forensics, log_ffmpeg_diagnostics
+from Backend.engines.video_frame_detectors_engine import run_video_frame_detectors
 from Backend.video_url_fetcher import fetch_video_from_url, VideoUrlError
 from Backend.db import init_db
 from Backend.models import Base, User
@@ -32,6 +33,7 @@ JWT_SECRET = os.getenv("AIREALCHECK_JWT_SECRET", "dev_change_me")
 
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB Upload-Limit
+log_ffmpeg_diagnostics()
 
 # Restrictive CORS per requirements
 _allowed_origins = ["http://127.0.0.1:5500", "http://127.0.0.1:5000"]
@@ -216,7 +218,8 @@ def _run_analysis_path(file_path, filename, media_type="image", user_ctx=None, c
             source_used = result.get("primary_source")
         elif _is_video_ext(filename) and media_type == "video":
             video_forensics = run_video_forensics(file_path)
-            engine_results_raw = [video_forensics]
+            video_detectors = run_video_frame_detectors(file_path)
+            engine_results_raw = [video_detectors, video_forensics]
 
             standard_payload = build_standard_result(
                 media_type=media_type,
@@ -253,7 +256,11 @@ def _run_analysis_path(file_path, filename, media_type="image", user_ctx=None, c
                     "video_forensics": {
                         "available": bool(video_forensics.get("available")),
                         "status": video_forensics.get("status"),
-                    }
+                    },
+                    "video_frame_detectors": {
+                        "available": bool(video_detectors.get("available")),
+                        "status": video_detectors.get("status"),
+                    },
                 }
             return jsonify(response_payload)
         else:

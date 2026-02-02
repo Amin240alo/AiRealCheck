@@ -8,9 +8,9 @@ from Backend.engines.c2pa_engine import analyze_c2pa
 from Backend.engines.watermark_engine import analyze_watermark
 
 IMAGE_ENGINES = ["hive", "forensics", "sightengine", "reality_defender", "c2pa", "watermark"]
-VIDEO_ENGINES = ["reality_defender_video", "video_forensics"]
+VIDEO_ENGINES = ["video_frame_detectors", "reality_defender_video", "video_forensics"]
 DETECTOR_ENGINES_IMAGE = {"sightengine", "reality_defender", "hive"}
-DETECTOR_ENGINES_VIDEO = {"reality_defender_video"}
+DETECTOR_ENGINES_VIDEO = {"reality_defender_video", "video_frame_detectors"}
 
 
 def _clamp(value, lo=0.0, hi=100.0):
@@ -241,7 +241,7 @@ def compute_confidence(engine_results, final_ai, media_type="image"):
         return "high", ["Content Credentials verifiziert"]
 
     if media_type == "video" and len(detector_values) == 0:
-        return "low", ["Keine Video-Detektoren verfügbar (Plan/Key). Nur technische Forensik."]
+        return "low", ["Keine Bild-Detektoren aktiv fuer Video-Frames."]
 
     if len(detector_values) >= 2:
         diff = max(detector_values) - min(detector_values)

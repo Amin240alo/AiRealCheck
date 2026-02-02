@@ -1,0 +1,34 @@
+Bug: video_forensics returns notes="no_frames" even when ffmpeg extraction likely produced frames earlier (we've seen logs like frames_extracted=25). The API response still shows signals:["no_frames"] and notes:"no_frames".
+
+Goal:
+- Distinguish between:
+  A) extracted_frames == 0  -> notes="no_frames"
+  B) extracted_frames > 0 but selected_frames == 0 -> notes="no_selected_frames" (NOT "no_frames")
+- Never end with selected_frames==0 if extracted_frames>0: implement a fallback that selects first N extracted frames (e.g. min(12, extracted_frames)) when filtering/sampling yields 0.
+- Always include signals:
+  - "frames_extracted:<M>"
+  - "frames_selected:<S>"
+  - "frames_analyzed:<A>"
+  - "sampling_breakdown:..."
+  - If face filtering is enabled and removes frames, include: "face_filter_dropped:<K>"
+
+Most likely cause:
+- face-detection / filtering or dedupe removes all frames => selected=0, but code labels it as no_frames.
+Fix this logic.
+
+Implementation details:
+1) In video_forensics pipeline:
+   - compute extracted list (jpg/jpeg/png)
+   - compute selected list after sampling/filtering
+   - if extracted>0 and selected==0:
+       - set selected = extracted[:min(12, len(extracted))]
+       - add note "fallback_selected_first_frames"
+       - set notes="ok" (or "no_selected_frames" if you want, but NOT "no_frames")
+2) Only set notes="no_frames" when extracted==0.
+3) Ensure the response includes extracted/selected/analyzed counts in signals.
+4) Add debug log lines:
+   - extracted_count, selected_count, analyzed_count, and whether fallback triggered.
+
+Return:
+- exact diff
+- short explanation of root cause and why response said no_frames before.
