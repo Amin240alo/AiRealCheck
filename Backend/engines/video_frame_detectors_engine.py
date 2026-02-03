@@ -21,7 +21,13 @@ def _log_debug(message: str):
         pass
 
 
+def _paid_apis_enabled():
+    return os.getenv("AIREALCHECK_USE_PAID_APIS", "false").lower() in {"1", "true", "yes"}
+
+
 def _sightengine_available():
+    if not _paid_apis_enabled():
+        return False
     api_key = (os.getenv("SIGHTENGINE_API_KEY") or "").strip()
     if api_key:
         return True
@@ -31,6 +37,8 @@ def _sightengine_available():
 
 
 def _reality_defender_available():
+    if not _paid_apis_enabled():
+        return False
     return bool((os.getenv("REALITY_DEFENDER_API_KEY") or "").strip())
 
 
@@ -125,6 +133,16 @@ def _extract_frames_to_dir(file_path, tmpdir, max_frames, scan_fps, timeout_sec)
 
 
 def run_video_frame_detectors(file_path: str) -> dict:
+    if not _paid_apis_enabled():
+        return {
+            "engine": "video_frame_detectors",
+            "ai_likelihood": None,
+            "confidence": 0.0,
+            "signals": ["paid_apis_disabled"],
+            "notes": "disabled:paid_apis_off",
+            "available": False,
+            "status": "disabled",
+        }
     if not os.path.exists(file_path):
         return {
             "engine": "video_frame_detectors",

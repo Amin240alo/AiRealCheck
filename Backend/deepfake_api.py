@@ -25,6 +25,10 @@ HIVE_MODELS = [m.strip() for m in (os.getenv("HIVE_MODELS", ",".join(_default_mo
 TTA_COUNT = int(os.getenv("AIREALCHECK_TTA", "3") or 3)  # 1..5 sinnvoll
 
 
+def _paid_apis_enabled():
+    return os.getenv("AIREALCHECK_USE_PAID_APIS", "false").lower() in {"1", "true", "yes"}
+
+
 def _normalize_classes(classes):
     """Mappt unterschiedliche Bezeichner auf 'real'/'fake' und liefert Scores in [0, 100]."""
     real = None
@@ -72,6 +76,13 @@ def analyze_with_hive(file_path: str):
     Global AI detection (works for any image) + optional Face/Deepfake signal (only when needed).
     Rückgabe bleibt kompatibel: real, fake, message, details, source | bei Fehler: error, message, details
     """
+    if not _paid_apis_enabled():
+        return {
+            "error": True,
+            "ok": False,
+            "message": "Hive disabled (paid APIs off)",
+            "details": ["Hive disabled (AIREALCHECK_USE_PAID_APIS=false)"],
+        }
     if not os.path.exists(file_path):
         return {"error": True, "message": "Datei existiert nicht", "details": [file_path]}
 

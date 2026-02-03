@@ -7,6 +7,10 @@ import requests
 _API_URL = "https://api.sightengine.com/1.0/check.json"
 
 
+def _paid_apis_enabled():
+    return os.getenv("AIREALCHECK_USE_PAID_APIS", "false").lower() in {"1", "true", "yes"}
+
+
 def _parse_api_credentials():
     api_key = (os.getenv("SIGHTENGINE_API_KEY") or "").strip()
     if api_key:
@@ -36,8 +40,22 @@ def _not_available():
     }
 
 
+def _disabled():
+    return {
+        "engine": "sightengine",
+        "ai_likelihood": None,
+        "confidence": 0.0,
+        "signals": ["paid_apis_disabled"],
+        "notes": "disabled:paid_apis_off",
+        "available": False,
+        "status": "disabled",
+    }
+
+
 def run_sightengine(file_path: str):
     start = time.time()
+    if not _paid_apis_enabled():
+        return _disabled()
     api_user, api_secret = _parse_api_credentials()
     if not api_user or not api_secret:
         return _not_available()

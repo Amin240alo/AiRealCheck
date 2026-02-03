@@ -12,6 +12,10 @@ _POLL_INTERVAL_SEC = 3.0
 _MAX_POLL_SECONDS = 90.0
 
 
+def _paid_apis_enabled():
+    return os.getenv("AIREALCHECK_USE_PAID_APIS", "false").lower() in {"1", "true", "yes"}
+
+
 def _not_available(notes="not_available"):
     return {
         "engine": "reality_defender",
@@ -20,6 +24,18 @@ def _not_available(notes="not_available"):
         "signals": [],
         "notes": notes,
         "available": False,
+    }
+
+
+def _disabled():
+    return {
+        "engine": "reality_defender",
+        "ai_likelihood": None,
+        "confidence": 0.0,
+        "signals": ["paid_apis_disabled"],
+        "notes": "disabled:paid_apis_off",
+        "available": False,
+        "status": "disabled",
     }
 
 
@@ -120,6 +136,8 @@ def _is_processing_status(status):
 
 
 def analyze_reality_defender(asset_path: str) -> dict:
+    if not _paid_apis_enabled():
+        return _disabled()
     api_key = (os.getenv("REALITY_DEFENDER_API_KEY") or "").strip()
     if not api_key:
         return _not_available()

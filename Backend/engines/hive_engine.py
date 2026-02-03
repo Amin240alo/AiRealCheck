@@ -4,7 +4,13 @@ import time
 from Backend.deepfake_api import analyze_with_hive
 
 
+def _paid_apis_enabled():
+    return os.getenv("AIREALCHECK_USE_PAID_APIS", "false").lower() in {"1", "true", "yes"}
+
+
 def hive_health_check():
+    if not _paid_apis_enabled():
+        return {"ok": False, "status": "disabled", "message": "Paid APIs disabled"}
     enabled = os.getenv("HIVE_ENABLED", "true").lower() in {"1", "true", "yes"}
     key_id = (os.getenv("HIVE_API_KEY_ID") or "").strip()
     key_secret = (os.getenv("HIVE_API_SECRET") or "").strip()
@@ -33,6 +39,22 @@ def _ensure_api_key_env():
 
 def run_hive(file_path: str):
     start = time.time()
+    if not _paid_apis_enabled():
+        return {
+            "ok": False,
+            "engine": "hive",
+            "error": True,
+            "message": "Hive disabled (paid APIs off)",
+            "details": ["Hive disabled (AIREALCHECK_USE_PAID_APIS=false)"],
+            "warnings": ["Hive disabled via paid APIs switch."],
+            "ai_likelihood": None,
+            "confidence": 0.0,
+            "signals": ["paid_apis_disabled"],
+            "notes": "disabled:paid_apis_off",
+            "available": False,
+            "status": "disabled",
+            "timing_ms": int((time.time() - start) * 1000),
+        }
     health = hive_health_check()
     if not health["ok"]:
         return {
