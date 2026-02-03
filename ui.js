@@ -70,28 +70,13 @@ function percentFromValue(value) {
   return clampPercent(v);
 }
 
-function scoreZone(aiPercent) {
-  if (aiPercent === null || aiPercent === undefined) return 'unknown';
-  if (aiPercent <= 20) return 'real';
-  if (aiPercent <= 60) return 'uncertain';
-  return 'ai';
-}
-
-function summaryText(aiPercent, confidenceLabel) {
-  const zone = scoreZone(aiPercent);
-  if (zone === 'unknown') return 'Keine ausreichenden Signale fuer eine Einschaetzung.';
-  const conf = (confidenceLabel || 'low').toLowerCase();
-  const prefix = conf === 'high'
-    ? 'Hohe Sicherheit: '
-    : (conf === 'medium' ? 'Mittlere Sicherheit: ' : 'Niedrige Sicherheit: ');
-
-  if (zone === 'real') {
-    return `${prefix}Tendenz zu echter Aufnahme.`;
-  }
-  if (zone === 'ai') {
-    return `${prefix}Tendenz zu KI/Manipulation.`;
-  }
-  return `${prefix}Unklare Lage, weitere Pruefung empfohlen.`;
+function verdictFromPercent(aiPercent) {
+  if (aiPercent === null || aiPercent === undefined) return { key: 'uncertain', label: 'Unsicher' };
+  if (aiPercent >= 90) return { key: 'ai', label: 'Sehr wahrscheinlich KI' };
+  if (aiPercent >= 65) return { key: 'ai', label: 'Eher KI' };
+  if (aiPercent >= 35) return { key: 'uncertain', label: 'Unsicher' };
+  if (aiPercent >= 11) return { key: 'real', label: 'Eher echt' };
+  return { key: 'real', label: 'Sehr wahrscheinlich echt' };
 }
 
 function extractSignalValue(signals, key) {
@@ -119,7 +104,9 @@ function normalizeResult(data) {
   const engineResults = normalizeEngineResults(data?.engine_results);
   const finalAi = (typeof data?.final_ai === 'number') ? data.final_ai : null;
   const finalReal = (typeof data?.final_real === 'number') ? data.final_real : null;
+  const aiLikelihood = (typeof data?.ai_likelihood === 'number') ? data.ai_likelihood : null;
   const reasons = Array.isArray(data?.reasons) ? data.reasons : [];
+  const conflict = (typeof data?.conflict === 'boolean') ? data.conflict : null;
   const confidenceLabel = typeof data?.confidence_label === 'string'
     ? data.confidence_label.toLowerCase()
     : null;
@@ -128,8 +115,10 @@ function normalizeResult(data) {
     media_type: typeof data?.media_type === 'string' ? data.media_type.toLowerCase() : 'image',
     final_ai: finalAi,
     final_real: finalReal,
+    ai_likelihood: aiLikelihood,
     confidence_label: confidenceLabel,
     reasons,
+    conflict,
     engine_results: engineResults,
   };
 }
@@ -142,9 +131,9 @@ export function renderAnalysisResult(resultJson, { expertMode = false } = {}) {
   const ffmpegMissing = mediaType === 'video'
     && videoForensics
     && String(videoForensics.notes || '').includes('ffmpeg_not_installed');
-  const finalAiPercent = percentFromValue(r.final_ai);
-  const finalRealPercent = percentFromValue(r.final_real !== null ? r.final_real : (r.final_ai !== null ? 1 - r.final_ai : null));
-  const summaryLine = summaryText(finalAiPercent, r.confidence_label);
+  const aiValue = (r.final_ai !== null ? r.final_ai : r.ai_likelihood);
+  const finalAiPercent = percentFromValue(aiValue);
+  const verdict = verdictFromPercent(finalAiPercent);
 
   const confidenceMap = {
     high: { label: 'Hoch', badge: 'badge-green' },
@@ -153,14 +142,14 @@ export function renderAnalysisResult(resultJson, { expertMode = false } = {}) {
   };
   const confidenceInfo = confidenceMap[r.confidence_label] || { label: 'Unbekannt', badge: 'badge-yellow' };
 
-  const reasonsList = (r.reasons && r.reasons.length)
-    ? r.reasons.slice(0, 3).map((reason) => `<li>${String(reason)}</li>`).join('')
-    : '<li>Keine weiteren Hinweise.</li>';
-
   const detectorEngines = mediaType === 'video'
     ? new Set(['video_frame_detectors', 'reality_defender_video'])
     : new Set(['sightengine', 'reality_defender', 'hive']);
   const detectors = r.engine_results.filter((e) => detectorEngines.has(e.engine));
+  const availableDetectorCount = detectors.filter(
+    (engine) => engine.available !== false && typeof engine.ai_likelihood === 'number'
+  ).length;
+  const detectorsAligned = availableDetectorCount >= 2 && r.conflict === false;
   const detectorsHtml = detectors.length
     ? detectors.map((engine) => {
       const available = engine.available !== false;
@@ -297,6 +286,19 @@ export function renderAnalysisResult(resultJson, { expertMode = false } = {}) {
     `
     : '';
 
+  let reasonLine = '';
+  if (r.conflict === true) {
+    reasonLine = 'Detektoren widersprechen sich.';
+  } else if (verdict.key === 'uncertain' || r.final_ai === null) {
+    reasonLine = 'Zu wenig verwertbare Signale.';
+  } else if (detectorsAligned) {
+    reasonLine = 'Mehrere Detektoren stimmen &uuml;berein.';
+  } else if (r.reasons && r.reasons.length) {
+    reasonLine = String(r.reasons[0]);
+  } else {
+    reasonLine = 'Ergebnis basiert auf den verf&uuml;gbaren Signalen.';
+  }
+
   return `
     ${ffmpegMissing ? `
       <div class="ac-card">
@@ -304,20 +306,15 @@ export function renderAnalysisResult(resultJson, { expertMode = false } = {}) {
       </div>
     ` : ''}
     <div class="ac-card ac-result-card" role="status" aria-live="polite">
-      <div class="ac-card-title">Final</div>
-      <div class="ac-result-hero">
-        <div class="ac-result-percent">${mediaType === 'video' ? 'Video KI' : 'KI'}: ${finalAiPercent !== null ? `${finalAiPercent}%` : "--"}</div>
-        <div class="ac-result-percent">Echt: ${finalRealPercent !== null ? `${finalRealPercent}%` : '—'}</div>
-      </div>
+      <div class="ac-result-headline">${verdict.label}</div>
       <div class="ac-result-row">
         <span class="ac-traffic-badge ${confidenceInfo.badge}">Sicherheit: ${confidenceInfo.label}</span>
         ${mediaType === 'video' && framesScored !== null ? `<span class="ac-subtle">Basierend auf ${framesScored} Frames</span>` : ''}
       </div>
-      <div class="ac-result-expl">${summaryLine}</div>
-      <div class="ac-result-reasons">
-        <div class="ac-subtle"><b>Warum?</b></div>
-        <ul class="ac-compare-list">${reasonsList}</ul>
+      <div class="ac-result-hero">
+        <div class="ac-result-percent">KI-Wahrscheinlichkeit: ${finalAiPercent !== null ? `${finalAiPercent}%` : '—'}</div>
       </div>
+      <div class="ac-result-expl">${reasonLine}</div>
     </div>
 
     <div class="ac-card">

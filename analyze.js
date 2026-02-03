@@ -45,9 +45,7 @@ function renderResultCard(data, expertMode = false) {
     ? 'ac-result-icon is-real'
     : (verdict === 'fake' ? 'ac-result-icon is-fake' : 'ac-result-icon is-uncertain');
 
-  const metricLabel = verdict === 'real'
-    ? `Echt: ${real}%`
-    : `KI: ${fake}%`;
+  const metricLabel = `KI-Wahrscheinlichkeit: ${Number.isFinite(fake) ? `${Math.round(fake)}%` : '—'}`;
 
   const confidenceLabel = confidence === 'high' ? 'Hoch' : (confidence === 'medium' ? 'Mittel' : 'Niedrig');
   const confidenceHint = 'Niedrig bedeutet: Ergebnis unsicher / gemischte Signale';
