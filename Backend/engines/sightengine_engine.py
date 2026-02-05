@@ -11,6 +11,12 @@ def _paid_apis_enabled():
     return os.getenv("AIREALCHECK_USE_PAID_APIS", "false").lower() in {"1", "true", "yes"}
 
 
+def _paid_api_timeouts():
+    connect = float(os.getenv("AIREALCHECK_PAID_API_CONNECT_TIMEOUT_SEC", "8"))
+    read = float(os.getenv("AIREALCHECK_PAID_API_READ_TIMEOUT_SEC", "25"))
+    return connect, read
+
+
 def _parse_api_credentials():
     api_key = (os.getenv("SIGHTENGINE_API_KEY") or "").strip()
     if api_key:
@@ -68,7 +74,7 @@ def run_sightengine(file_path: str):
                 "api_user": api_user,
                 "api_secret": api_secret,
             }
-            resp = requests.post(_API_URL, files=files, data=data, timeout=(5, 20))
+            resp = requests.post(_API_URL, files=files, data=data, timeout=_paid_api_timeouts())
     except Exception:
         return _not_available()
 

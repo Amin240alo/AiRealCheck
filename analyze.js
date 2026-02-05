@@ -9,6 +9,7 @@ const idMap = { image: '#imageInput', video: '#videoInput', audio: '#audioInput'
 const urlIdMap = { image: '#imageUrl', video: '#videoUrl', audio: '#audioUrl' };
 const ANALYSIS_COSTS = { image: 10, video: 15, audio: 20 };
 const DEFAULT_API_BASE = 'http://127.0.0.1:5001';
+const DEFAULT_ANALYZE_TIMEOUT_MS = 180000;
 let authRef = null;
 let helpersRef = null;
 let apiBase = DEFAULT_API_BASE;
@@ -114,6 +115,19 @@ function renderResultCard(data, expertMode = false) {
         ${detailsBody}
       </div>
     </div>`;
+}
+
+
+function getAnalyzeTimeoutMs() {
+  const fromWindow = Number(
+    window?.AIREALCHECK_CONFIG?.analyzeTimeoutMs
+    ?? window?.AIREALCHECK_ANALYZE_TIMEOUT_MS
+  );
+  const fromMeta = Number(document.querySelector('meta[name="ac-analyze-timeout-ms"]')?.content);
+  const value = (Number.isFinite(fromWindow) && fromWindow > 0)
+    ? fromWindow
+    : ((Number.isFinite(fromMeta) && fromMeta > 0) ? fromMeta : DEFAULT_ANALYZE_TIMEOUT_MS);
+  return Math.max(10000, value);
 }
 
 
@@ -314,7 +328,7 @@ async function analyzeFile(mediaType) {
   formData.append('nonce', String(nonce));
 
   const controller = new AbortController();
-  const timeoutHandle = setTimeout(() => controller.abort(), 60000);
+  const timeoutHandle = setTimeout(() => controller.abort(), getAnalyzeTimeoutMs());
 
   try {
     const isGuest = !authRef.isLoggedIn();
@@ -496,7 +510,7 @@ async function analyzeLink(mediaType) {
   }
 
   const controller = new AbortController();
-  const timeoutHandle = setTimeout(() => controller.abort(), 60000);
+  const timeoutHandle = setTimeout(() => controller.abort(), getAnalyzeTimeoutMs());
 
   try {
     const isGuest = !authRef.isLoggedIn();

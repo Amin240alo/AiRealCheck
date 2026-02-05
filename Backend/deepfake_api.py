@@ -29,6 +29,12 @@ def _paid_apis_enabled():
     return os.getenv("AIREALCHECK_USE_PAID_APIS", "false").lower() in {"1", "true", "yes"}
 
 
+def _paid_api_timeouts():
+    connect = float(os.getenv("AIREALCHECK_PAID_API_CONNECT_TIMEOUT_SEC", "8"))
+    read = float(os.getenv("AIREALCHECK_PAID_API_READ_TIMEOUT_SEC", "45"))
+    return connect, read
+
+
 def _normalize_classes(classes):
     """Mappt unterschiedliche Bezeichner auf 'real'/'fake' und liefert Scores in [0, 100]."""
     real = None
@@ -160,7 +166,7 @@ def analyze_with_hive(file_path: str):
         nonlocal auth_error
         payload = {"model": model_name, "input": [{"image": v} for v in variants]}
         try:
-            r = requests.post(url, headers=headers, json=payload, timeout=45)
+            r = requests.post(url, headers=headers, json=payload, timeout=_paid_api_timeouts())
         except requests.RequestException as e:
             return None, [f"{model_name}: {str(e)}"]
 

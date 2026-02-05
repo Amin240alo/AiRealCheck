@@ -437,6 +437,11 @@ body {
   color: var(--muted);
   font-size: .85rem;
 }
+.ac-engine-desc {
+  margin-top: 4px;
+  font-size: .85rem;
+  color: var(--muted);
+}
 .ac-engine-notes {
   margin-top: 4px;
   font-size: .9rem;

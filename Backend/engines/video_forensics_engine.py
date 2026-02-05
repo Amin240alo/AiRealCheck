@@ -44,6 +44,51 @@ def _error(notes="error"):
     }
 
 
+def _clamp01(value):
+    try:
+        v = float(value)
+    except Exception:
+        return 0.0
+    if v < 0.0:
+        return 0.0
+    if v > 1.0:
+        return 1.0
+    return v
+
+
+def _baseline_video_ai(temporal_summary, blockiness_median, residual_consistency, frames_ok, timed_out):
+    if frames_ok < 5:
+        return None, "insufficient_frames"
+
+    ela_mean_cv = float(temporal_summary.get("ela_mean_cv") or 0.0)
+    ela_max_cv = float(temporal_summary.get("ela_max_cv") or 0.0)
+    sharpness_cv = float(temporal_summary.get("sharpness_cv") or 0.0)
+    hf_cv = float(temporal_summary.get("hf_cv") or 0.0)
+
+    temporal_score = max(
+        _clamp01(ela_mean_cv / 0.5),
+        _clamp01(ela_max_cv / 0.5),
+        _clamp01(sharpness_cv / 0.5),
+        _clamp01(hf_cv / 0.35),
+    )
+    blockiness_score = _clamp01((float(blockiness_median) - 1.0) / 0.6)
+    residual_score = _clamp01((float(residual_consistency) - 0.2) / 0.4)
+
+    if temporal_score < 0.05 and blockiness_score < 0.05 and residual_score < 0.05:
+        return None, "no_signals"
+
+    baseline = (
+        0.15
+        + (0.45 * temporal_score)
+        + (0.25 * blockiness_score)
+        + (0.15 * residual_score)
+    )
+    if timed_out and frames_ok < 8:
+        baseline = min(baseline, 0.55)
+    baseline = min(baseline, 0.85)
+    return _clamp01(baseline), "ok"
+
+
 def _no_frames_result(stderr_snippet=""):
     signals = ["no_frames"]
     if stderr_snippet:
@@ -101,10 +146,13 @@ def _blockiness_score(gray):
     if h < 16 or w < 16:
         return 0.0
     gray = gray.astype(np.float32)
-    v_boundary = np.abs(gray[:, 7::8] - gray[:, 8::8]).mean() if w > 8 else 0.0
-    h_boundary = np.abs(gray[7::8, :] - gray[8::8, :]).mean() if h > 8 else 0.0
-    v_non = np.abs(gray[:, 1::8] - gray[:, 2::8]).mean() if w > 2 else 0.0
-    h_non = np.abs(gray[1::8, :] - gray[2::8, :]).mean() if h > 2 else 0.0
+    try:
+        v_boundary = np.abs(gray[:, 8:] - gray[:, :-8]).mean()
+        h_boundary = np.abs(gray[8:, :] - gray[:-8, :]).mean()
+        v_non = np.abs(gray[:, 1:] - gray[:, :-1]).mean()
+        h_non = np.abs(gray[1:, :] - gray[:-1, :]).mean()
+    except Exception:
+        return 0.0
     boundary = (v_boundary + h_boundary) * 0.5
     non_boundary = (v_non + h_non) * 0.5
     return float(boundary / (non_boundary + 1e-6))
@@ -991,6 +1039,19 @@ def run_video_forensics(file_path: str):
     frames_extracted_count = int(extract_meta.get("frames_extracted_count") or len(frames))
     frames_selected_count = len(indices)
 
+    baseline_ai, baseline_note = _baseline_video_ai(
+        temporal_summary,
+        blockiness_median,
+        residual_consistency,
+        frames_ok,
+        timed_out,
+    )
+    if baseline_ai is not None:
+        notes_parts.append(f"baseline_ai:{baseline_ai:.3f}")
+        notes_parts.append("baseline_confidence:low")
+    elif baseline_note:
+        notes_parts.append(f"baseline_skipped:{baseline_note}")
+
     signals = [
         f"frames_analyzed:{frames_ok}",
         f"frames_extracted:{frames_extracted_count}",
@@ -1014,13 +1075,15 @@ def run_video_forensics(file_path: str):
         f"noise_residual_consistency cv={residual_consistency:.2f} median={median(residual_std):.2f}",
         f"extractor:{extract_meta.get('method', 'unknown')}",
     ]
+    if baseline_ai is not None:
+        signals.append(f"baseline_ai:{baseline_ai:.3f}")
     if face_cascade is not None:
         signals.append(f"face_presence frames={faces_found}/{frames_ok}")
 
     return {
         "engine": "video_forensics",
-        "ai_likelihood": None,
-        "confidence": 0.0,
+        "ai_likelihood": baseline_ai,
+        "confidence": 0.25 if baseline_ai is not None else 0.0,
         "signals": signals[:6],
         "notes": ";".join(notes_parts),
         "status": "ok",

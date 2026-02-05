@@ -11,6 +11,7 @@ import uuid
 from Backend.ensemble import run_ensemble, build_standard_result
 from Backend.engines.video_forensics_engine import run_video_forensics, log_ffmpeg_diagnostics
 from Backend.engines.video_frame_detectors_engine import run_video_frame_detectors
+from Backend.engines.video_temporal_engine import run_video_temporal
 from Backend.video_url_fetcher import fetch_video_from_url, VideoUrlError
 from Backend.db import init_db
 from Backend.models import Base, User
@@ -219,7 +220,13 @@ def _run_analysis_path(file_path, filename, media_type="image", user_ctx=None, c
         elif _is_video_ext(filename) and media_type == "video":
             video_forensics = run_video_forensics(file_path)
             video_detectors = run_video_frame_detectors(file_path)
-            engine_results_raw = [video_detectors, video_forensics]
+            video_temporal = run_video_temporal(file_path)
+            extra_engines = []
+            if isinstance(video_detectors, dict):
+                extra = video_detectors.get("extra_engine_results")
+                if isinstance(extra, list):
+                    extra_engines = [e for e in extra if isinstance(e, dict)]
+            engine_results_raw = [video_detectors] + extra_engines + [video_temporal, video_forensics]
 
             standard_payload = build_standard_result(
                 media_type=media_type,

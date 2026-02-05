@@ -6,4 +6,5 @@ def analyze_reality_defender_video(asset_path: str) -> dict:
     if isinstance(result, dict):
         result = dict(result)
         result["engine"] = "reality_defender_video"
+        result.setdefault("optional", True)
     return result

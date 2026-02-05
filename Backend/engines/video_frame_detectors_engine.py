@@ -1,6 +1,8 @@
 import os
 import subprocess
 import tempfile
+import time
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeout
 from pathlib import Path
 from statistics import median
 
@@ -74,6 +76,46 @@ def _iqr(values):
     if p25 is None or p75 is None:
         return None
     return max(0.0, p75 - p25)
+
+
+def _rd_timeout_result():
+    return {
+        "engine": "reality_defender_video",
+        "ai_likelihood": None,
+        "confidence": 0.0,
+        "signals": ["timeout"],
+        "notes": "timeout",
+        "available": False,
+        "status": "timeout",
+    }
+
+
+def _rd_skipped_result(reason="skipped"):
+    return {
+        "engine": "reality_defender_video",
+        "ai_likelihood": None,
+        "confidence": 0.0,
+        "signals": ["skipped"],
+        "notes": reason if isinstance(reason, str) and reason else "skipped",
+        "available": False,
+        "status": "skipped",
+    }
+
+
+def _run_reality_defender_with_budget(asset_path: str, budget_sec: float):
+    if budget_sec <= 0:
+        return _rd_skipped_result("skipped")
+    executor = ThreadPoolExecutor(max_workers=1)
+    try:
+        future = executor.submit(analyze_reality_defender, asset_path)
+        try:
+            return future.result(timeout=budget_sec)
+        except FutureTimeout:
+            return _rd_timeout_result()
+        except Exception:
+            return _rd_skipped_result("error")
+    finally:
+        executor.shutdown(wait=False)
 
 
 def _extract_frames_to_dir(file_path, tmpdir, max_frames, scan_fps, timeout_sec):
@@ -169,11 +211,21 @@ def run_video_frame_detectors(file_path: str) -> dict:
             "signals": ["no_detectors"],
             "notes": "not_available",
             "available": False,
+            "extra_engine_results": [_rd_skipped_result("skipped")],
         }
 
-    max_detector_frames = int(os.getenv("AIREALCHECK_VIDEO_MAX_DETECTOR_FRAMES", "20"))
-    scan_fps = float(os.getenv("AIREALCHECK_VIDEO_SCAN_FPS", "2"))
-    timeout_sec = float(os.getenv("AIREALCHECK_VIDEO_FRAME_TIMEOUT_SEC", "25"))
+    max_detector_frames = int(
+        os.getenv("AIREALCHECK_VIDEO_DETECTOR_MAX_FRAMES", os.getenv("AIREALCHECK_VIDEO_MAX_DETECTOR_FRAMES", "12"))
+    )
+    scan_fps = float(
+        os.getenv("AIREALCHECK_VIDEO_DETECTOR_SCAN_FPS", os.getenv("AIREALCHECK_VIDEO_SCAN_FPS", "1.5"))
+    )
+    timeout_sec = float(
+        os.getenv("AIREALCHECK_VIDEO_DETECTOR_TIMEOUT_SEC", os.getenv("AIREALCHECK_VIDEO_FRAME_TIMEOUT_SEC", "20"))
+    )
+    rd_budget_sec = float(
+        os.getenv("AIREALCHECK_VIDEO_RD_BUDGET_SEC", os.getenv("AIREALCHECK_VIDEO_RD_TIMEOUT_SEC", "25"))
+    )
 
     base_tmp = tempfile.gettempdir()
     os.makedirs(base_tmp, exist_ok=True)
@@ -197,6 +249,7 @@ def run_video_frame_detectors(file_path: str) -> dict:
                 "signals": [f"frames_extracted:0"],
                 "notes": note,
                 "available": False,
+                "extra_engine_results": [_rd_skipped_result(note)],
             }
 
         if extracted_count > max_detector_frames:
@@ -208,6 +261,11 @@ def run_video_frame_detectors(file_path: str) -> dict:
 
         frame_scores = []
         failures = 0
+        rd_engine_result = None
+        rd_frame_path = None
+        rd_budget_start = time.time()
+        if use_reality_defender and selected:
+            rd_frame_path = selected[len(selected) // 2]
         for frame_path in selected:
             per_frame_scores = []
             per_frame_engines = []
@@ -218,11 +276,31 @@ def run_video_frame_detectors(file_path: str) -> dict:
                     per_frame_scores.append(float(se.get("ai_likelihood")))
                     per_frame_engines.append("sightengine")
 
-            if use_reality_defender:
-                rd = analyze_reality_defender(str(frame_path))
-                if rd.get("available") and isinstance(rd.get("ai_likelihood"), (int, float)):
-                    per_frame_scores.append(float(rd.get("ai_likelihood")))
-                    per_frame_engines.append("reality_defender")
+            if use_reality_defender and rd_frame_path and frame_path == rd_frame_path and rd_engine_result is None:
+                elapsed = time.time() - rd_budget_start
+                remaining = max(0.0, rd_budget_sec - elapsed)
+                if remaining <= 0:
+                    rd_engine_result = _rd_skipped_result("skipped")
+                else:
+                    rd = _run_reality_defender_with_budget(str(frame_path), remaining)
+                    if isinstance(rd, dict):
+                        rd_engine_result = dict(rd)
+                    else:
+                        rd_engine_result = _rd_skipped_result("error")
+                    rd_engine_result["engine"] = "reality_defender_video"
+                    if not rd_engine_result.get("available"):
+                        status = rd_engine_result.get("status") or "skipped"
+                        if status not in {"timeout", "skipped"}:
+                            status = "skipped"
+                        rd_engine_result["status"] = status
+                        rd_engine_result["available"] = False
+                        rd_engine_result["ai_likelihood"] = None
+                        rd_engine_result["confidence"] = 0.0
+                        rd_engine_result["notes"] = rd_engine_result.get("notes") or status
+                        rd_engine_result["signals"] = rd_engine_result.get("signals") or [status]
+                    if rd_engine_result.get("available") and isinstance(rd_engine_result.get("ai_likelihood"), (int, float)):
+                        per_frame_scores.append(float(rd_engine_result.get("ai_likelihood")))
+                        per_frame_engines.append("reality_defender")
 
             if per_frame_scores:
                 frame_scores.append(median(per_frame_scores))
@@ -242,6 +320,7 @@ def run_video_frame_detectors(file_path: str) -> dict:
                 ],
                 "notes": "partial",
                 "available": False,
+                "extra_engine_results": [_rd_skipped_result("skipped")],
             }
 
         video_ai = median(frame_scores)
@@ -260,6 +339,8 @@ def run_video_frame_detectors(file_path: str) -> dict:
             confidence_label = "low"
             confidence_value = 0.35
 
+        if rd_engine_result is None:
+            rd_engine_result = _rd_skipped_result("skipped")
         notes = "ok" if failures == 0 else "partial"
         signals = [
             f"frames_extracted:{extracted_count}",
@@ -277,4 +358,5 @@ def run_video_frame_detectors(file_path: str) -> dict:
             "signals": signals[:6],
             "notes": notes,
             "available": True,
+            "extra_engine_results": [rd_engine_result],
         }

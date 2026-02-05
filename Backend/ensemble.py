@@ -4,12 +4,13 @@ from Backend.engines.hive_engine import run_hive, hive_health_check
 from Backend.engines.sightengine_engine import run_sightengine
 from Backend.engines.reality_defender_engine import analyze_reality_defender
 from Backend.engines.forensics_engine import run_forensics
+from Backend.engines.xception_engine import run_xception
 from Backend.engines.c2pa_engine import analyze_c2pa
 from Backend.engines.watermark_engine import analyze_watermark
 
-IMAGE_ENGINES = ["hive", "forensics", "sightengine", "reality_defender", "c2pa", "watermark"]
-VIDEO_ENGINES = ["video_frame_detectors", "reality_defender_video", "video_forensics"]
-DETECTOR_ENGINES_IMAGE = {"sightengine", "reality_defender", "hive"}
+IMAGE_ENGINES = ["hive", "forensics", "sightengine", "reality_defender", "xception", "c2pa", "watermark"]
+VIDEO_ENGINES = ["video_frame_detectors", "reality_defender_video", "video_temporal", "video_forensics"]
+DETECTOR_ENGINES_IMAGE = {"sightengine", "reality_defender", "hive", "xception"}
 DETECTOR_ENGINES_VIDEO = {"reality_defender_video", "video_frame_detectors"}
 
 
@@ -200,28 +201,40 @@ def _collect_detector_values(engine_results, media_type="image"):
 def compute_final_score(engine_results, media_type="image"):
     detector_values = _collect_detector_values(engine_results, media_type=media_type)
 
+    if media_type == "video":
+        if len(detector_values) >= 2:
+            return _median(detector_values)
+        if len(detector_values) == 1:
+            return detector_values[0]
+        temporal_value = None
+        for entry in engine_results or []:
+            if not isinstance(entry, dict):
+                continue
+            if entry.get("engine") != "video_temporal":
+                continue
+            if not entry.get("available"):
+                continue
+            temporal_value = _normalize_ai01(entry.get("ai_likelihood"))
+            if temporal_value is not None:
+                break
+        if temporal_value is not None:
+            return min(temporal_value, 0.40)
+        return None
+
     if len(detector_values) >= 2:
         return _median(detector_values)
+
     if len(detector_values) == 1:
         return detector_values[0]
 
-    if media_type == "video":
-        return None
-
-    for entry in engine_results or []:
-        if not isinstance(entry, dict):
-            continue
-        if entry.get("engine") != "forensics":
-            continue
-        if not entry.get("available"):
-            continue
-        return _normalize_ai01(entry.get("ai_likelihood"))
     return None
 
 
 def compute_confidence(engine_results, final_ai, media_type="image"):
     c2pa_verified = False
     detector_values = []
+    temporal_value = None
+    forensics_value = None
 
     for entry in engine_results or []:
         if not isinstance(entry, dict):
@@ -236,20 +249,54 @@ def compute_confidence(engine_results, final_ai, media_type="image"):
             ai_value = _normalize_ai01(entry.get("ai_likelihood"))
             if ai_value is not None:
                 detector_values.append(ai_value)
+        if media_type == "video" and engine == "video_temporal" and entry.get("available"):
+            temporal_value = _normalize_ai01(entry.get("ai_likelihood"))
+        if media_type == "video" and engine == "video_forensics" and entry.get("available"):
+            forensics_value = _normalize_ai01(entry.get("ai_likelihood"))
 
     if c2pa_verified:
         return "high", ["Content Credentials verifiziert"]
 
     if media_type == "video" and len(detector_values) == 0:
-        return "low", ["Keine Bild-Detektoren aktiv fuer Video-Frames."]
+        if temporal_value is not None:
+            return "low", ["Keine Bild-Detektoren aktiv fuer Video-Frames.", "fallback:temporal"]
+        return "low", ["Keine Bild-Detektoren aktiv fuer Video-Frames.", "fallback:none"]
 
     if len(detector_values) >= 2:
         diff = max(detector_values) - min(detector_values)
         if diff <= 0.15:
-            return "high", ["Modelle stimmen ueberein"]
-        return "medium", ["Modelle uneinig", "Zweiten Check empfohlen"]
+            label = "high"
+            reasons = ["Modelle stimmen ueberein"]
+        else:
+            label = "medium"
+            reasons = ["Modelle uneinig", "Zweiten Check empfohlen"]
+    else:
+        label = "low"
+        reasons = ["Nur wenige Signale verfuegbar"]
 
-    return "low", ["Nur wenige Signale verfuegbar"]
+    if media_type == "video" and detector_values and final_ai is not None:
+        if temporal_value is not None:
+            delta = abs(final_ai - temporal_value)
+            if delta >= 0.40:
+                label = "low"
+                reasons = reasons + ["temporal_conflict"]
+            elif delta >= 0.25 and label == "high":
+                label = "medium"
+                reasons = reasons + ["temporal_conflict"]
+            elif delta >= 0.25:
+                reasons = reasons + ["temporal_conflict"]
+        if forensics_value is not None:
+            delta = abs(final_ai - forensics_value)
+            if delta >= 0.40:
+                label = "low"
+                reasons = reasons + ["forensics_conflict"]
+            elif delta >= 0.25 and label == "high":
+                label = "medium"
+                reasons = reasons + ["forensics_conflict"]
+            elif delta >= 0.25:
+                reasons = reasons + ["forensics_conflict"]
+
+    return label, reasons
 
 
 def _log_calibration(final_ai, confidence_label, detector_values):
@@ -395,6 +442,7 @@ def run_ensemble(file_path: str):
     watermark_result = analyze_watermark(file_path)
     sightengine_result = run_sightengine(file_path)
     reality_defender_result = analyze_reality_defender(file_path)
+    xception_result = run_xception(file_path)
 
     engines = []
     warnings = []
@@ -483,6 +531,7 @@ def run_ensemble(file_path: str):
             forensics_result,
             sightengine_result,
             reality_defender_result,
+            xception_result,
             c2pa_result,
             watermark_result,
         ],

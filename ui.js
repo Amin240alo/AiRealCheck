@@ -100,6 +100,20 @@ function normalizeEngineResults(engineResults) {
     }));
 }
 
+const ENGINE_LABELS = {
+  sightengine: 'Sightengine',
+  reality_defender: 'Reality Defender',
+  hive: 'Hive',
+  xception: 'Xception (Local ML)',
+};
+
+const ENGINE_DESCRIPTIONS = {
+  sightengine: 'API-Detector fuer AI-Content.',
+  reality_defender: 'API-Detector fuer Deepfakes.',
+  hive: 'API-Detector fuer KI-Generierung.',
+  xception: 'Lokales ML-Modell (Xception).',
+};
+
 function normalizeResult(data) {
   const engineResults = normalizeEngineResults(data?.engine_results);
   const finalAi = (typeof data?.final_ai === 'number') ? data.final_ai : null;
@@ -144,7 +158,7 @@ export function renderAnalysisResult(resultJson, { expertMode = false } = {}) {
 
   const detectorEngines = mediaType === 'video'
     ? new Set(['video_frame_detectors', 'reality_defender_video'])
-    : new Set(['sightengine', 'reality_defender', 'hive']);
+    : new Set(['sightengine', 'reality_defender', 'hive', 'xception']);
   const detectors = r.engine_results.filter((e) => detectorEngines.has(e.engine));
   const availableDetectorCount = detectors.filter(
     (engine) => engine.available !== false && typeof engine.ai_likelihood === 'number'
@@ -153,17 +167,20 @@ export function renderAnalysisResult(resultJson, { expertMode = false } = {}) {
   const detectorsHtml = detectors.length
     ? detectors.map((engine) => {
       const available = engine.available !== false;
+      const label = ENGINE_LABELS[engine.engine] || engine.engine;
+      const desc = ENGINE_DESCRIPTIONS[engine.engine] || '';
       const score = available
-        ? (percentFromValue(engine.ai_likelihood) !== null ? `${percentFromValue(engine.ai_likelihood)}% KI` : '—')
+        ? (percentFromValue(engine.ai_likelihood) !== null ? `${percentFromValue(engine.ai_likelihood)}% KI` : '--')
         : 'nicht verfuegbar';
       const notes = String(engine?.notes || '');
       return `
         <div class="ac-engine-item ${available ? '' : 'is-disabled'}">
           <div class="ac-engine-head">
-            <div class="ac-engine-name">${engine.engine}</div>
+            <div class="ac-engine-name">${label}</div>
             <div class="ac-engine-score">${score}</div>
           </div>
           <div class="ac-engine-meta">Status: ${available ? 'verfuegbar' : 'nicht verfuegbar'}</div>
+          ${desc ? `<div class="ac-engine-desc">${desc}</div>` : ''}
           ${notes ? `<div class="ac-engine-notes">${notes}</div>` : ''}
         </div>
       `;
