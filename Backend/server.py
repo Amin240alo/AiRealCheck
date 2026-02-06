@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 import jwt
 import uuid
 
-from Backend.ensemble import run_ensemble, build_standard_result
+from Backend.ensemble import run_ensemble, build_standard_result, run_audio_ensemble
 from Backend.engines.video_forensics_engine import run_video_forensics, log_ffmpeg_diagnostics
 from Backend.engines.video_frame_detectors_engine import run_video_frame_detectors
 from Backend.engines.video_temporal_engine import run_video_temporal
@@ -54,6 +54,10 @@ ALLOWED_IMAGE_EXTS = {
 
 ALLOWED_VIDEO_EXTS = {
     ".mp4", ".mov", ".m4v", ".webm", ".mkv", ".avi", ".mpg", ".mpeg", ".3gp", ".ogv"
+}
+
+ALLOWED_AUDIO_EXTS = {
+    ".wav", ".mp3", ".m4a", ".ogg", ".flac"
 }
 
 CACHE_PATH = os.path.join(UPLOAD_DIR, "results_cache.json")
@@ -117,6 +121,11 @@ def _is_image_ext(filename: str) -> bool:
 def _is_video_ext(filename: str) -> bool:
     _, ext = os.path.splitext((filename or "").lower())
     return ext in ALLOWED_VIDEO_EXTS
+
+
+def _is_audio_ext(filename: str) -> bool:
+    _, ext = os.path.splitext((filename or "").lower())
+    return ext in ALLOWED_AUDIO_EXTS
 
 
 def _sha256_of_file(path: str) -> str:
@@ -227,6 +236,12 @@ def _run_analysis_path(file_path, filename, media_type="image", user_ctx=None, c
                 if isinstance(extra, list):
                     extra_engines = [e for e in extra if isinstance(e, dict)]
             engine_results_raw = [video_detectors] + extra_engines + [video_temporal, video_forensics]
+            audio_from_video = os.getenv("AIREALCHECK_ENABLE_AUDIO_FROM_VIDEO", "false").lower() in {"1", "true", "yes"}
+            if audio_from_video:
+                audio_bundle = run_audio_ensemble(file_path)
+                extra_audio = audio_bundle.get("engine_results_raw") if isinstance(audio_bundle, dict) else None
+                if isinstance(extra_audio, list):
+                    engine_results_raw.extend([e for e in extra_audio if isinstance(e, dict)])
 
             standard_payload = build_standard_result(
                 media_type=media_type,
@@ -269,6 +284,47 @@ def _run_analysis_path(file_path, filename, media_type="image", user_ctx=None, c
                         "status": video_detectors.get("status"),
                     },
                 }
+            return jsonify(response_payload)
+        elif _is_audio_ext(filename) and media_type == "audio":
+            audio_bundle = run_audio_ensemble(file_path)
+            engine_results_raw = audio_bundle.get("engine_results_raw") if isinstance(audio_bundle, dict) else []
+            if not isinstance(engine_results_raw, list):
+                engine_results_raw = []
+
+            standard_payload = build_standard_result(
+                media_type=media_type,
+                engine_results_raw=engine_results_raw,
+                analysis_id=analysis_id,
+                ai_likelihood=None,
+                reasons=None,
+                created_at=created_at_iso,
+            )
+
+            response_payload = dict(standard_payload)
+            response_payload["created_at"] = created_at_iso
+            response_payload["real"] = response_payload.get("real_likelihood")
+            response_payload["fake"] = response_payload.get("ai_likelihood")
+            response_payload["legacy"] = {
+                "verdict": response_payload.get("verdict"),
+                "real": response_payload.get("real_likelihood"),
+                "fake": response_payload.get("ai_likelihood"),
+                "confidence": response_payload.get("confidence_label"),
+                "primary_source": "audio_forensics",
+                "sources_used": [
+                    e.get("engine")
+                    for e in engine_results_raw
+                    if isinstance(e, dict) and e.get("available")
+                ],
+                "user_summary": response_payload.get("reasons", []),
+                "details": {},
+                "warnings": audio_bundle.get("warnings", []) if isinstance(audio_bundle, dict) else [],
+                "source": "audio_forensics",
+            }
+            response_payload["usage"] = {
+                "source": "audio_forensics",
+                "credit_spent": False,
+                "credits_left": None,
+            }
             return jsonify(response_payload)
         else:
             return jsonify({"ok": False, "error": "Nicht unterstuetzter Dateityp"}), 415

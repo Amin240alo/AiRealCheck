@@ -97,6 +97,10 @@ function normalizeEngineResults(engineResults) {
       notes: e.notes,
       status: e.status,
       available: e.available !== false,
+      samples: e.samples,
+      stddev: e.stddev,
+      range: e.range,
+      warning: e.warning,
     }));
 }
 
@@ -158,7 +162,9 @@ export function renderAnalysisResult(resultJson, { expertMode = false } = {}) {
 
   const detectorEngines = mediaType === 'video'
     ? new Set(['video_frame_detectors', 'reality_defender_video'])
-    : new Set(['sightengine', 'reality_defender', 'hive', 'xception']);
+    : (mediaType === 'audio'
+      ? new Set(['audio_forensics'])
+      : new Set(['sightengine', 'reality_defender', 'hive', 'xception']));
   const detectors = r.engine_results.filter((e) => detectorEngines.has(e.engine));
   const availableDetectorCount = detectors.filter(
     (engine) => engine.available !== false && typeof engine.ai_likelihood === 'number'
@@ -173,6 +179,17 @@ export function renderAnalysisResult(resultJson, { expertMode = false } = {}) {
         ? (percentFromValue(engine.ai_likelihood) !== null ? `${percentFromValue(engine.ai_likelihood)}% KI` : '--')
         : 'nicht verfuegbar';
       const notes = String(engine?.notes || '');
+      let xceptionExtras = '';
+      if (engine.engine === 'xception') {
+        const extras = [];
+        if (typeof engine.samples === 'number') extras.push(`Samples: ${engine.samples}`);
+        if (typeof engine.stddev === 'number') extras.push(`Stddev: ${engine.stddev.toFixed(6)}`);
+        if (typeof engine.range === 'number') extras.push(`Range: ${engine.range.toFixed(6)}`);
+        if (engine.warning) extras.push(`Warning: ${engine.warning}`);
+        if (extras.length) {
+          xceptionExtras = `<div class="ac-engine-notes">${extras.join(' • ')}</div>`;
+        }
+      }
       return `
         <div class="ac-engine-item ${available ? '' : 'is-disabled'}">
           <div class="ac-engine-head">
@@ -182,6 +199,7 @@ export function renderAnalysisResult(resultJson, { expertMode = false } = {}) {
           <div class="ac-engine-meta">Status: ${available ? 'verfuegbar' : 'nicht verfuegbar'}</div>
           ${desc ? `<div class="ac-engine-desc">${desc}</div>` : ''}
           ${notes ? `<div class="ac-engine-notes">${notes}</div>` : ''}
+          ${xceptionExtras}
         </div>
       `;
     }).join('')
@@ -218,7 +236,9 @@ export function renderAnalysisResult(resultJson, { expertMode = false } = {}) {
   }
   const watermarkNotes = watermark ? String(watermark.notes || '') : '';
 
-  const forensicsEngine = mediaType === 'video' ? 'video_forensics' : 'forensics';
+  const forensicsEngine = mediaType === 'video'
+    ? 'video_forensics'
+    : (mediaType === 'audio' ? 'audio_forensics' : 'forensics');
   const forensics = r.engine_results.find((e) => e.engine === forensicsEngine);
   const technicalSignals = (forensics?.signals || []).map((s) => String(s));
   const formatSignal = (signal) => {

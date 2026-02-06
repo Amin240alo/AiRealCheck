@@ -7,11 +7,14 @@ from Backend.engines.forensics_engine import run_forensics
 from Backend.engines.xception_engine import run_xception
 from Backend.engines.c2pa_engine import analyze_c2pa
 from Backend.engines.watermark_engine import analyze_watermark
+from Backend.engines.audio_forensics_engine import run_audio_forensics
 
 IMAGE_ENGINES = ["hive", "forensics", "sightengine", "reality_defender", "xception", "c2pa", "watermark"]
 VIDEO_ENGINES = ["video_frame_detectors", "reality_defender_video", "video_temporal", "video_forensics"]
+AUDIO_ENGINES = ["audio_forensics"]
 DETECTOR_ENGINES_IMAGE = {"sightengine", "reality_defender", "hive", "xception"}
 DETECTOR_ENGINES_VIDEO = {"reality_defender_video", "video_frame_detectors"}
+DETECTOR_ENGINES_AUDIO = {"audio_forensics"}
 
 
 def _clamp(value, lo=0.0, hi=100.0):
@@ -182,8 +185,15 @@ def _median(values):
     return (vals[mid - 1] + vals[mid]) / 2.0
 
 
-def _collect_detector_values(engine_results, media_type="image"):
-    detector_engines = DETECTOR_ENGINES_VIDEO if media_type == "video" else DETECTOR_ENGINES_IMAGE
+def _collect_detector_values(engine_results, media_type="image", include_xception=True):
+    if media_type == "video":
+        detector_engines = DETECTOR_ENGINES_VIDEO
+    elif media_type == "audio":
+        detector_engines = DETECTOR_ENGINES_AUDIO
+    else:
+        detector_engines = DETECTOR_ENGINES_IMAGE
+    if media_type == "image" and not include_xception:
+        detector_engines = {e for e in detector_engines if e != "xception"}
     values = []
     for entry in engine_results or []:
         if not isinstance(entry, dict):
@@ -199,7 +209,7 @@ def _collect_detector_values(engine_results, media_type="image"):
 
 
 def compute_final_score(engine_results, media_type="image"):
-    detector_values = _collect_detector_values(engine_results, media_type=media_type)
+    detector_values = _collect_detector_values(engine_results, media_type=media_type, include_xception=False)
 
     if media_type == "video":
         if len(detector_values) >= 2:
@@ -221,11 +231,33 @@ def compute_final_score(engine_results, media_type="image"):
             return min(temporal_value, 0.40)
         return None
 
+    if media_type == "audio":
+        if len(detector_values) >= 2:
+            return _median(detector_values)
+        if len(detector_values) == 1:
+            return detector_values[0]
+        return None
+
     if len(detector_values) >= 2:
         return _median(detector_values)
 
     if len(detector_values) == 1:
         return detector_values[0]
+
+    if media_type == "image":
+        xception_value = None
+        for entry in engine_results or []:
+            if not isinstance(entry, dict):
+                continue
+            if entry.get("engine") != "xception":
+                continue
+            if not entry.get("available"):
+                continue
+            xception_value = _normalize_ai01(entry.get("ai_likelihood"))
+            if xception_value is not None:
+                break
+        if xception_value is not None:
+            return max(0.35, min(0.65, xception_value))
 
     return None
 
@@ -235,6 +267,7 @@ def compute_confidence(engine_results, final_ai, media_type="image"):
     detector_values = []
     temporal_value = None
     forensics_value = None
+    xception_value = None
 
     for entry in engine_results or []:
         if not isinstance(entry, dict):
@@ -244,8 +277,16 @@ def compute_confidence(engine_results, final_ai, media_type="image"):
             signals = entry.get("signals") or []
             if any(str(s).strip().lower() == "signature_verified" for s in signals):
                 c2pa_verified = True
-        detector_set = DETECTOR_ENGINES_VIDEO if media_type == "video" else DETECTOR_ENGINES_IMAGE
+        if media_type == "video":
+            detector_set = DETECTOR_ENGINES_VIDEO
+        elif media_type == "audio":
+            detector_set = DETECTOR_ENGINES_AUDIO
+        else:
+            detector_set = DETECTOR_ENGINES_IMAGE
         if engine in detector_set and entry.get("available"):
+            if media_type == "image" and engine == "xception":
+                xception_value = _normalize_ai01(entry.get("ai_likelihood"))
+                continue
             ai_value = _normalize_ai01(entry.get("ai_likelihood"))
             if ai_value is not None:
                 detector_values.append(ai_value)
@@ -256,6 +297,19 @@ def compute_confidence(engine_results, final_ai, media_type="image"):
 
     if c2pa_verified:
         return "high", ["Content Credentials verifiziert"]
+
+    if media_type == "audio":
+        if len(detector_values) == 0:
+            return "low", ["Keine Audio-Signale verfuegbar"]
+        if len(detector_values) == 1:
+            return "low", ["Nur ein Audio-Signal verfuegbar"]
+        diff = max(detector_values) - min(detector_values)
+        if diff <= 0.15:
+            return "high", ["Audio-Signale stimmen ueberein"]
+        return "medium", ["Audio-Signale uneinig", "Zweiten Check empfohlen"]
+
+    if media_type == "image" and len(detector_values) == 0 and xception_value is not None:
+        return "low", ["Nur wenige Signale verfuegbar", "fallback:xception"]
 
     if media_type == "video" and len(detector_values) == 0:
         if temporal_value is not None:
@@ -273,6 +327,17 @@ def compute_confidence(engine_results, final_ai, media_type="image"):
     else:
         label = "low"
         reasons = ["Nur wenige Signale verfuegbar"]
+
+    if media_type == "image" and detector_values and final_ai is not None and xception_value is not None:
+        delta = abs(final_ai - xception_value)
+        if delta >= 0.40:
+            label = "low"
+            reasons = reasons + ["xception_conflict"]
+        elif delta >= 0.25 and label == "high":
+            label = "medium"
+            reasons = reasons + ["xception_conflict"]
+        elif delta >= 0.25:
+            reasons = reasons + ["xception_conflict"]
 
     if media_type == "video" and detector_values and final_ai is not None:
         if temporal_value is not None:
@@ -331,7 +396,14 @@ def _log_calibration(final_ai, confidence_label, detector_values):
 def build_standard_result(media_type, engine_results_raw, analysis_id, ai_likelihood, reasons=None, created_at=None):
     engine_results_raw = engine_results_raw or []
     by_engine = {r.get("engine"): r for r in engine_results_raw if isinstance(r, dict) and r.get("engine")}
-    engine_list = VIDEO_ENGINES if media_type == "video" else IMAGE_ENGINES
+    if media_type == "video":
+        engine_list = VIDEO_ENGINES
+    elif media_type == "audio":
+        engine_list = AUDIO_ENGINES
+    else:
+        engine_list = IMAGE_ENGINES
+    if media_type == "video" and "audio_forensics" in by_engine and "audio_forensics" not in engine_list:
+        engine_list = engine_list + ["audio_forensics"]
     normalized = [_normalize_engine_result(by_engine.get(name), name) for name in engine_list]
 
     if media_type == "video":
@@ -349,7 +421,7 @@ def build_standard_result(media_type, engine_results_raw, analysis_id, ai_likeli
         spread = max(ai_values) - min(ai_values)
     conflict = bool(len(ai_values) >= 2 and spread >= 40.0)
 
-    detector_values = _collect_detector_values(normalized, media_type=media_type)
+    detector_values = _collect_detector_values(normalized, media_type=media_type, include_xception=False)
     final_ai = compute_final_score(normalized, media_type=media_type)
     ai_for_output = final_ai if final_ai is not None else _normalize_ai01(ai_likelihood)
     if ai_for_output is None:
@@ -358,6 +430,20 @@ def build_standard_result(media_type, engine_results_raw, analysis_id, ai_likeli
         verdict, traffic_light, label_de, label_en = _verdict_from_ai(ai_for_output * 100.0)
     confidence = _compute_overall_confidence(spread, len(ai_values), conflict)
     confidence_label, confidence_reasons = compute_confidence(normalized, final_ai, media_type=media_type)
+    if media_type == "image":
+        non_xception_available = any(
+            e.get("available") and e.get("engine") in {"sightengine", "reality_defender", "hive"}
+            for e in normalized
+        )
+        xception_available = any(
+            e.get("available") and e.get("engine") == "xception"
+            for e in normalized
+        )
+        if (not non_xception_available) and xception_available:
+            verdict, traffic_light, label_de, label_en = "uncertain", "yellow", "Unsicher", "Uncertain"
+            confidence_label = "low"
+            confidence_reasons = ["Nur wenige Signale verfuegbar", "fallback:xception"]
+            confidence = min(confidence, 0.35)
     _log_calibration(final_ai, confidence_label, detector_values)
     if isinstance(reasons, list) and reasons:
         reasons_out = _build_reasons(verdict, conflict, len(ai_values), reasons_in=reasons)
@@ -405,6 +491,28 @@ def build_standard_result(media_type, engine_results_raw, analysis_id, ai_likeli
             for e in normalized
         ],
         "timestamps": {"created_at": created_at_value},
+    }
+
+
+def run_audio_ensemble(file_path: str):
+    audio_result = run_audio_forensics(file_path)
+    if not isinstance(audio_result, dict):
+        audio_result = {
+            "engine": "audio_forensics",
+            "ai_likelihood": None,
+            "confidence": 0.0,
+            "signals": [],
+            "notes": "error",
+            "status": "error",
+            "available": False,
+        }
+    warnings = []
+    if not audio_result.get("available"):
+        warnings.append("audio_forensics_unavailable")
+    return {
+        "engine_results_raw": [audio_result],
+        "primary_source": "audio_forensics",
+        "warnings": warnings,
     }
 
 

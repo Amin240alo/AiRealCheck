@@ -299,17 +299,6 @@ async function analyzeFile(mediaType) {
     return;
   }
 
-  // Audio vorerst blockieren
-  if (mediaType === 'audio') {
-    if (area) {
-      area.innerHTML = '<div class="ac-card"><b>Audio wird aktuell nicht unterstuetzt.</b></div>';
-    }
-    isAnalyzing = false;
-    updateAnalyzeState();
-    unlockActiveButton();
-    return;
-  }
-
   // Lade-Card
   if (area) {
     area.innerHTML = `

@@ -94,7 +94,13 @@ def run_xception(file_path: str):
         return _not_available("no_score", signals=["no_score"])
 
     confidence = max(ai_value, 1.0 - ai_value)
-    signals = ["model:xception", f"ai:{ai_value:.3f}"]
+    deterministic = False
+    if hasattr(deepfake_model, "determinism_enabled"):
+        try:
+            deterministic = bool(deepfake_model.determinism_enabled())
+        except Exception:
+            deterministic = False
+    signals = [f"deterministic:{1 if deterministic else 0}", "model:xception", f"ai:{ai_value:.3f}"]
     details = result.get("details")
     if isinstance(details, list):
         signals.extend([str(d) for d in details if d is not None])
@@ -114,4 +120,7 @@ def run_xception(file_path: str):
         "status": "ok",
         "timing_ms": int((time.time() - start) * 1000),
     }
+    for key in ("samples", "variance", "stddev", "range", "warning"):
+        if key in result:
+            payload[key] = result.get(key)
     return payload
