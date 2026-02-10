@@ -287,6 +287,9 @@ def _run_analysis_path(file_path, filename, media_type="image", user_ctx=None, c
             return jsonify(response_payload)
         elif _is_audio_ext(filename) and media_type == "audio":
             audio_bundle = run_audio_ensemble(file_path)
+            audio_primary_source = "audio_aasist"
+            if isinstance(audio_bundle, dict):
+                audio_primary_source = audio_bundle.get("primary_source") or audio_primary_source
             engine_results_raw = audio_bundle.get("engine_results_raw") if isinstance(audio_bundle, dict) else []
             if not isinstance(engine_results_raw, list):
                 engine_results_raw = []
@@ -309,7 +312,7 @@ def _run_analysis_path(file_path, filename, media_type="image", user_ctx=None, c
                 "real": response_payload.get("real_likelihood"),
                 "fake": response_payload.get("ai_likelihood"),
                 "confidence": response_payload.get("confidence_label"),
-                "primary_source": "audio_forensics",
+                "primary_source": audio_primary_source,
                 "sources_used": [
                     e.get("engine")
                     for e in engine_results_raw
@@ -318,10 +321,10 @@ def _run_analysis_path(file_path, filename, media_type="image", user_ctx=None, c
                 "user_summary": response_payload.get("reasons", []),
                 "details": {},
                 "warnings": audio_bundle.get("warnings", []) if isinstance(audio_bundle, dict) else [],
-                "source": "audio_forensics",
+                "source": audio_primary_source,
             }
             response_payload["usage"] = {
-                "source": "audio_forensics",
+                "source": audio_primary_source,
                 "credit_spent": False,
                 "credits_left": None,
             }

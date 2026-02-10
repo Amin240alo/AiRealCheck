@@ -70,6 +70,23 @@ function percentFromValue(value) {
   return clampPercent(v);
 }
 
+function clamp01Value(value) {
+  const v = Number(value);
+  if (!Number.isFinite(v)) return null;
+  return Math.max(0, Math.min(1, v));
+}
+
+function escapeRegExp(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function truthySignal(value) {
+  if (value === true) return true;
+  if (value === false || value === null || value === undefined) return false;
+  const v = String(value).toLowerCase().trim();
+  return v === 'true' || v === '1' || v === 'yes';
+}
+
 function verdictFromPercent(aiPercent) {
   if (aiPercent === null || aiPercent === undefined) return { key: 'uncertain', label: 'Unsicher' };
   if (aiPercent >= 90) return { key: 'ai', label: 'Sehr wahrscheinlich KI' };
@@ -80,10 +97,29 @@ function verdictFromPercent(aiPercent) {
 }
 
 function extractSignalValue(signals, key) {
-  const match = (signals || []).find((s) => String(s).toLowerCase().startsWith(`${key}:`));
-  if (!match) return null;
-  const raw = String(match).split(':').slice(1).join(':');
-  return raw ? raw.trim() : null;
+  const wanted = String(key || '').toLowerCase();
+  const items = Array.isArray(signals) ? signals : [];
+  for (const entry of items) {
+    if (entry && typeof entry === 'object') {
+      const name = String(entry.name || '').toLowerCase();
+      if (name === wanted) {
+        return entry.value;
+      }
+    }
+    const raw = String(entry || '');
+    const prefixMatch = raw.match(new RegExp(`^\\s*${escapeRegExp(key)}\\s*[:=]\\s*(.+)$`, 'i'));
+    if (prefixMatch && prefixMatch[1]) {
+      return prefixMatch[1].trim();
+    }
+    const nameMatch = raw.match(/name'\\s*:\\s*'([^']+)'/i) || raw.match(/\"name\"\\s*:\\s*\"([^\"]+)\"/i);
+    if (nameMatch && String(nameMatch[1]).toLowerCase() === wanted) {
+      const valueMatch = raw.match(/value'\\s*:\\s*([^,}]+)/i) || raw.match(/\"value\"\\s*:\\s*([^,}]+)/i);
+      if (valueMatch && valueMatch[1]) {
+        return String(valueMatch[1]).replace(/^['"]|['"]$/g, '').trim();
+      }
+    }
+  }
+  return null;
 }
 
 function normalizeEngineResults(engineResults) {
@@ -109,6 +145,7 @@ const ENGINE_LABELS = {
   reality_defender: 'Reality Defender',
   hive: 'Hive',
   xception: 'Xception (Local ML)',
+  audio_aasist: 'AASIST (Local ML)',
 };
 
 const ENGINE_DESCRIPTIONS = {
@@ -116,6 +153,7 @@ const ENGINE_DESCRIPTIONS = {
   reality_defender: 'API-Detector fuer Deepfakes.',
   hive: 'API-Detector fuer KI-Generierung.',
   xception: 'Lokales ML-Modell (Xception).',
+  audio_aasist: 'Lokaler Audio-Spoofing-Detector.',
 };
 
 function normalizeResult(data) {
@@ -128,6 +166,7 @@ function normalizeResult(data) {
   const confidenceLabel = typeof data?.confidence_label === 'string'
     ? data.confidence_label.toLowerCase()
     : null;
+  const ensembleSignals = Array.isArray(data?.ensemble_signals) ? data.ensemble_signals : [];
 
   return {
     media_type: typeof data?.media_type === 'string' ? data.media_type.toLowerCase() : 'image',
@@ -138,6 +177,7 @@ function normalizeResult(data) {
     reasons,
     conflict,
     engine_results: engineResults,
+    ensemble_signals: ensembleSignals,
   };
 }
 
@@ -152,6 +192,15 @@ export function renderAnalysisResult(resultJson, { expertMode = false } = {}) {
   const aiValue = (r.final_ai !== null ? r.final_ai : r.ai_likelihood);
   const finalAiPercent = percentFromValue(aiValue);
   const verdict = verdictFromPercent(finalAiPercent);
+  const ensembleSignals = r.ensemble_signals || [];
+  const forcedUncertain = truthySignal(extractSignalValue(ensembleSignals, 'forced_uncertain'));
+  const audioProsodyAi = clamp01Value(extractSignalValue(ensembleSignals, 'prosody_ai'));
+  const audioProsodyPercent = audioProsodyAi !== null
+    ? clampPercent(Math.round(audioProsodyAi * 100))
+    : null;
+  const audioProsodyStrong = audioProsodyPercent !== null && audioProsodyPercent >= 70;
+  const displayVerdict = forcedUncertain ? { key: 'uncertain', label: 'Unsicher' } : verdict;
+  const displayAiPercent = forcedUncertain ? null : finalAiPercent;
 
   const confidenceMap = {
     high: { label: 'Hoch', badge: 'badge-green' },
@@ -163,7 +212,7 @@ export function renderAnalysisResult(resultJson, { expertMode = false } = {}) {
   const detectorEngines = mediaType === 'video'
     ? new Set(['video_frame_detectors', 'reality_defender_video'])
     : (mediaType === 'audio'
-      ? new Set(['audio_forensics'])
+      ? new Set(['audio_aasist'])
       : new Set(['sightengine', 'reality_defender', 'hive', 'xception']));
   const detectors = r.engine_results.filter((e) => detectorEngines.has(e.engine));
   const availableDetectorCount = detectors.filter(
@@ -175,9 +224,17 @@ export function renderAnalysisResult(resultJson, { expertMode = false } = {}) {
       const available = engine.available !== false;
       const label = ENGINE_LABELS[engine.engine] || engine.engine;
       const desc = ENGINE_DESCRIPTIONS[engine.engine] || '';
-      const score = available
+      let score = available
         ? (percentFromValue(engine.ai_likelihood) !== null ? `${percentFromValue(engine.ai_likelihood)}% KI` : '--')
         : 'nicht verfuegbar';
+      if (
+        mediaType === 'audio'
+        && engine.engine === 'audio_aasist'
+        && audioProsodyStrong
+        && String(score).startsWith('0%')
+      ) {
+        score = '<=5% KI';
+      }
       const notes = String(engine?.notes || '');
       let xceptionExtras = '';
       if (engine.engine === 'xception') {
@@ -336,6 +393,74 @@ export function renderAnalysisResult(resultJson, { expertMode = false } = {}) {
     reasonLine = 'Ergebnis basiert auf den verf&uuml;gbaren Signalen.';
   }
 
+  const audioWhyLines = [];
+  if (mediaType === 'audio') {
+    const aasist = r.engine_results.find((e) => e.engine === 'audio_aasist');
+    const prosody = r.engine_results.find((e) => e.engine === 'audio_prosody');
+    const toNumber = (value) => {
+      const v = Number(value);
+      return Number.isFinite(v) ? v : null;
+    };
+
+    const probSpoof = toNumber(extractSignalValue(aasist?.signals, 'prob_spoof'));
+    const probPercent = percentFromValue(probSpoof);
+    if (probPercent !== null) {
+      audioWhyLines.push(`AASIST: ${probPercent}% KI`);
+    }
+
+    const prosodyPercent = audioProsodyPercent;
+    const wValue = toNumber(extractSignalValue(ensembleSignals, 'ensemble_w_prosody'));
+    const wText = wValue !== null ? ` (w=${wValue.toFixed(2)})` : '';
+    const jitter = toNumber(extractSignalValue(prosody?.signals, 'jitter_approx'));
+    const f0Std = toNumber(extractSignalValue(prosody?.signals, 'f0_std_hz'));
+    const rmsCv = toNumber(extractSignalValue(prosody?.signals, 'rms_cv'));
+    let prosodyHint = '';
+    if (jitter !== null && f0Std !== null && rmsCv !== null) {
+      const jAi = clamp01Value((0.6 - jitter) / 0.6);
+      const fAi = clamp01Value((6.0 - f0Std) / 6.0);
+      const rAi = clamp01Value((0.35 - rmsCv) / 0.35);
+      if (jAi !== null && fAi !== null && rAi !== null) {
+        const smooth = 0.45 * jAi + 0.35 * fAi + 0.2 * rAi;
+        if (smooth >= 0.75) {
+          prosodyHint = 'Stimme auff\u00e4llig glatt';
+        } else if (smooth <= 0.35) {
+          prosodyHint = 'Stimme sehr variabel';
+        } else {
+          prosodyHint = 'Stimme gemischt';
+        }
+      }
+    }
+    if (prosodyPercent !== null) {
+      const hintText = prosodyHint ? ` - ${prosodyHint}` : '';
+      audioWhyLines.push(`Prosody-AI: ${prosodyPercent}%${wText}${hintText}`);
+    }
+    if (audioProsodyAi !== null && audioProsodyAi >= 0.70) {
+      audioWhyLines.push('Prosody deutet auf synthetische Stimmgl\u00e4tte hin');
+    }
+
+    const conflictSignals = extractSignalValue(ensembleSignals, 'conflict_signals');
+    if (truthySignal(conflictSignals)) {
+      audioWhyLines.push('Widerspruechliche Signale \u2192 Sicherheit reduziert');
+    }
+
+    const voicedRatio = toNumber(extractSignalValue(prosody?.signals, 'voiced_ratio'));
+    if (voicedRatio !== null && voicedRatio < 0.2) {
+      audioWhyLines.push('Prosody unsicher (wenig Stimme im Audio)');
+    }
+    const verdictIsEherEcht = String(verdict.label || '').toLowerCase().includes('eher echt');
+    if (verdictIsEherEcht && audioProsodyAi !== null && audioProsodyAi >= 0.60) {
+      audioWhyLines.push('\u26a0\ufe0f M\u00f6gliches KI-Audio trotz niedriger Gesamtwertung');
+    }
+  }
+  const audioWhyHtml = audioWhyLines.length
+    ? `
+      <div class="ac-result-details">
+        <div class="ac-result-sub">Warum?</div>
+        <ul class="ac-compare-list">${audioWhyLines.map((line) => `<li>${line}</li>`).join('')}</ul>
+      </div>
+    `
+    : '';
+
   return `
     ${ffmpegMissing ? `
       <div class="ac-card">
@@ -343,14 +468,15 @@ export function renderAnalysisResult(resultJson, { expertMode = false } = {}) {
       </div>
     ` : ''}
     <div class="ac-card ac-result-card" role="status" aria-live="polite">
-      <div class="ac-result-headline">${verdict.label}</div>
+      <div class="ac-result-headline">${displayVerdict.label}</div>
       <div class="ac-result-row">
         <span class="ac-traffic-badge ${confidenceInfo.badge}">Sicherheit: ${confidenceInfo.label}</span>
         ${mediaType === 'video' && framesScored !== null ? `<span class="ac-subtle">Basierend auf ${framesScored} Frames</span>` : ''}
       </div>
       <div class="ac-result-hero">
-        <div class="ac-result-percent">KI-Wahrscheinlichkeit: ${finalAiPercent !== null ? `${finalAiPercent}%` : '—'}</div>
+        <div class="ac-result-percent">KI-Wahrscheinlichkeit: ${displayAiPercent !== null ? `${displayAiPercent}%` : '—'}</div>
       </div>
+      ${audioWhyHtml}
       <div class="ac-result-expl">${reasonLine}</div>
     </div>
 
@@ -706,3 +832,4 @@ function setupExpertModeToggle() {
   });
   expertToggleBound = true;
 }
+

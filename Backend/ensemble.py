@@ -8,13 +8,15 @@ from Backend.engines.xception_engine import run_xception
 from Backend.engines.c2pa_engine import analyze_c2pa
 from Backend.engines.watermark_engine import analyze_watermark
 from Backend.engines.audio_forensics_engine import run_audio_forensics
+from Backend.engines.audio_aasist_engine import run_audio_aasist
+from Backend.engines.audio_prosody_engine import run_audio_prosody
 
 IMAGE_ENGINES = ["hive", "forensics", "sightengine", "reality_defender", "xception", "c2pa", "watermark"]
 VIDEO_ENGINES = ["video_frame_detectors", "reality_defender_video", "video_temporal", "video_forensics"]
-AUDIO_ENGINES = ["audio_forensics"]
+AUDIO_ENGINES = ["audio_forensics", "audio_aasist", "audio_prosody"]
 DETECTOR_ENGINES_IMAGE = {"sightengine", "reality_defender", "hive", "xception"}
 DETECTOR_ENGINES_VIDEO = {"reality_defender_video", "video_frame_detectors"}
-DETECTOR_ENGINES_AUDIO = {"audio_forensics"}
+DETECTOR_ENGINES_AUDIO = {"audio_aasist"}
 
 
 def _clamp(value, lo=0.0, hi=100.0):
@@ -175,6 +177,45 @@ def _normalize_ai01(value):
     return v
 
 
+def _clamp01(value):
+    try:
+        v = float(value)
+    except Exception:
+        return None
+    if v < 0.0:
+        return 0.0
+    if v > 1.0:
+        return 1.0
+    return v
+
+
+def _signal_value(signals, name):
+    if not isinstance(signals, list):
+        return None
+    target = str(name).strip().lower()
+    for entry in signals:
+        if isinstance(entry, dict):
+            if str(entry.get("name", "")).strip().lower() == target:
+                return entry.get("value")
+        elif isinstance(entry, str):
+            s = entry.strip()
+            s_lower = s.lower()
+            if s_lower.startswith(f"{target}:") or s_lower.startswith(f"{target}="):
+                sep = ":" if ":" in s else "="
+                parts = s.split(sep, 1)
+                if len(parts) == 2:
+                    return parts[1].strip()
+    return None
+
+
+def _signal_float(signals, name):
+    value = _signal_value(signals, name)
+    try:
+        return float(value)
+    except Exception:
+        return None
+
+
 def _median(values):
     if not values:
         return None
@@ -232,10 +273,8 @@ def compute_final_score(engine_results, media_type="image"):
         return None
 
     if media_type == "audio":
-        if len(detector_values) >= 2:
+        if detector_values:
             return _median(detector_values)
-        if len(detector_values) == 1:
-            return detector_values[0]
         return None
 
     if len(detector_values) >= 2:
@@ -423,6 +462,86 @@ def build_standard_result(media_type, engine_results_raw, analysis_id, ai_likeli
 
     detector_values = _collect_detector_values(normalized, media_type=media_type, include_xception=False)
     final_ai = compute_final_score(normalized, media_type=media_type)
+    prosody_meta_signals = []
+    prosody_conflict = False
+    prosody_ai = None
+    voiced_ratio = None
+    duration_s = None
+    aasist_ai = None
+    aasist_confidence = None
+    aasist_prob_spoof = None
+    force_unsure = False
+    if media_type == "audio":
+        aasist_raw = by_engine.get("audio_aasist")
+        if isinstance(aasist_raw, dict):
+            aasist_signals = aasist_raw.get("signals") or []
+            duration_s = _signal_float(aasist_signals, "duration_s")
+            aasist_prob_spoof = _signal_float(aasist_signals, "prob_spoof")
+        for entry in normalized:
+            if entry.get("engine") == "audio_aasist":
+                aasist_ai = _normalize_ai01(entry.get("ai_likelihood"))
+                try:
+                    aasist_confidence = float(entry.get("confidence"))
+                except Exception:
+                    aasist_confidence = None
+                break
+
+        prosody_raw = by_engine.get("audio_prosody")
+        if duration_s is None and isinstance(prosody_raw, dict):
+            duration_s = _signal_float(prosody_raw.get("signals") or [], "duration_s")
+        if duration_s is None:
+            forensics_raw = by_engine.get("audio_forensics")
+            if isinstance(forensics_raw, dict):
+                duration_s = _signal_float(forensics_raw.get("signals") or [], "duration_s")
+        if isinstance(prosody_raw, dict) and prosody_raw.get("available") and aasist_ai is not None:
+            signals = prosody_raw.get("signals") or []
+            jitter = _signal_float(signals, "jitter_approx")
+            f0_std = _signal_float(signals, "f0_std_hz")
+            rms_cv = _signal_float(signals, "rms_cv")
+            voiced_ratio = _signal_float(signals, "voiced_ratio")
+            if jitter is not None and f0_std is not None and rms_cv is not None:
+                j_ai = _clamp01((0.6 - jitter) / 0.6)
+                f_ai = _clamp01((6.0 - f0_std) / 6.0)
+                r_ai = _clamp01((0.35 - rms_cv) / 0.35)
+                if j_ai is not None and f_ai is not None and r_ai is not None:
+                    prosody_ai = _clamp01(0.45 * j_ai + 0.35 * f_ai + 0.20 * r_ai)
+                    if prosody_ai is not None:
+                        w = 0.20
+                        if voiced_ratio is not None and voiced_ratio < 0.20:
+                            w = 0.08
+                        w_cap = 0.35
+                        if aasist_confidence is not None and aasist_confidence < 0.60:
+                            w = w + 0.10
+                            w_cap = 0.45
+                        if voiced_ratio is not None and voiced_ratio >= 0.30 and prosody_ai >= 0.75:
+                            w = max(w, 0.30)
+                        if w > w_cap:
+                            w = w_cap
+                        mixed = _clamp01((1.0 - w) * aasist_ai + w * prosody_ai)
+                        if mixed is not None:
+                            final_ai = mixed
+                            prosody_conflict = abs(aasist_ai - prosody_ai) > 0.50
+                            prosody_meta_signals = [
+                                {"name": "ensemble_w_prosody", "value": round(float(w), 3), "type": "meta"},
+                                {"name": "prosody_ai", "value": round(float(prosody_ai), 4), "type": "score"},
+                                {"name": "conflict_signals", "value": bool(prosody_conflict), "type": "meta"},
+                            ]
+        if aasist_prob_spoof is None:
+            aasist_prob_spoof = aasist_ai
+        if aasist_prob_spoof is not None and aasist_prob_spoof >= 0.75:
+            if final_ai is None:
+                final_ai = aasist_ai if aasist_ai is not None else 0.65
+            final_ai = max(final_ai, 0.65)
+        if prosody_ai is not None and aasist_ai is not None and prosody_ai >= 0.70 and aasist_ai >= 0.40:
+            final_ai = max(final_ai, 0.70)
+        if prosody_ai is not None and aasist_ai is not None and aasist_ai < 0.20 and prosody_ai >= 0.75:
+            force_unsure = True
+        if force_unsure:
+            forced_signal = {"name": "forced_uncertain", "value": True, "type": "meta"}
+            if isinstance(prosody_meta_signals, list) and prosody_meta_signals:
+                prosody_meta_signals.append(forced_signal)
+            else:
+                prosody_meta_signals = [forced_signal]
     ai_for_output = final_ai if final_ai is not None else _normalize_ai01(ai_likelihood)
     if ai_for_output is None:
         verdict, traffic_light, label_de, label_en = "uncertain", "yellow", "Unsicher", "Uncertain"
@@ -444,6 +563,38 @@ def build_standard_result(media_type, engine_results_raw, analysis_id, ai_likeli
             confidence_label = "low"
             confidence_reasons = ["Nur wenige Signale verfuegbar", "fallback:xception"]
             confidence = min(confidence, 0.35)
+    if media_type == "audio":
+        low_reasons = []
+        if prosody_conflict:
+            confidence = min(confidence, 0.55)
+            low_reasons.append("Widerspruechliche Audio-Signale")
+        if voiced_ratio is not None and voiced_ratio < 0.20:
+            low_reasons.append("Wenig Stimme im Audio")
+        if duration_s is not None and duration_s < 6.0:
+            low_reasons.append("Kurzes Audio (<6s)")
+        if low_reasons:
+            confidence_label = "low"
+            if isinstance(confidence_reasons, list):
+                confidence_reasons = confidence_reasons + low_reasons
+            else:
+                confidence_reasons = low_reasons
+        high_allowed = (not prosody_conflict) and (
+            ai_for_output is not None and (ai_for_output <= 0.20 or ai_for_output >= 0.80)
+        )
+        if confidence_label == "high" and not high_allowed:
+            confidence_label = "medium"
+        if confidence_label == "high" and high_allowed:
+            if isinstance(confidence_reasons, list):
+                confidence_reasons = confidence_reasons + ["Klares Audio-Signal"]
+            else:
+                confidence_reasons = ["Klares Audio-Signal"]
+        if force_unsure:
+            verdict, traffic_light, label_de, label_en = "uncertain", "yellow", "Unsicher", "Uncertain"
+            confidence_label = "low"
+            if isinstance(confidence_reasons, list):
+                confidence_reasons = confidence_reasons + ["Prosody stark trotz niedriger AASIST"]
+            else:
+                confidence_reasons = ["Prosody stark trotz niedriger AASIST"]
     _log_calibration(final_ai, confidence_label, detector_values)
     if isinstance(reasons, list) and reasons:
         reasons_out = _build_reasons(verdict, conflict, len(ai_values), reasons_in=reasons)
@@ -458,7 +609,7 @@ def build_standard_result(media_type, engine_results_raw, analysis_id, ai_likeli
         ai_percent = float(ai_for_output) * 100.0
         real_percent = 100.0 - ai_percent
 
-    return {
+    result = {
         "ok": True,
         "media_type": media_type,
         "analysis_id": analysis_id,
@@ -492,12 +643,27 @@ def build_standard_result(media_type, engine_results_raw, analysis_id, ai_likeli
         ],
         "timestamps": {"created_at": created_at_value},
     }
+    if prosody_meta_signals:
+        result["ensemble_signals"] = prosody_meta_signals
+    return result
 
 
 def run_audio_ensemble(file_path: str):
-    audio_result = run_audio_forensics(file_path)
-    if not isinstance(audio_result, dict):
-        audio_result = {
+    aasist_result = run_audio_aasist(file_path)
+    if not isinstance(aasist_result, dict):
+        aasist_result = {
+            "engine": "audio_aasist",
+            "ai_likelihood": None,
+            "confidence": 0.0,
+            "signals": [],
+            "notes": "error",
+            "status": "error",
+            "available": False,
+        }
+
+    forensics_result = run_audio_forensics(file_path)
+    if not isinstance(forensics_result, dict):
+        forensics_result = {
             "engine": "audio_forensics",
             "ai_likelihood": None,
             "confidence": 0.0,
@@ -506,12 +672,32 @@ def run_audio_ensemble(file_path: str):
             "status": "error",
             "available": False,
         }
+    prosody_result = run_audio_prosody(file_path)
+    if not isinstance(prosody_result, dict):
+        prosody_result = {
+            "engine": "audio_prosody",
+            "ai_likelihood": None,
+            "confidence": 0.0,
+            "signals": [],
+            "notes": "error",
+            "status": "error",
+            "available": False,
+        }
     warnings = []
-    if not audio_result.get("available"):
+    if not aasist_result.get("available"):
+        warnings.append("audio_aasist_unavailable")
+    if not forensics_result.get("available"):
         warnings.append("audio_forensics_unavailable")
+    if not prosody_result.get("available"):
+        warnings.append("audio_prosody_unavailable")
+
+    primary_source = "audio_aasist"
+    if not aasist_result.get("available") and forensics_result.get("available"):
+        primary_source = "audio_forensics"
+
     return {
-        "engine_results_raw": [audio_result],
-        "primary_source": "audio_forensics",
+        "engine_results_raw": [aasist_result, forensics_result, prosody_result],
+        "primary_source": primary_source,
         "warnings": warnings,
     }
 
