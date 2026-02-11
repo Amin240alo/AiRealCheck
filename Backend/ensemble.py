@@ -5,17 +5,27 @@ from Backend.engines.sightengine_engine import run_sightengine
 from Backend.engines.reality_defender_engine import analyze_reality_defender
 from Backend.engines.forensics_engine import run_forensics
 from Backend.engines.xception_engine import run_xception
+from Backend.engines.clip_detector_engine import run_clip_detector
 from Backend.engines.c2pa_engine import analyze_c2pa
 from Backend.engines.watermark_engine import analyze_watermark
 from Backend.engines.audio_forensics_engine import run_audio_forensics
 from Backend.engines.audio_aasist_engine import run_audio_aasist
 from Backend.engines.audio_prosody_engine import run_audio_prosody
 
-IMAGE_ENGINES = ["hive", "forensics", "sightengine", "reality_defender", "xception", "c2pa", "watermark"]
-VIDEO_ENGINES = ["video_frame_detectors", "reality_defender_video", "video_temporal", "video_forensics"]
+IMAGE_ENGINES = [
+    "hive",
+    "forensics",
+    "sightengine",
+    "reality_defender",
+    "xception",
+    "clip_detector",
+    "c2pa",
+    "watermark",
+]
+VIDEO_ENGINES = ["video_frame_detectors", "reality_defender_video", "video_temporal_cnn", "video_temporal", "video_forensics"]
 AUDIO_ENGINES = ["audio_forensics", "audio_aasist", "audio_prosody"]
-DETECTOR_ENGINES_IMAGE = {"sightengine", "reality_defender", "hive", "xception"}
-DETECTOR_ENGINES_VIDEO = {"reality_defender_video", "video_frame_detectors"}
+DETECTOR_ENGINES_IMAGE = {"sightengine", "reality_defender", "hive", "xception", "clip_detector"}
+DETECTOR_ENGINES_VIDEO = {"reality_defender_video", "video_frame_detectors", "video_temporal_cnn"}
 DETECTOR_ENGINES_AUDIO = {"audio_aasist"}
 
 
@@ -737,6 +747,7 @@ def run_ensemble(file_path: str):
     sightengine_result = run_sightengine(file_path)
     reality_defender_result = analyze_reality_defender(file_path)
     xception_result = run_xception(file_path)
+    clip_detector_result = run_clip_detector(file_path)
 
     engines = []
     warnings = []
@@ -826,6 +837,7 @@ def run_ensemble(file_path: str):
             sightengine_result,
             reality_defender_result,
             xception_result,
+            clip_detector_result,
             c2pa_result,
             watermark_result,
         ],
