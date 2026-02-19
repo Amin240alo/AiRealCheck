@@ -31,6 +31,7 @@ def _not_available(notes="not_available"):
         "signals": [],
         "notes": notes,
         "available": False,
+        "status": "not_available",
     }
 
 

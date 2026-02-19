@@ -38,11 +38,12 @@ def _parse_api_credentials():
 def _not_available():
     return {
         "engine": "sightengine",
-        "ai_likelihood": 0.0,
+        "ai_likelihood": None,
         "confidence": 0.0,
         "signals": [],
         "notes": "not_available",
         "available": False,
+        "status": "not_available",
     }
 
 

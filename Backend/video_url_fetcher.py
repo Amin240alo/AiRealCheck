@@ -9,6 +9,9 @@ from typing import List, Tuple
 
 import requests
 
+from Backend.video_limits import get_max_video_bytes, get_max_video_seconds
+from Backend.video_validation import validate_video_input
+
 
 ALLOWED_VIDEO_EXTS = {
     ".mp4", ".mov", ".m4v", ".webm", ".mkv", ".avi", ".mpg", ".mpeg", ".3gp", ".ogv"
@@ -65,14 +68,12 @@ def _request_timeout() -> float:
 
 
 def _max_video_bytes() -> int:
-    return int(os.getenv("AIREALCHECK_MAX_VIDEO_MB", "200")) * 1024 * 1024
+    return int(get_max_video_bytes())
 
 
 def _max_video_seconds() -> float:
-    try:
-        return float(os.getenv("AIREALCHECK_MAX_VIDEO_SECONDS", "0"))
-    except Exception:
-        return 0.0
+    value = get_max_video_seconds()
+    return float(value) if value is not None else 0.0
 
 
 def _temp_dir() -> str:
@@ -330,29 +331,10 @@ def _download_direct(url: str, temp_dir: str) -> str:
 
 
 def _enforce_video_limits(path: str) -> None:
-    max_bytes = _max_video_bytes()
-    if os.path.exists(path):
-        size = os.path.getsize(path)
-        if size > max_bytes:
-            raise VideoUrlError("file_too_large", "Datei zu gross", 413)
-
-    max_seconds = _max_video_seconds()
-    if max_seconds <= 0:
+    validation = validate_video_input(path)
+    if validation.get("ok"):
         return
-    try:
-        import cv2
-        cap = cv2.VideoCapture(path)
-        if not cap.isOpened():
-            cap.release()
-            return
-        fps = cap.get(cv2.CAP_PROP_FPS) or 0.0
-        frames = cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0.0
-        cap.release()
-        if fps > 0 and frames > 0:
-            duration = frames / fps
-            if duration > max_seconds:
-                raise VideoUrlError("video_too_long", "Video zu lang", 413)
-    except VideoUrlError:
-        raise
-    except Exception:
-        return
+    code = validation.get("code") or "invalid_video"
+    message = validation.get("message") or "Video ungueltig"
+    status = int(validation.get("http_status") or 400)
+    raise VideoUrlError(code, message, status)

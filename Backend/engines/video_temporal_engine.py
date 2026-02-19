@@ -9,6 +9,7 @@ except Exception:
 import numpy as np
 
 from Backend.engines.video_forensics_engine import extract_video_frames
+from Backend.engines.engine_utils import make_engine_result
 
 
 def _clamp01(value):
@@ -90,58 +91,73 @@ def _extract_frames_cv2(file_path, max_frames):
         cap.release()
 
 
-def _insufficient_frames_result(frames_extracted, extractor):
+def _insufficient_frames_result(frames_extracted, extractor, start_time=None):
     signals = [
         f"frames_extracted:{frames_extracted}",
         f"extractor:{extractor}",
     ]
-    return {
-        "engine": "video_temporal",
-        "ai_likelihood": None,
-        "confidence": 0.0,
-        "signals": signals[:6],
-        "notes": "insufficient_frames",
-        "available": True,
-        "status": "ok",
-    }
+    return make_engine_result(
+        engine="video_temporal",
+        status="not_available",
+        notes="insufficient_frames",
+        available=False,
+        ai_likelihood=None,
+        confidence=0.0,
+        signals=signals[:6],
+        start_time=start_time,
+    )
 
 
 def run_video_temporal(file_path: str) -> dict:
+    start_time = time.time()
     if cv2 is None:
-        return {
-            "engine": "video_temporal",
-            "ai_likelihood": None,
-            "confidence": 0.0,
-            "signals": ["not_available"],
-            "notes": "opencv_missing",
-            "available": False,
-            "status": "not_available",
-        }
+        return make_engine_result(
+            engine="video_temporal",
+            status="not_available",
+            notes="opencv_missing",
+            available=False,
+            ai_likelihood=None,
+            confidence=0.0,
+            signals=["not_available"],
+            start_time=start_time,
+        )
     max_frames = int(os.getenv("AIREALCHECK_VIDEO_TEMPORAL_MAX_FRAMES", "12"))
     scan_fps = float(os.getenv("AIREALCHECK_VIDEO_TEMPORAL_SCAN_FPS", "1.0"))
     timeout_sec = float(os.getenv("AIREALCHECK_VIDEO_TEMPORAL_TIMEOUT_SEC", "15"))
 
     if not os.path.exists(file_path):
-        return {
-            "engine": "video_temporal",
-            "ai_likelihood": None,
-            "confidence": 0.0,
-            "signals": ["file_missing"],
-            "notes": "file_missing",
-            "available": False,
-            "status": "error",
-        }
+        return make_engine_result(
+            engine="video_temporal",
+            status="not_available",
+            notes="file_missing",
+            available=False,
+            ai_likelihood=None,
+            confidence=0.0,
+            signals=["file_missing"],
+            start_time=start_time,
+        )
 
     start = time.time()
-    frames, meta = extract_video_frames(file_path, max_frames, scan_fps, timeout_sec)
+    frames_raw, meta = extract_video_frames(file_path, max_frames, scan_fps, timeout_sec)
     extractor = meta.get("method", "ffmpeg")
-    if not frames:
-        frames, meta = _extract_frames_cv2(file_path, max_frames)
+    if not frames_raw:
+        frames_raw, meta = _extract_frames_cv2(file_path, max_frames)
         extractor = meta.get("method", "cv2")
 
-    frames_extracted = int(meta.get("frames_extracted_count") or len(frames))
-    if len(frames) < 4:
-        return _insufficient_frames_result(frames_extracted, extractor)
+    frame_items = []
+    for item in frames_raw or []:
+        if isinstance(item, dict):
+            if item.get("frame") is None and item.get("path") is None:
+                continue
+            frame_items.append(item)
+        elif isinstance(item, (str, os.PathLike)):
+            frame_items.append({"path": str(item)})
+        else:
+            frame_items.append({"frame": item})
+
+    frames_extracted = int(meta.get("frames_extracted_count") or len(frame_items))
+    if len(frame_items) < 4:
+        return _insufficient_frames_result(frames_extracted, extractor, start_time=start_time)
 
     flow_mags = []
     residuals = []
@@ -149,40 +165,51 @@ def run_video_temporal(file_path: str) -> dict:
     frames_ok = 0
     prev_gray = None
 
-    for frame in frames:
+    for item in frame_items:
         if time.time() - start > timeout_sec:
             break
-        if isinstance(frame, (str, os.PathLike)):
-            img = cv2.imread(str(frame))
+        try:
+            img = None
+            if isinstance(item, dict):
+                if item.get("frame") is not None:
+                    img = item.get("frame")
+                elif item.get("path"):
+                    img = cv2.imread(str(item.get("path")))
+            elif isinstance(item, (str, os.PathLike)):
+                img = cv2.imread(str(item))
+            else:
+                img = item
             if img is None:
                 continue
-        else:
-            img = frame
-        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        gray_small = _downsample_gray(gray)
-        lap = cv2.Laplacian(gray_small, cv2.CV_32F)
-        hf_vars.append(float(np.var(lap)))
-        if prev_gray is not None:
-            flow = cv2.calcOpticalFlowFarneback(
-                prev_gray,
-                gray_small,
-                None,
-                0.5,
-                3,
-                15,
-                3,
-                5,
-                1.2,
-                0,
-            )
-            mag = np.sqrt((flow[..., 0] ** 2) + (flow[..., 1] ** 2))
-            flow_mags.append(float(np.median(mag)))
-            residuals.append(float(np.mean(np.abs(gray_small.astype(np.float32) - prev_gray.astype(np.float32)))))
-        prev_gray = gray_small
-        frames_ok += 1
+            gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+            gray_small = _downsample_gray(gray)
+            lap = cv2.Laplacian(gray_small, cv2.CV_32F)
+            hf_vars.append(float(np.var(lap)))
+            if prev_gray is not None:
+                flow = cv2.calcOpticalFlowFarneback(
+                    prev_gray,
+                    gray_small,
+                    None,
+                    0.5,
+                    3,
+                    15,
+                    3,
+                    5,
+                    1.2,
+                    0,
+                )
+                mag = np.sqrt((flow[..., 0] ** 2) + (flow[..., 1] ** 2))
+                flow_mags.append(float(np.median(mag)))
+                residuals.append(
+                    float(np.mean(np.abs(gray_small.astype(np.float32) - prev_gray.astype(np.float32))))
+                )
+            prev_gray = gray_small
+            frames_ok += 1
+        except Exception:
+            continue
 
     if frames_ok < 4 or not flow_mags:
-        return _insufficient_frames_result(frames_extracted, extractor)
+        return _insufficient_frames_result(frames_extracted, extractor, start_time=start_time)
 
     flow_median = float(np.median(flow_mags)) if flow_mags else 0.0
     flow_iqr = _iqr(flow_mags)
@@ -213,12 +240,13 @@ def run_video_temporal(file_path: str) -> dict:
         f"extractor:{extractor}",
     ]
 
-    return {
-        "engine": "video_temporal",
-        "ai_likelihood": ai_likelihood,
-        "confidence": confidence,
-        "signals": signals[:6],
-        "notes": "ok",
-        "available": True,
-        "status": "ok",
-    }
+    return make_engine_result(
+        engine="video_temporal",
+        status="ok",
+        notes="ok",
+        available=True,
+        ai_likelihood=ai_likelihood,
+        confidence=confidence,
+        signals=signals[:6],
+        start_time=start_time,
+    )

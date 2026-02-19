@@ -30,6 +30,7 @@ else:
     _TV_IMPORT_ERROR = None
 
 from Backend.engines.video_forensics_engine import extract_video_frames
+from Backend.engines.engine_utils import make_engine_result
 
 ENGINE_NAME = "video_temporal_cnn"
 _MODEL_CACHE = {"attempted": False, "model": None, "meta": None}
@@ -47,16 +48,16 @@ def _cnn_enabled():
 
 
 def _result(*, status, available, ai_likelihood, confidence, signals, notes, start_time, warning=None):
-    payload = {
-        "engine": ENGINE_NAME,
-        "status": status,
-        "available": bool(available),
-        "ai_likelihood": ai_likelihood,
-        "confidence": float(confidence) if confidence is not None else 0.0,
-        "signals": signals if isinstance(signals, list) else [],
-        "notes": str(notes),
-        "timing_ms": int((time.time() - start_time) * 1000),
-    }
+    payload = make_engine_result(
+        engine=ENGINE_NAME,
+        status=status,
+        notes=notes,
+        available=available,
+        ai_likelihood=ai_likelihood,
+        confidence=confidence,
+        signals=signals,
+        start_time=start_time,
+    )
     if warning:
         payload["warning"] = str(warning)
     return payload
