@@ -59,13 +59,37 @@ def _disabled():
     }
 
 
+def _disabled_missing_key():
+    return {
+        "engine": "sightengine",
+        "ai_likelihood": None,
+        "confidence": 0.0,
+        "signals": ["missing_key"],
+        "notes": "disabled:missing_key",
+        "available": False,
+        "status": "disabled",
+    }
+
+
+def _error(notes="error"):
+    return {
+        "engine": "sightengine",
+        "ai_likelihood": None,
+        "confidence": 0.0,
+        "signals": ["api_error"],
+        "notes": notes,
+        "available": False,
+        "status": "error",
+    }
+
+
 def run_sightengine(file_path: str):
     start = time.time()
     if not _paid_apis_enabled():
         return _disabled()
     api_user, api_secret = _parse_api_credentials()
     if not api_user or not api_secret:
-        return _not_available()
+        return _disabled_missing_key()
 
     try:
         with open(file_path, "rb") as f:
@@ -77,18 +101,18 @@ def run_sightengine(file_path: str):
             }
             resp = requests.post(_API_URL, files=files, data=data, timeout=_paid_api_timeouts())
     except Exception:
-        return _not_available()
+        return _error("request_failed")
 
     if resp.status_code != 200:
-        return _not_available()
+        return _error(f"http_{resp.status_code}")
 
     try:
         payload = resp.json()
     except Exception:
-        return _not_available()
+        return _error("invalid_json")
 
     if payload.get("status") != "success":
-        return _not_available()
+        return _error("api_error")
 
     ai_generated = None
     type_block = payload.get("type") if isinstance(payload.get("type"), dict) else {}
@@ -99,7 +123,7 @@ def run_sightengine(file_path: str):
             ai_generated = None
 
     if ai_generated is None:
-        return _not_available()
+        return _error("missing_score")
 
     if ai_generated < 0.0:
         ai_generated = 0.0
@@ -119,4 +143,5 @@ def run_sightengine(file_path: str):
         "signals": signals,
         "notes": "ok",
         "available": True,
+        "status": "ok",
     }

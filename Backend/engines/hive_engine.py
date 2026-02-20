@@ -2,6 +2,7 @@ import os
 import time
 
 from Backend.deepfake_api import analyze_with_hive
+from Backend.engines.engine_utils import make_engine_result
 
 
 def _paid_apis_enabled():
@@ -40,32 +41,43 @@ def _ensure_api_key_env():
 def run_hive(file_path: str):
     start = time.time()
     if not _paid_apis_enabled():
-        return {
-            "ok": False,
-            "engine": "hive",
-            "error": True,
-            "message": "Hive disabled (paid APIs off)",
-            "details": ["Hive disabled (AIREALCHECK_USE_PAID_APIS=false)"],
-            "warnings": ["Hive disabled via paid APIs switch."],
-            "ai_likelihood": None,
-            "confidence": 0.0,
-            "signals": ["paid_apis_disabled"],
-            "notes": "disabled:paid_apis_off",
-            "available": False,
-            "status": "disabled",
-            "timing_ms": int((time.time() - start) * 1000),
-        }
+        return make_engine_result(
+            engine="hive",
+            status="disabled",
+            notes="disabled:paid_apis_off",
+            available=False,
+            ai_likelihood=None,
+            confidence=0.0,
+            signals=["paid_apis_disabled"],
+            start_time=start,
+            extra={"warnings": ["Hive disabled via paid APIs switch."]},
+        )
     health = hive_health_check()
     if not health["ok"]:
-        return {
-            "ok": False,
-            "engine": "hive",
-            "error": True,
-            "message": "Hive not available",
-            "details": [health["message"]],
-            "warnings": ["Hive nicht verbunden (API-Key/Authorization). Ergebnisse weniger verlässlich."],
-            "timing_ms": int((time.time() - start) * 1000),
-        }
+        status = "error"
+        notes = "error"
+        if health.get("status") == "missing_key":
+            status = "disabled"
+            notes = "disabled:missing_key"
+        elif health.get("status") == "disabled":
+            status = "disabled"
+            notes = "disabled:hive_off"
+        warnings = ["Hive nicht verbunden (API-Key/Authorization). Ergebnisse weniger verlaesslich."]
+        return make_engine_result(
+            engine="hive",
+            status=status,
+            notes=notes,
+            available=False,
+            ai_likelihood=None,
+            confidence=0.0,
+            signals=["missing_key" if status == "disabled" else "api_error"],
+            start_time=start,
+            extra={
+                "warnings": warnings,
+                "message": health.get("message") or "Hive not available",
+                "details": [health.get("message")],
+            },
+        )
 
     api_key = _ensure_api_key_env()
     debug = os.getenv("AIREALCHECK_DEBUG_RAW", "false").lower() in {"1", "true", "yes"}
@@ -74,6 +86,25 @@ def run_hive(file_path: str):
 
     result = analyze_with_hive(file_path)
     ok = bool(result) and not result.get("error") and result.get("real") is not None and result.get("fake") is not None
+    if not ok:
+        message = result.get("message") if isinstance(result, dict) else "Hive error"
+        details = result.get("details", []) if isinstance(result, dict) else []
+        return make_engine_result(
+            engine="hive",
+            status="error",
+            notes=f"error:{message}" if message else "error",
+            available=False,
+            ai_likelihood=None,
+            confidence=0.0,
+            signals=["api_error"],
+            start_time=start,
+            extra={
+                "message": message,
+                "details": details,
+                "warnings": ["Hive nicht verbunden (API-Key/Authorization). Ergebnisse weniger verlaesslich."],
+            },
+        )
+
     payload = {
         "ok": bool(ok),
         "engine": "hive",
@@ -85,7 +116,4 @@ def run_hive(file_path: str):
         "warnings": [],
         "timing_ms": int((time.time() - start) * 1000),
     }
-    if not ok:
-        payload["error"] = True
-        payload["warnings"].append("Hive nicht verbunden (API-Key/Authorization). Ergebnisse weniger verlässlich.")
     return payload

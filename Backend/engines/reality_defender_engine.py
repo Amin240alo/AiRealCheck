@@ -23,15 +23,15 @@ def _paid_api_timeouts():
     return connect, read
 
 
-def _not_available(notes="not_available"):
+def _not_available(notes="error"):
     return {
         "engine": "reality_defender",
         "ai_likelihood": None,
         "confidence": 0.0,
-        "signals": [],
+        "signals": ["api_error"],
         "notes": notes,
         "available": False,
-        "status": "not_available",
+        "status": "error",
     }
 
 
@@ -42,6 +42,18 @@ def _disabled():
         "confidence": 0.0,
         "signals": ["paid_apis_disabled"],
         "notes": "disabled:paid_apis_off",
+        "available": False,
+        "status": "disabled",
+    }
+
+
+def _disabled_missing_key():
+    return {
+        "engine": "reality_defender",
+        "ai_likelihood": None,
+        "confidence": 0.0,
+        "signals": ["missing_key"],
+        "notes": "disabled:missing_key",
         "available": False,
         "status": "disabled",
     }
@@ -146,7 +158,7 @@ def _is_processing_status(status):
 def _timeout_result():
     return {
         "engine": "reality_defender",
-        "status": "timeout",
+        "status": "error",
         "available": False,
         "ai_likelihood": None,
         "confidence": 0.0,
@@ -173,7 +185,7 @@ def analyze_reality_defender(asset_path: str) -> dict:
             return _disabled()
         api_key = (os.getenv("REALITY_DEFENDER_API_KEY") or "").strip()
         if not api_key:
-            return _not_available()
+            return _disabled_missing_key()
 
         headers = {"X-API-KEY": api_key, "Content-Type": "application/json"}
         file_name = os.path.basename(asset_path)
@@ -410,6 +422,7 @@ def analyze_reality_defender(asset_path: str) -> dict:
                 "signals": signals[:6],
                 "notes": "Reality Defender verarbeitet noch",
                 "available": True,
+                "status": "processing",
             }
 
         if ai_likelihood is None and normalized_status in {"not_applicable", "unable_to_evaluate"}:
@@ -420,6 +433,7 @@ def analyze_reality_defender(asset_path: str) -> dict:
                 "signals": signals[:6],
                 "notes": normalized_status or "not_available",
                 "available": True,
+                "status": normalized_status or "not_available",
             }
 
         if ai_likelihood is None:
@@ -437,6 +451,7 @@ def analyze_reality_defender(asset_path: str) -> dict:
             "signals": signals[:6],
             "notes": notes,
             "available": True,
+            "status": "ok",
         }
 
     try:

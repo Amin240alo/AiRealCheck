@@ -94,6 +94,16 @@ def run_xception(file_path: str):
         return _not_available("no_score", signals=["no_score"])
 
     confidence = max(ai_value, 1.0 - ai_value)
+    variant_stddev = None
+    try:
+        variant_stddev = float(result.get("variant_stddev")) if "variant_stddev" in result else None
+    except Exception:
+        variant_stddev = None
+    if variant_stddev is not None:
+        if variant_stddev >= 0.10:
+            confidence = max(0.30, confidence * 0.65)
+        elif variant_stddev >= 0.05:
+            confidence = max(0.35, confidence * 0.80)
     deterministic = False
     if hasattr(deepfake_model, "determinism_enabled"):
         try:
@@ -110,17 +120,20 @@ def run_xception(file_path: str):
     if isinstance(message, str) and message.strip():
         signals.append(message.strip())
 
+    notes = "ok"
+    if variant_stddev is not None:
+        notes = f"ok;variant_stddev={variant_stddev:.4f}"
     payload = {
         "engine": "xception",
         "ai_likelihood": ai_value * 100.0,
         "confidence": confidence,
         "signals": signals[:6],
-        "notes": "ok",
+        "notes": notes,
         "available": True,
         "status": "ok",
         "timing_ms": int((time.time() - start) * 1000),
     }
-    for key in ("samples", "variance", "stddev", "range", "warning"):
+    for key in ("samples", "variance", "stddev", "range", "warning", "variant_stddev", "variant_range", "variant_scores"):
         if key in result:
             payload[key] = result.get(key)
     return payload

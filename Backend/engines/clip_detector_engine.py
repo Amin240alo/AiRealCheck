@@ -12,9 +12,10 @@ except Exception:
     np = None
 
 try:
-    from PIL import Image
+    from PIL import Image, ImageOps
 except Exception:
     Image = None
+    ImageOps = None
 
 open_clip = None
 openai_clip = None
@@ -52,6 +53,10 @@ def _local_ml_enabled():
 
 def _clip_enabled():
     return os.getenv("AIREALCHECK_ENABLE_CLIP_DETECTOR", "false").lower() in {"1", "true", "yes"}
+
+
+def _local_preprocess_enabled():
+    return os.getenv("AIREALCHECK_IMAGE_LOCAL_PREPROCESS", "true").lower() in {"1", "true", "yes", "on"}
 
 
 def _clamp01(value):
@@ -98,6 +103,84 @@ def _resolve_embeddings_path():
     if path:
         return path
     return os.path.join("data", "clip_real_embeddings.npz")
+
+
+def _load_base_image(path: str):
+    if Image is None:
+        raise RuntimeError("pillow_missing")
+    with Image.open(path) as img:
+        if ImageOps is not None:
+            img = ImageOps.exif_transpose(img)
+        img.load()
+        if img.mode != "RGB":
+            img = img.convert("RGB")
+        return img.copy()
+
+
+def _jpeg_recompress(img: Image.Image, quality: int = 85) -> Image.Image:
+    from io import BytesIO
+
+    buf = BytesIO()
+    img.save(buf, format="JPEG", quality=quality, optimize=True)
+    buf.seek(0)
+    with Image.open(buf) as tmp:
+        tmp = tmp.convert("RGB")
+        tmp.load()
+        return tmp.copy()
+
+
+def _resize_down_up_if_large(img: Image.Image, max_edge: int = 1024, downscale: float = 0.75):
+    width, height = img.size
+    if max(width, height) <= max_edge:
+        return None
+    down_w = max(1, int(round(width * downscale)))
+    down_h = max(1, int(round(height * downscale)))
+    down = img.resize((down_w, down_h), resample=Image.LANCZOS)
+    up = down.resize((width, height), resample=Image.BICUBIC)
+    return up
+
+
+def _center_crop_resize(img: Image.Image, crop_scale: float = 0.9):
+    width, height = img.size
+    crop_w = max(1, int(round(width * crop_scale)))
+    crop_h = max(1, int(round(height * crop_scale)))
+    left = max(0, (width - crop_w) // 2)
+    top = max(0, (height - crop_h) // 2)
+    right = min(width, left + crop_w)
+    bottom = min(height, top + crop_h)
+    cropped = img.crop((left, top, right, bottom))
+    return cropped.resize((width, height), resample=Image.LANCZOS)
+
+
+def _build_variants(img: Image.Image):
+    variants = [("orig", img)]
+    if not _local_preprocess_enabled():
+        return variants
+    try:
+        variants.append(("jpeg_q85", _jpeg_recompress(img, quality=85)))
+    except Exception:
+        pass
+    try:
+        resized = _resize_down_up_if_large(img, max_edge=1024, downscale=0.75)
+        if resized is not None:
+            variants.append(("resize_down_up", resized))
+    except Exception:
+        pass
+    try:
+        variants.append(("center_crop", _center_crop_resize(img, crop_scale=0.9)))
+    except Exception:
+        pass
+    return variants
+
+
+def _median(values):
+    if not values:
+        return None
+    vals = sorted(values)
+    mid = len(vals) // 2
+    if len(vals) % 2 == 1:
+        return vals[mid]
+    return (vals[mid - 1] + vals[mid]) / 2.0
 
 
 def _resolve_ai_embeddings_path():
@@ -224,12 +307,15 @@ def _load_model_cached():
     return model, preprocess, meta
 
 
-def _encode_image(model, preprocess, image_path, device):
+def _encode_image(model, preprocess, image_input, device):
     if Image is None:
         raise RuntimeError("pillow_missing")
     if torch is None:
         raise RuntimeError("torch_missing")
-    image = Image.open(image_path).convert("RGB")
+    if isinstance(image_input, Image.Image):
+        image = image_input
+    else:
+        image = Image.open(image_input).convert("RGB")
     image_input = preprocess(image).unsqueeze(0)
     image_input = image_input.to(device)
     with torch.no_grad():
@@ -355,8 +441,91 @@ def run_clip_detector(file_path: str):
 
     device = meta.get("device") or _resolve_device()
     try:
-        image_emb = _encode_image(model, preprocess, file_path, device)
+        base_img = _load_base_image(file_path)
     except Exception as exc:
+        return _result(
+            status="error",
+            available=False,
+            ai_likelihood=None,
+            confidence=0.0,
+            signals=[],
+            notes="image_load_failed",
+            start_time=start,
+            warning=str(exc)[:240],
+        )
+
+    variants = _build_variants(base_img)
+    topk = int(os.getenv("AIREALCHECK_CLIP_TOPK", "5") or 5)
+    if topk <= 0:
+        topk = 1
+
+    sim_low = float(os.getenv("AIREALCHECK_CLIP_SIM_LOW", "0.18") or 0.18)
+    sim_high = float(os.getenv("AIREALCHECK_CLIP_SIM_HIGH", "0.32") or 0.32)
+
+    def _score_embedding(image_emb):
+        if image_emb is None or image_emb.ndim != 1:
+            return None, None, None, None, None
+        if int(image_emb.shape[0]) != int(dim):
+            return None, None, None, None, None
+
+        real_similarities = embeddings.dot(image_emb)
+        if real_similarities.size == 0:
+            return None, None, None, None, None
+
+        if real_similarities.size <= topk:
+            real_top_sims = real_similarities
+        else:
+            idx = np.argpartition(real_similarities, -topk)[-topk:]
+            real_top_sims = real_similarities[idx]
+
+        sim_real_topk_mean = float(np.mean(real_top_sims))
+        ai_prob, confidence = _score_from_similarity(sim_real_topk_mean, sim_low, sim_high)
+        ai_prob_soft = None
+        sim_ai_topk_mean = None
+
+        if ai_embeddings is not None and ai_embeddings.size > 0:
+            ai_similarities = ai_embeddings.dot(image_emb)
+            if ai_similarities.size > 0:
+                if ai_similarities.size <= topk:
+                    ai_top_sims = ai_similarities
+                else:
+                    idx = np.argpartition(ai_similarities, -topk)[-topk:]
+                    ai_top_sims = ai_similarities[idx]
+                sim_ai_topk_mean = float(np.mean(ai_top_sims))
+                ai_score = sim_ai_topk_mean - sim_real_topk_mean
+                ai_prob = _clamp01(0.5 + ai_score * 2.0)
+                ai_prob_soft = _clamp01(0.5 + (ai_prob - 0.5) * 0.70)
+                if abs(ai_score) >= 0.08:
+                    boost = min(0.10, (abs(ai_score) - 0.08) * 0.8)
+                    confidence = min(0.85, confidence + boost)
+
+        ai_prob_out = ai_prob_soft if ai_prob_soft is not None else ai_prob
+        return ai_prob_out, confidence, sim_real_topk_mean, sim_ai_topk_mean, ai_prob_soft
+
+    variant_scores = []
+    variant_confidences = []
+    sim_real_means = []
+    sim_ai_means = []
+    soft_scores = []
+
+    for _name, img in variants:
+        try:
+            image_emb = _encode_image(model, preprocess, img, device)
+        except Exception:
+            continue
+        ai_score, conf, sim_real_mean, sim_ai_mean, ai_prob_soft = _score_embedding(image_emb)
+        if ai_score is None:
+            continue
+        variant_scores.append(float(ai_score))
+        variant_confidences.append(float(conf))
+        if sim_real_mean is not None:
+            sim_real_means.append(sim_real_mean)
+        if sim_ai_mean is not None:
+            sim_ai_means.append(sim_ai_mean)
+        if ai_prob_soft is not None:
+            soft_scores.append(ai_prob_soft)
+
+    if not variant_scores:
         return _result(
             status="error",
             available=False,
@@ -365,89 +534,36 @@ def run_clip_detector(file_path: str):
             signals=[],
             notes="embedding_failed",
             start_time=start,
-            warning=str(exc)[:240],
         )
 
-    if image_emb is None or image_emb.ndim != 1:
-        return _result(
-            status="error",
-            available=False,
-            ai_likelihood=None,
-            confidence=0.0,
-            signals=[],
-            notes="embedding_invalid",
-            start_time=start,
-        )
+    ai_prob_out = _median(variant_scores)
+    if ai_prob_out is None:
+        ai_prob_out = variant_scores[0]
 
-    if int(image_emb.shape[0]) != int(dim):
-        return _result(
-            status="error",
-            available=False,
-            ai_likelihood=None,
-            confidence=0.0,
-            signals=[f"embed_dim:{image_emb.shape[0]}", f"ref_dim:{dim}"],
-            notes="embedding_dim_mismatch",
-            start_time=start,
-        )
+    conf_out = _median(variant_confidences)
+    if conf_out is None:
+        conf_out = max(ai_prob_out, 1.0 - ai_prob_out)
 
-    real_similarities = embeddings.dot(image_emb)
-    if real_similarities.size == 0:
-        return _result(
-            status="error",
-            available=False,
-            ai_likelihood=None,
-            confidence=0.0,
-            signals=[],
-            notes="embeddings_empty",
-            start_time=start,
-        )
-
-    topk = int(os.getenv("AIREALCHECK_CLIP_TOPK", "5") or 5)
-    if topk <= 0:
-        topk = 1
-    if real_similarities.size <= topk:
-        real_top_sims = real_similarities
-    else:
-        idx = np.argpartition(real_similarities, -topk)[-topk:]
-        real_top_sims = real_similarities[idx]
-
-    sim_real_topk_mean = float(np.mean(real_top_sims))
-    sim_real_topk_max = float(np.max(real_top_sims))
-
-    sim_low = float(os.getenv("AIREALCHECK_CLIP_SIM_LOW", "0.18") or 0.18)
-    sim_high = float(os.getenv("AIREALCHECK_CLIP_SIM_HIGH", "0.32") or 0.32)
-    ai_prob, confidence = _score_from_similarity(sim_real_topk_mean, sim_low, sim_high)
-    ai_prob_soft = None
-
-    sim_ai_topk_mean = None
-    sim_ai_topk_max = None
-    if ai_embeddings is not None:
-        ai_similarities = ai_embeddings.dot(image_emb)
-        if ai_similarities.size > 0:
-            if ai_similarities.size <= topk:
-                ai_top_sims = ai_similarities
-            else:
-                idx = np.argpartition(ai_similarities, -topk)[-topk:]
-                ai_top_sims = ai_similarities[idx]
-            sim_ai_topk_mean = float(np.mean(ai_top_sims))
-            sim_ai_topk_max = float(np.max(ai_top_sims))
-            ai_score = sim_ai_topk_mean - sim_real_topk_mean
-            ai_prob = _clamp01(0.5 + ai_score * 2.0)
-            ai_prob_soft = _clamp01(0.5 + (ai_prob - 0.5) * 0.70)
-            if abs(ai_score) >= 0.08:
-                boost = min(0.10, (abs(ai_score) - 0.08) * 0.8)
-                confidence = min(0.85, confidence + boost)
-        else:
-            ai_embeddings = None
-            ai_count = 0
+    mean_val = sum(variant_scores) / float(len(variant_scores))
+    variance = sum((x - mean_val) ** 2 for x in variant_scores) / float(len(variant_scores))
+    variant_stddev = variance ** 0.5
+    variant_range = max(variant_scores) - min(variant_scores)
 
     if count < 50:
-        confidence = min(confidence, 0.55)
+        conf_out = min(conf_out, 0.55)
     elif count < 200:
-        confidence = min(confidence, 0.7)
-    confidence = min(confidence, 0.85)
+        conf_out = min(conf_out, 0.7)
+    conf_out = min(conf_out, 0.85)
+
+    if variant_stddev >= 0.10:
+        conf_out = max(0.30, conf_out * 0.65)
+    elif variant_stddev >= 0.05:
+        conf_out = max(0.35, conf_out * 0.80)
 
     signals = [f"model:{meta.get('model', 'clip')}"]
+    sim_real_topk_mean = sum(sim_real_means) / float(len(sim_real_means)) if sim_real_means else None
+    sim_ai_topk_mean = sum(sim_ai_means) / float(len(sim_ai_means)) if sim_ai_means else None
+    ai_prob_soft = _median(soft_scores) if soft_scores else None
     if sim_real_topk_mean is not None:
         signals.append(f"real_mean:{sim_real_topk_mean:.4f}")
     if sim_ai_topk_mean is not None:
@@ -458,14 +574,14 @@ def run_clip_detector(file_path: str):
         signals.append(f"soft:{ai_prob_soft:.4f}")
     signals.append(f"real_n:{count};ai_n:{ai_count}")
 
-    ai_prob_out = ai_prob_soft if ai_prob_soft is not None else ai_prob
+    notes = f"ok;variants={len(variant_scores)};variant_stddev={variant_stddev:.4f}"
 
     return _result(
         status="ok",
         available=True,
         ai_likelihood=ai_prob_out * 100.0,
-        confidence=_clamp01(confidence),
+        confidence=_clamp01(conf_out),
         signals=signals[:6],
-        notes="ok",
+        notes=notes,
         start_time=start,
     )

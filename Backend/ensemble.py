@@ -1,5 +1,6 @@
 import os
 import json
+import math
 
 from Backend.engines.hive_engine import run_hive, hive_health_check
 from Backend.engines.sightengine_engine import run_sightengine
@@ -172,6 +173,100 @@ def _normalize_confidence(value):
     return 0.5
 
 
+def _normalize_ai01(value):
+    if value is None:
+        return None
+    try:
+        v = float(value)
+    except Exception:
+        return None
+    if v < 0.0:
+        v = 0.0
+    if v > 1.0:
+        v = v / 100.0 if v <= 100.0 else 1.0
+    if v > 1.0:
+        v = 1.0
+    return v
+
+
+_CALIBRATION_ENGINES = {"xception", "clip_detector"}
+
+
+def _calibration_enabled() -> bool:
+    return os.getenv("AIREALCHECK_IMAGE_CALIBRATION_ENABLE", "false").lower() in {"1", "true", "yes", "on"}
+
+
+def _calibration_temperature() -> float:
+    try:
+        temp = float(os.getenv("AIREALCHECK_IMAGE_CALIBRATION_TEMPERATURE", "1.0"))
+    except Exception:
+        temp = 1.0
+    if temp <= 0:
+        temp = 1.0
+    return temp
+
+
+def _logit(p, eps=1e-6):
+    if p is None:
+        return None
+    try:
+        v = float(p)
+    except Exception:
+        return None
+    if v < eps:
+        v = eps
+    if v > 1.0 - eps:
+        v = 1.0 - eps
+    return math.log(v / (1.0 - v))
+
+
+def _sigmoid(x):
+    try:
+        return 1.0 / (1.0 + math.exp(-float(x)))
+    except Exception:
+        return None
+
+
+def _temperature_scale(p, temperature):
+    logit = _logit(p)
+    if logit is None:
+        return p
+    try:
+        temp = float(temperature)
+    except Exception:
+        temp = 1.0
+    if temp <= 0:
+        temp = 1.0
+    scaled = logit / temp
+    return _sigmoid(scaled)
+
+
+def _append_note(notes, extra):
+    if not extra:
+        return notes
+    base = "" if notes is None else str(notes)
+    if not base:
+        return str(extra)
+    if str(extra) in base:
+        return base
+    return f"{base} | {extra}"
+
+
+def _apply_local_calibration(engine_name, ai_value, notes):
+    if engine_name not in _CALIBRATION_ENGINES:
+        return ai_value, notes
+    if not _calibration_enabled():
+        return ai_value, notes
+    if ai_value is None:
+        return ai_value, notes
+    temp = _calibration_temperature()
+    calibrated = _temperature_scale(ai_value, temp)
+    if calibrated is None:
+        return ai_value, notes
+    note = f"calibration:T={temp:.2f},raw={ai_value:.3f},cal={calibrated:.3f}"
+    return calibrated, _append_note(notes, note)
+
+
 def _normalize_engine_result(raw, engine_name):
     raw = raw or {}
     legacy_shape = "ok" in raw
@@ -183,7 +278,7 @@ def _normalize_engine_result(raw, engine_name):
         and "signals" in raw
         and "notes" in raw
     ):
-        ai = raw.get("ai_likelihood")
+        ai = _normalize_ai01(raw.get("ai_likelihood"))
         confidence = _normalize_confidence(raw.get("confidence"))
         signals = raw.get("signals") if isinstance(raw.get("signals"), list) else []
         signals = [str(d) for d in signals if d is not None]
@@ -193,13 +288,14 @@ def _normalize_engine_result(raw, engine_name):
         timing_ms = raw.get("timing_ms")
         if available is None:
             available = notes != "not_available"
+        ai, notes = _apply_local_calibration(engine_name, ai, notes)
         if engine_name == "video_frame_detectors":
             signals_out = signals
         else:
             signals_out = signals[:6]
         return {
             "engine": engine_name,
-            "ai_likelihood": ai if isinstance(ai, (int, float)) else None,
+            "ai_likelihood": ai,
             "confidence": confidence,
             "signals": signals_out,
             "notes": str(notes),
@@ -238,6 +334,8 @@ def _normalize_engine_result(raw, engine_name):
         ai_value = None
     else:
         ai_value = None if engine_name == "c2pa" else (ai if ai is not None else 0)
+        ai_value = _normalize_ai01(ai_value)
+        ai_value, notes = _apply_local_calibration(engine_name, ai_value, notes)
     timing_ms = raw.get("timing_ms")
     return {
         "engine": engine_name,
@@ -251,8 +349,40 @@ def _normalize_engine_result(raw, engine_name):
     }
 
 
-def _compute_overall_confidence(spread, engine_count, conflict):
-    if engine_count <= 0:
+def _compute_overall_confidence(spread_or_results, engine_count=None, conflict=None, media_type="image"):
+    if isinstance(spread_or_results, (list, tuple)):
+        weights = _get_engine_weights(media_type)
+        weighted_sum = 0.0
+        total_weight = 0.0
+        for entry in spread_or_results or []:
+            if not isinstance(entry, dict):
+                continue
+            if not entry.get("available"):
+                continue
+            if entry.get("ai_likelihood") is None:
+                continue
+            engine = entry.get("engine")
+            weight = weights.get(engine, 0.0)
+            if weight <= 0.0:
+                continue
+            try:
+                conf_value = float(entry.get("confidence"))
+            except Exception:
+                continue
+            if conf_value > 1.0:
+                conf_value = conf_value / 100.0 if conf_value <= 100.0 else 1.0
+            if conf_value < 0.0:
+                conf_value = 0.0
+            if conf_value > 1.0:
+                conf_value = 1.0
+            weighted_sum += conf_value * weight
+            total_weight += weight
+        if total_weight <= 0.0:
+            return 0.0
+        return max(0.0, min(1.0, weighted_sum / total_weight))
+
+    spread = spread_or_results
+    if engine_count is None:
         return 0.0
     if conflict:
         return 0.35
@@ -295,22 +425,6 @@ def _build_reasons(verdict, conflict, engine_count, reasons_in=None):
     if verdict == "uncertain" or conflict:
         reasons.append("Zweiten Check empfohlen")
     return reasons[:3]
-
-
-def _normalize_ai01(value):
-    if value is None:
-        return None
-    try:
-        v = float(value)
-    except Exception:
-        return None
-    if v < 0.0:
-        v = 0.0
-    if v > 1.0:
-        v = v / 100.0 if v <= 100.0 else 1.0
-    if v > 1.0:
-        v = 1.0
-    return v
 
 
 def _weighted_average(engine_results, media_type="image"):
@@ -556,6 +670,17 @@ def compute_final_score(engine_results, media_type="image", return_groups=False)
                 clamp_min = max(0.0, clamp_min - widen_amt)
                 clamp_max = min(1.0, clamp_max + widen_amt)
                 final_ai = max(clamp_min, min(clamp_max, final_ai))
+
+                # Xception-only shaping: avoid persistent mid-band (46-54%) without inflating confidence.
+                # If the score sits in the deadzone, collapse to 0.5; otherwise apply mild sharpening.
+                dead_low, dead_high = 0.46, 0.54
+                if dead_low <= final_ai <= dead_high:
+                    final_ai = 0.5
+                else:
+                    logit = _logit(final_ai)
+                    if logit is not None:
+                        final_ai = _sigmoid(logit * 1.15) or final_ai
+                        final_ai = max(clamp_min, min(clamp_max, final_ai))
     if return_groups:
         return final_ai, groups_used
     return final_ai
@@ -1294,21 +1419,75 @@ def run_ensemble(file_path: str):
 
         engine_results_raw_list, normalized = _build_engine_results()
 
-        engines = []
         warnings = []
-        if hive_result.get("ok"):
-            engines.append(hive_result)
-        else:
+        hive_ok = bool(hive_result.get("ok")) if isinstance(hive_result, dict) else False
+        forensics_ok = bool(forensics_result.get("ok")) if isinstance(forensics_result, dict) else False
+        if isinstance(hive_result, dict) and not hive_ok:
             warnings.extend(hive_result.get("warnings", []))
-        if forensics_result.get("ok"):
-            engines.append(forensics_result)
-        else:
+        if isinstance(forensics_result, dict) and not forensics_ok:
             warnings.extend(forensics_result.get("warnings", []))
 
-        sources_used = [e["engine"] for e in engines]
-        primary_source = "hive" if hive_result.get("ok") else ("forensics" if forensics_result.get("ok") else None)
+        sources_used = [
+            entry.get("engine")
+            for entry in normalized
+            if entry.get("available") and isinstance(entry.get("engine"), str)
+        ]
+        primary_source = "hive" if hive_ok else ("forensics" if forensics_ok else None)
 
-        if not engines:
+        available_ai = [
+            entry
+            for entry in normalized
+            if isinstance(entry, dict) and entry.get("available") and entry.get("ai_likelihood") is not None
+        ]
+
+        final_ai = compute_final_score(normalized, media_type="image")
+        if final_ai is not None:
+            try:
+                final_ai = float(final_ai)
+            except Exception:
+                final_ai = None
+        if final_ai is not None:
+            if final_ai < 0.0:
+                final_ai = 0.0
+            if final_ai > 1.0:
+                final_ai = 1.0
+
+        confidence = _compute_overall_confidence(normalized, media_type="image")
+        verdict = "unknown"
+        if final_ai is not None:
+            if final_ai >= 0.60 and confidence >= 0.55:
+                verdict = "fake"
+            elif final_ai <= 0.40 and confidence >= 0.55:
+                verdict = "real"
+            else:
+                verdict = "uncertain"
+
+        if final_ai is None:
+            real = 0.0
+            fake = 0.0
+        else:
+            fake = round(float(final_ai) * 100.0, 2)
+            real = round((1.0 - float(final_ai)) * 100.0, 2)
+
+        user_summary = []
+        if verdict == "real":
+            user_summary.append("Das Ergebnis spricht eher fuer eine echte Aufnahme.")
+        elif verdict == "fake":
+            user_summary.append("Das Ergebnis spricht eher fuer eine KI/Manipulation.")
+        elif verdict == "unknown":
+            user_summary.append("Keine belastbaren Signale verfuegbar.")
+        else:
+            user_summary.append("Das Ergebnis ist uneindeutig; weitere Pruefung empfohlen.")
+
+        if not hive_ok:
+            user_summary.append("Hauptanalyse (Hive) war nicht verfuegbar; Fallback wurde genutzt.")
+
+        details = {
+            "hive": hive_result.get("details", []) if isinstance(hive_result, dict) else [],
+            "forensics": forensics_result.get("details", []) if isinstance(forensics_result, dict) else [],
+        }
+
+        if not available_ai:
             return {
                 "ok": False,
                 "error": True,
@@ -1318,53 +1497,14 @@ def run_ensemble(file_path: str):
                 "primary_source": primary_source,
                 "sources_used": sources_used,
                 "health": {"hive": hive_health_check()},
+                "final_ai": final_ai,
+                "verdict": verdict,
+                "confidence": confidence,
+                "real": real,
+                "fake": fake,
                 "engine_results_raw": engine_results_raw_list,
                 "engine_results": normalized,
             }
-
-        hive_ok = bool(hive_result.get("ok"))
-        if hive_ok:
-            weights = {"hive": 0.6, "forensics": 0.25}
-        else:
-            weights = {"forensics": 0.65}
-
-        total_weight = 0.0
-        real_sum = 0.0
-        fake_sum = 0.0
-        for e in engines:
-            w = weights.get(e["engine"], 0.0)
-            if w <= 0.0:
-                continue
-            total_weight += w
-            real_sum += w * float(e.get("real", 0.0))
-            fake_sum += w * float(e.get("fake", 0.0))
-
-        if total_weight <= 0.0:
-            total_weight = float(len(engines))
-            real_sum = sum(float(e.get("real", 0.0)) for e in engines)
-            fake_sum = sum(float(e.get("fake", 0.0)) for e in engines)
-
-        real = round(real_sum / total_weight, 2)
-        fake = round(fake_sum / total_weight, 2)
-
-        confidence = _compute_confidence([float(e.get("fake", 0.0)) for e in engines], len(engines), hive_ok)
-        verdict = _compute_verdict(real, fake, confidence)
-
-        user_summary = []
-        if verdict == "real":
-            user_summary.append("Das Ergebnis spricht eher fuer eine echte Aufnahme.")
-        elif verdict == "fake":
-            user_summary.append("Das Ergebnis spricht eher fuer eine KI/Manipulation.")
-        else:
-            user_summary.append("Das Ergebnis ist uneindeutig; weitere Pruefung empfohlen.")
-
-        if not hive_ok:
-            user_summary.append("Hauptanalyse (Hive) war nicht verfuegbar; Fallback wurde genutzt.")
-
-        details = {
-            "hive": hive_result.get("details", []),
-            "forensics": forensics_result.get("details", []),
-        }
 
         return {
             "ok": True,
@@ -1372,6 +1512,7 @@ def run_ensemble(file_path: str):
             "real": real,
             "fake": fake,
             "confidence": confidence,
+            "final_ai": final_ai,
             "primary_source": primary_source,
             "sources_used": sources_used,
             "user_summary": user_summary,
@@ -1412,6 +1553,11 @@ def run_ensemble(file_path: str):
             "message": str(exc),
             "details": [],
             "warnings": [err_note],
+            "final_ai": None,
+            "verdict": "unknown",
+            "confidence": 0.0,
+            "real": 0.0,
+            "fake": 0.0,
             "engine_results_raw": engine_results_raw_list,
             "engine_results": normalized,
         }
