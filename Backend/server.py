@@ -3,22 +3,62 @@ from flask import Flask, request, jsonify, g, make_response
 from flask_cors import CORS
 
 import os
-
+import sys
 import hashlib
-
 import json
-
 import shutil
-
 import subprocess
-
+import uuid
 from typing import Tuple
-from dotenv import load_dotenv
+from dotenv import load_dotenv, find_dotenv
 
 import jwt
 
-import uuid
+_DOTENV_PATH = find_dotenv(".env", usecwd=True)
+if _DOTENV_PATH:
+    load_dotenv(_DOTENV_PATH, override=False)
 
+
+def _paid_apis_enabled():
+    return os.getenv("AIREALCHECK_USE_PAID_APIS", "false").lower() in {"1", "true", "yes"}
+
+
+def _sightengine_creds_present():
+    api_user = (os.getenv("SIGHTENGINE_API_USER") or "").strip()
+    api_secret = (os.getenv("SIGHTENGINE_API_SECRET") or "").strip()
+    if api_user and api_secret:
+        return True
+    api_key = (os.getenv("SIGHTENGINE_API_KEY") or "").strip()
+    if not api_key:
+        return False
+    if ":" in api_key:
+        parts = api_key.split(":", 1)
+    elif "," in api_key:
+        parts = api_key.split(",", 1)
+    else:
+        parts = [api_key, ""]
+    api_user = parts[0].strip()
+    api_secret = parts[1].strip() if len(parts) > 1 else ""
+    return bool(api_user and api_secret)
+
+
+def _reality_defender_creds_present():
+    api_key = (os.getenv("REALITY_DEFENDER_API_KEY") or "").strip()
+    return bool(api_key)
+
+
+def _log_env_summary():
+    dotenv_label = _DOTENV_PATH if _DOTENV_PATH else "none"
+    paid_value = os.getenv("AIREALCHECK_USE_PAID_APIS")
+    print(
+        f"[env] dotenv_path={dotenv_label} "
+        f"AIREALCHECK_USE_PAID_APIS={paid_value} "
+        f"SIGHTENGINE_creds_present={_sightengine_creds_present()} "
+        f"REALITY_DEFENDER_creds_present={_reality_defender_creds_present()}"
+    )
+
+
+_log_env_summary()
 
 
 from Backend.ensemble import run_ensemble, build_standard_result, run_audio_ensemble
@@ -42,10 +82,6 @@ from Backend.admin import bp_admin
 
 from Backend.middleware import spend_one_credit, get_session, parse_auth_header, ensure_daily_reset
 
-
-
-import sys, os
-
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 sys.path.insert(0, BASE_DIR)
@@ -59,8 +95,6 @@ print("LOADED SERVER.PY FROM:", __file__)
 
 
 
-
-load_dotenv()
 
 JWT_SECRET = os.getenv("AIREALCHECK_JWT_SECRET", "dev_change_me")
 
@@ -490,6 +524,53 @@ def health():
     return jsonify({"ok": True})
 
 
+@app.get("/debug/env")
+def debug_env():
+    paid_enabled = _paid_apis_enabled()
+    return jsonify(
+        {
+            "cwd": os.getcwd(),
+            "dotenv_path": _DOTENV_PATH if _DOTENV_PATH else "none",
+            "AIREALCHECK_USE_PAID_APIS": os.getenv("AIREALCHECK_USE_PAID_APIS"),
+            "sightengine": {
+                "paid_apis_enabled": paid_enabled,
+                "creds_present": _sightengine_creds_present(),
+            },
+            "reality_defender": {
+                "paid_apis_enabled": paid_enabled,
+                "creds_present": _reality_defender_creds_present(),
+            },
+        }
+    )
+
+
+@app.get("/debug/paid")
+def debug_paid():
+    paid_enabled = _paid_apis_enabled()
+    return jsonify(
+        {
+            "cwd": os.getcwd(),
+            "dotenv_path": _DOTENV_PATH if _DOTENV_PATH else "none",
+            "AIREALCHECK_USE_PAID_APIS": os.getenv("AIREALCHECK_USE_PAID_APIS"),
+            "sightengine": {
+                "paid_apis_enabled": paid_enabled,
+                "creds_present": _sightengine_creds_present(),
+                "env_names_checked": [
+                    "AIREALCHECK_USE_PAID_APIS",
+                    "SIGHTENGINE_API_USER",
+                    "SIGHTENGINE_API_SECRET",
+                    "SIGHTENGINE_API_KEY",
+                ],
+            },
+            "reality_defender": {
+                "paid_apis_enabled": paid_enabled,
+                "creds_present": _reality_defender_creds_present(),
+                "env_names_checked": ["AIREALCHECK_USE_PAID_APIS", "REALITY_DEFENDER_API_KEY"],
+            },
+        }
+    )
+
+
 
 
 
@@ -854,6 +935,7 @@ def _run_analysis_path(file_path, filename, media_type="image", user_ctx=None, c
 
 
 
+        debug_paid = result.get("debug_paid") if isinstance(result, dict) else None
         standard_payload = build_standard_result(
 
             media_type=media_type,
@@ -867,6 +949,8 @@ def _run_analysis_path(file_path, filename, media_type="image", user_ctx=None, c
             reasons=None,
 
             created_at=created_at_iso,
+
+            debug_paid=debug_paid,
 
         )
 

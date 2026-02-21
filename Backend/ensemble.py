@@ -82,6 +82,56 @@ _VIDEO_WEIGHTS_CACHE = {"raw": None, "weights": None}
 _IMAGE_WEIGHTS_CACHE = {"raw": None, "weights": None}
 
 
+def _debug_paid_enabled():
+    return os.getenv("AIREALCHECK_DEBUG_PAID", "0").lower() in {"1", "true", "yes", "on"}
+
+
+def _paid_apis_enabled():
+    return os.getenv("AIREALCHECK_USE_PAID_APIS", "false").lower() in {"1", "true", "yes"}
+
+
+def _resolve_paid_enable_flag(name, paid_default):
+    raw = os.getenv(name)
+    if raw is None:
+        return paid_default, None
+    return raw.lower() in {"1", "true", "yes", "on"}, raw
+
+
+def _sightengine_creds_present():
+    api_user = (os.getenv("SIGHTENGINE_API_USER") or "").strip()
+    api_secret = (os.getenv("SIGHTENGINE_API_SECRET") or "").strip()
+    if api_user and api_secret:
+        return True
+    api_key = (os.getenv("SIGHTENGINE_API_KEY") or "").strip()
+    if not api_key:
+        return False
+    if ":" in api_key:
+        parts = api_key.split(":", 1)
+    elif "," in api_key:
+        parts = api_key.split(",", 1)
+    else:
+        parts = [api_key, ""]
+    api_user = parts[0].strip()
+    api_secret = parts[1].strip() if len(parts) > 1 else ""
+    return bool(api_user and api_secret)
+
+
+def _reality_defender_creds_present():
+    api_key = (os.getenv("REALITY_DEFENDER_API_KEY") or "").strip()
+    return bool(api_key)
+
+
+def _debug_paid_log(engine, paid_enabled, creds_present, env_names, path):
+    if not _debug_paid_enabled():
+        return
+    env_list = ",".join(env_names)
+    print(
+        f"[paid_debug] engine={engine} "
+        f"paid_apis_enabled={paid_enabled} creds_present={creds_present} "
+        f"envs=[{env_list}] path={path}"
+    )
+
+
 def _load_video_weights():
     raw = (os.getenv("AIREALCHECK_VIDEO_ENGINE_WEIGHTS_JSON") or "").strip()
     if not raw:
@@ -941,7 +991,9 @@ def _log_calibration(final_ai, confidence_label, detector_values):
         return
 
 
-def build_standard_result(media_type, engine_results_raw, analysis_id, ai_likelihood, reasons=None, created_at=None):
+def build_standard_result(
+    media_type, engine_results_raw, analysis_id, ai_likelihood, reasons=None, created_at=None, debug_paid=None
+):
     engine_results_raw = engine_results_raw or []
     by_engine = {r.get("engine"): r for r in engine_results_raw if isinstance(r, dict) and r.get("engine")}
     if media_type == "video":
@@ -1227,6 +1279,8 @@ def build_standard_result(media_type, engine_results_raw, analysis_id, ai_likeli
     result["warnings_user"] = warnings_user
     if ensemble_signals:
         result["ensemble_signals"] = ensemble_signals
+    if debug_paid is not None and _debug_paid_enabled():
+        result["debug_paid"] = debug_paid
     return result
 
 
@@ -1312,8 +1366,11 @@ def run_ensemble(file_path: str):
     use_hive = os.getenv("HIVE_ENABLED", "true").lower() in {"1", "true", "yes"}
     use_forensics = os.getenv("AIREALCHECK_IMAGE_FALLBACK", "true").lower() in {"1", "true", "yes"}
     enable_hive = os.getenv("AIREALCHECK_ENABLE_HIVE_IMAGE", "false").lower() in {"1", "true", "yes", "on"}
-    enable_rd = os.getenv("AIREALCHECK_ENABLE_REALITY_DEFENDER_IMAGE", "false").lower() in {"1", "true", "yes", "on"}
-    enable_sightengine = os.getenv("AIREALCHECK_ENABLE_SIGHTENGINE_IMAGE", "false").lower() in {"1", "true", "yes", "on"}
+    paid_enabled = _paid_apis_enabled()
+    enable_rd, enable_rd_raw = _resolve_paid_enable_flag("AIREALCHECK_ENABLE_REALITY_DEFENDER_IMAGE", paid_enabled)
+    enable_sightengine, enable_sightengine_raw = _resolve_paid_enable_flag(
+        "AIREALCHECK_ENABLE_SIGHTENGINE_IMAGE", paid_enabled
+    )
     enable_sensity = os.getenv("AIREALCHECK_ENABLE_SENSITY_IMAGE", "false").lower() in {"1", "true", "yes", "on"}
     hive_result = None
     forensics_result = None
@@ -1350,6 +1407,50 @@ def run_ensemble(file_path: str):
             signals=["exception"],
             timing_ms=0,
         )
+
+    def _debug_paid_reason(enabled, raw_value, paid_enabled_value, flag_name):
+        if enabled:
+            return "request"
+        if raw_value is None:
+            if not paid_enabled_value:
+                return "disabled:flag_off:paid_apis_off"
+            return f"disabled:flag_off:{flag_name}:default"
+        raw_clean = str(raw_value).strip() or "empty"
+        return f"disabled:flag_off:{flag_name}={raw_clean}"
+
+    debug_paid = None
+    if _debug_paid_enabled():
+        sight_creds = _sightengine_creds_present()
+        rd_creds = _reality_defender_creds_present()
+        sight_envs = [
+            "AIREALCHECK_USE_PAID_APIS",
+            "AIREALCHECK_ENABLE_SIGHTENGINE_IMAGE",
+            "SIGHTENGINE_API_USER",
+            "SIGHTENGINE_API_SECRET",
+            "SIGHTENGINE_API_KEY",
+        ]
+        rd_envs = [
+            "AIREALCHECK_USE_PAID_APIS",
+            "AIREALCHECK_ENABLE_REALITY_DEFENDER_IMAGE",
+            "REALITY_DEFENDER_API_KEY",
+        ]
+        sight_reason = _debug_paid_reason(
+            enable_sightengine, enable_sightengine_raw, paid_enabled, "AIREALCHECK_ENABLE_SIGHTENGINE_IMAGE"
+        )
+        rd_reason = _debug_paid_reason(
+            enable_rd, enable_rd_raw, paid_enabled, "AIREALCHECK_ENABLE_REALITY_DEFENDER_IMAGE"
+        )
+        _debug_paid_log("sightengine", paid_enabled, sight_creds, sight_envs, sight_reason)
+        _debug_paid_log("reality_defender", paid_enabled, rd_creds, rd_envs, rd_reason)
+        debug_paid = {
+            "sightengine": {"attempted": bool(enable_sightengine), "reason": sight_reason},
+            "reality_defender": {"attempted": bool(enable_rd), "reason": rd_reason},
+        }
+
+    def _attach_debug_paid(payload):
+        if debug_paid is not None and isinstance(payload, dict):
+            payload["debug_paid"] = debug_paid
+        return payload
 
     def _build_engine_results():
         raw_list = [
@@ -1488,7 +1589,8 @@ def run_ensemble(file_path: str):
         }
 
         if not available_ai:
-            return {
+            return _attach_debug_paid(
+                {
                 "ok": False,
                 "error": True,
                 "message": "No analysis engine available",
@@ -1505,8 +1607,10 @@ def run_ensemble(file_path: str):
                 "engine_results_raw": engine_results_raw_list,
                 "engine_results": normalized,
             }
+            )
 
-        return {
+        return _attach_debug_paid(
+            {
             "ok": True,
             "verdict": verdict,
             "real": real,
@@ -1522,6 +1626,7 @@ def run_ensemble(file_path: str):
             "engine_results_raw": engine_results_raw_list,
             "engine_results": normalized,
         }
+        )
     except Exception as exc:
         err_note = f"exception:{type(exc).__name__}"
         if not engine_results_raw_list:
@@ -1547,7 +1652,8 @@ def run_ensemble(file_path: str):
                 r.get("engine"): r for r in engine_results_raw_list if isinstance(r, dict) and r.get("engine")
             }
             normalized = [_normalize_engine_result(by_engine.get(name), name) for name in IMAGE_ENGINES]
-        return {
+        return _attach_debug_paid(
+            {
             "ok": False,
             "error": err_note,
             "message": str(exc),
@@ -1561,3 +1667,4 @@ def run_ensemble(file_path: str):
             "engine_results_raw": engine_results_raw_list,
             "engine_results": normalized,
         }
+        )

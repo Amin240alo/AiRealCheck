@@ -23,7 +23,22 @@ def _paid_api_timeouts():
     return connect, read
 
 
-def _not_available(notes="error"):
+def _debug_paid_enabled():
+    return os.getenv("AIREALCHECK_DEBUG_PAID", "0").lower() in {"1", "true", "yes", "on"}
+
+
+def _debug_paid_log(paid_enabled, creds_present, env_names, path):
+    if not _debug_paid_enabled():
+        return
+    env_list = ",".join(env_names)
+    print(
+        "[paid_debug] engine=reality_defender "
+        f"paid_apis_enabled={paid_enabled} creds_present={creds_present} "
+        f"envs=[{env_list}] path={path}"
+    )
+
+
+def _not_available(notes="error:RuntimeError"):
     return {
         "engine": "reality_defender",
         "ai_likelihood": None,
@@ -41,7 +56,7 @@ def _disabled():
         "ai_likelihood": None,
         "confidence": 0.0,
         "signals": ["paid_apis_disabled"],
-        "notes": "disabled:paid_apis_off",
+        "notes": "disabled:flag_off",
         "available": False,
         "status": "disabled",
     }
@@ -52,26 +67,15 @@ def _disabled_missing_key():
         "engine": "reality_defender",
         "ai_likelihood": None,
         "confidence": 0.0,
-        "signals": ["missing_key"],
-        "notes": "disabled:missing_key",
+        "signals": ["missing_credentials"],
+        "notes": "disabled:missing_credentials",
         "available": False,
         "status": "disabled",
     }
 
 
 def _http_note(status_code, response):
-    note = f"http_{status_code}"
-    if response is None:
-        return note
-    try:
-        text = (response.text or "").strip()
-    except Exception:
-        text = ""
-    if text:
-        snippet = text.replace("\r", " ").replace("\n", " ")
-        snippet = snippet[:200]
-        note = f"{note}:{snippet}"
-    return note
+    return f"error:{status_code}"
 
 
 def _debug_enabled():
@@ -163,7 +167,7 @@ def _timeout_result():
         "ai_likelihood": None,
         "confidence": 0.0,
         "signals": ["timeout"],
-        "notes": "timeout",
+        "notes": "error:TimeoutError",
     }
 
 
@@ -181,11 +185,17 @@ def analyze_reality_defender(asset_path: str) -> dict:
     deadline = start_time + _TOTAL_TIMEOUT_SECONDS
 
     def _run():
-        if not _paid_apis_enabled():
-            return _disabled()
+        paid_enabled = _paid_apis_enabled()
         api_key = (os.getenv("REALITY_DEFENDER_API_KEY") or "").strip()
+        creds_present = bool(api_key)
+        env_names = ["AIREALCHECK_USE_PAID_APIS", "REALITY_DEFENDER_API_KEY"]
+        if not paid_enabled:
+            _debug_paid_log(paid_enabled, creds_present, env_names, "disabled:flag_off")
+            return _disabled()
         if not api_key:
+            _debug_paid_log(paid_enabled, creds_present, env_names, "disabled:missing_credentials")
             return _disabled_missing_key()
+        _debug_paid_log(paid_enabled, creds_present, env_names, "request")
 
         headers = {"X-API-KEY": api_key, "Content-Type": "application/json"}
         file_name = os.path.basename(asset_path)
@@ -215,16 +225,16 @@ def analyze_reality_defender(asset_path: str) -> dict:
                 json=payload,
                 timeout=timeouts,
             )
-        except Exception:
-            return _not_available("request_failed")
+        except Exception as exc:
+            return _not_available(f"error:{type(exc).__name__}")
 
         if resp.status_code < 200 or resp.status_code >= 300:
             return _not_available(_http_note(resp.status_code, resp))
 
         try:
             presigned_payload = resp.json()
-        except Exception:
-            return _not_available("invalid_json")
+        except Exception as exc:
+            return _not_available(f"error:{type(exc).__name__}")
 
         if _debug_enabled() and isinstance(presigned_payload, dict):
             top_keys = list(presigned_payload.keys())
@@ -264,10 +274,7 @@ def analyze_reality_defender(asset_path: str) -> dict:
                             msg = response_val.get(key).strip()
                             break
                 msg = msg.replace("\r", " ").replace("\n", " ")[:200]
-                note = f"rd_presigned_error:{code}:{errno}"
-                if msg:
-                    note = f"{note}:{msg}"
-                return _not_available(note)
+                return _not_available("error:RuntimeError")
 
         if isinstance(presigned_payload, dict) and isinstance(presigned_payload.get("response"), dict):
             upload_url, upload_fields, request_id = _extract_presigned(presigned_payload.get("response"))
@@ -285,9 +292,7 @@ def analyze_reality_defender(asset_path: str) -> dict:
                     keys_note += " response=" + ",".join(response_keys)
                 keys_note = keys_note[:200]
             note = "bad_presigned_response"
-            if keys_note:
-                note = f"{note}:{keys_note}"
-            return _not_available(note)
+            return _not_available("error:ValueError")
 
         upload_resp = None
         if upload_fields:
@@ -303,8 +308,8 @@ def analyze_reality_defender(asset_path: str) -> dict:
                         files=files,
                         timeout=timeouts,
                     )
-            except Exception:
-                return _not_available("upload_failed")
+            except Exception as exc:
+                return _not_available(f"error:{type(exc).__name__}")
         else:
             try:
                 timeouts = _timeouts_for_deadline(deadline)
@@ -317,11 +322,11 @@ def analyze_reality_defender(asset_path: str) -> dict:
                         headers={"Content-Type": mime_type},
                         timeout=timeouts,
                     )
-            except Exception:
-                return _not_available("upload_failed")
+            except Exception as exc:
+                return _not_available(f"error:{type(exc).__name__}")
 
         if upload_resp is None:
-            return _not_available("upload_failed")
+            return _not_available("error:RuntimeError")
 
         if upload_resp.status_code < 200 or upload_resp.status_code >= 300:
             return _not_available(_http_note(upload_resp.status_code, upload_resp))
@@ -334,7 +339,7 @@ def analyze_reality_defender(asset_path: str) -> dict:
             if isinstance(request_id, str):
                 request_id = request_id.strip()
         if not request_id:
-            return _not_available("missing_request_id")
+            return _not_available("error:ValueError")
 
         poll_deadline = min(deadline, time.time() + _MAX_POLL_SECONDS)
         status = None
@@ -351,16 +356,16 @@ def analyze_reality_defender(asset_path: str) -> dict:
                     headers={"X-API-KEY": api_key},
                     timeout=timeouts,
                 )
-            except Exception:
-                return _not_available("poll_failed")
+            except Exception as exc:
+                return _not_available(f"error:{type(exc).__name__}")
 
             if result_resp.status_code < 200 or result_resp.status_code >= 300:
                 return _not_available(_http_note(result_resp.status_code, result_resp))
 
             try:
                 payload = result_resp.json()
-            except Exception:
-                return _not_available("invalid_json")
+            except Exception as exc:
+                return _not_available(f"error:{type(exc).__name__}")
 
             status, final_score, reasons = _extract_result(payload)
             normalized_status = _normalize_status(status)
@@ -437,7 +442,7 @@ def analyze_reality_defender(asset_path: str) -> dict:
             }
 
         if ai_likelihood is None:
-            return _not_available(normalized_status or "not_available")
+            return _not_available("error:RuntimeError")
 
         confidence = max(ai_likelihood, 1.0 - ai_likelihood)
         notes = "ok"
@@ -456,5 +461,5 @@ def analyze_reality_defender(asset_path: str) -> dict:
 
     try:
         return _run()
-    except Exception:
-        return _not_available("error")
+    except Exception as exc:
+        return _not_available(f"error:{type(exc).__name__}")
