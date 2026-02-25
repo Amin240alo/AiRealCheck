@@ -177,8 +177,8 @@ def analyze_sensity_image(file_path: str):
     if not api_key:
         return make_engine_result(
             engine=ENGINE_NAME,
-            status="disabled",
-            notes="disabled:missing_key",
+            status="not_available",
+            notes="not_available:missing_key",
             available=False,
             ai_likelihood=None,
             confidence=0.0,

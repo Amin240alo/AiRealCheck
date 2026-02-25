@@ -15,6 +15,7 @@ from Backend.engines.audio_forensics_engine import run_audio_forensics
 from Backend.engines.audio_aasist_engine import run_audio_aasist
 from Backend.engines.audio_prosody_engine import run_audio_prosody
 from Backend.engines.engine_utils import safe_engine_call, make_engine_result
+from Backend.runtime_thresholds import load_thresholds
 
 IMAGE_ENGINES = [
     "hive",
@@ -29,6 +30,7 @@ IMAGE_ENGINES = [
 ]
 VIDEO_ENGINES = [
     "video_frame_detectors",
+    "sightengine_video",
     "hive_video",
     "reality_defender_video",
     "sensity_video",
@@ -36,19 +38,20 @@ VIDEO_ENGINES = [
     "video_temporal",
     "video_forensics",
 ]
-AUDIO_ENGINES = ["audio_forensics", "audio_aasist", "audio_prosody"]
+AUDIO_ENGINES = ["audio_forensics", "audio_aasist", "audio_prosody", "reality_defender_audio"]
 DETECTOR_ENGINES_IMAGE = {"sightengine", "reality_defender", "hive", "sensity_image", "xception", "clip_detector"}
 DETECTOR_ENGINES_VIDEO = {
     "reality_defender_video",
     "hive_video",
     "sensity_video",
+    "sightengine_video",
     "video_frame_detectors",
     "video_temporal_cnn",
 }
 DETECTOR_ENGINES_AUDIO = {"audio_aasist"}
 VIDEO_ENGINE_GROUPS = {
-    "frame_apis": {"video_frame_detectors", "reality_defender_video", "hive_video", "sensity_video"},
-    "whole_video_apis": set(),
+    "frame_apis": {"video_frame_detectors", "hive_video", "sensity_video", "sightengine_video"},
+    "whole_video_apis": {"reality_defender_video"},
     "local_models": {"video_temporal", "video_temporal_cnn", "video_forensics"},
 }
 ENGINE_WEIGHTS = {
@@ -62,9 +65,10 @@ ENGINE_WEIGHTS = {
         "forensics": 0.07,
     },
     "video": {
-        "reality_defender_video": 0.0,
+        "reality_defender_video": 0.10,
         "hive_video": 0.0,
         "sensity_video": 0.0,
+        "sightengine_video": 0.0,
         "video_temporal_cnn": 0.06,
         "video_frame_detectors": 0.20,
         "video_temporal": 0.16,
@@ -74,12 +78,76 @@ ENGINE_WEIGHTS = {
         "audio_aasist": 0.70,
         "audio_forensics": 0.25,
         "audio_prosody": 0.05,
+        "reality_defender_audio": 0.15,
     },
 }
 HIGH_WEIGHT_THRESHOLD = 0.25
 
 _VIDEO_WEIGHTS_CACHE = {"raw": None, "weights": None}
 _IMAGE_WEIGHTS_CACHE = {"raw": None, "weights": None}
+_LEARNED_WEIGHTS_CACHE = {"path": None, "data": None}
+
+
+def _learned_weights_enabled():
+    return os.getenv("AIREALCHECK_ENABLE_LEARNED_WEIGHTS", "false").lower() in {"1", "true", "yes", "on"}
+
+
+def _resolve_learned_weights_path():
+    raw = (os.getenv("AIREALCHECK_LEARNED_WEIGHTS_PATH", "data/learned_weights.json") or "").strip()
+    if not raw:
+        return None
+    if os.path.isabs(raw):
+        return raw
+    return os.path.abspath(raw)
+
+
+def _sanitize_weights(weights):
+    if not isinstance(weights, dict):
+        return None
+    cleaned = {}
+    total = 0.0
+    for name, value in weights.items():
+        try:
+            weight = float(value)
+        except Exception:
+            continue
+        if weight < 0:
+            continue
+        cleaned[str(name)] = weight
+        total += weight
+    if total <= 0.0:
+        return None
+    for name in list(cleaned.keys()):
+        cleaned[name] = cleaned[name] / total
+    return cleaned
+
+
+def _load_learned_weights_file():
+    if not _learned_weights_enabled():
+        return None
+    path = _resolve_learned_weights_path()
+    if not path:
+        return None
+    if path == _LEARNED_WEIGHTS_CACHE.get("path") and _LEARNED_WEIGHTS_CACHE.get("data") is not None:
+        return _LEARNED_WEIGHTS_CACHE.get("data")
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            payload = json.load(f)
+    except Exception:
+        return None
+    if not isinstance(payload, dict):
+        return None
+    _LEARNED_WEIGHTS_CACHE["path"] = path
+    _LEARNED_WEIGHTS_CACHE["data"] = payload
+    return payload
+
+
+def _get_learned_weights(media_type):
+    payload = _load_learned_weights_file()
+    if not isinstance(payload, dict):
+        return None
+    learned = payload.get(media_type)
+    return _sanitize_weights(learned)
 
 
 def _debug_paid_enabled():
@@ -135,16 +203,25 @@ def _debug_paid_log(engine, paid_enabled, creds_present, env_names, path):
 def _load_video_weights():
     raw = (os.getenv("AIREALCHECK_VIDEO_ENGINE_WEIGHTS_JSON") or "").strip()
     if not raw:
+        learned = _get_learned_weights("video")
+        if learned:
+            return learned
         return ENGINE_WEIGHTS.get("video", {})
     if raw == _VIDEO_WEIGHTS_CACHE.get("raw") and _VIDEO_WEIGHTS_CACHE.get("weights") is not None:
         return _VIDEO_WEIGHTS_CACHE.get("weights") or {}
     try:
         payload = json.loads(raw)
     except Exception:
+        learned = _get_learned_weights("video")
+        if learned:
+            return learned
         return ENGINE_WEIGHTS.get("video", {})
     if isinstance(payload, dict) and isinstance(payload.get("video"), dict):
         payload = payload.get("video")
     if not isinstance(payload, dict):
+        learned = _get_learned_weights("video")
+        if learned:
+            return learned
         return ENGINE_WEIGHTS.get("video", {})
     merged = dict(ENGINE_WEIGHTS.get("video", {}))
     for name, value in payload.items():
@@ -163,16 +240,25 @@ def _load_video_weights():
 def _load_image_weights():
     raw = (os.getenv("AIREALCHECK_IMAGE_ENGINE_WEIGHTS_JSON") or "").strip()
     if not raw:
+        learned = _get_learned_weights("image")
+        if learned:
+            return learned
         return ENGINE_WEIGHTS.get("image", {})
     if raw == _IMAGE_WEIGHTS_CACHE.get("raw") and _IMAGE_WEIGHTS_CACHE.get("weights") is not None:
         return _IMAGE_WEIGHTS_CACHE.get("weights") or {}
     try:
         payload = json.loads(raw)
     except Exception:
+        learned = _get_learned_weights("image")
+        if learned:
+            return learned
         return ENGINE_WEIGHTS.get("image", {})
     if isinstance(payload, dict) and isinstance(payload.get("image"), dict):
         payload = payload.get("image")
     if not isinstance(payload, dict):
+        learned = _get_learned_weights("image")
+        if learned:
+            return learned
         return ENGINE_WEIGHTS.get("image", {})
     merged = dict(ENGINE_WEIGHTS.get("image", {}))
     for name, value in payload.items():
@@ -193,6 +279,11 @@ def _get_engine_weights(media_type):
         return _load_video_weights()
     if media_type == "image":
         return _load_image_weights()
+    if media_type == "audio":
+        learned = _get_learned_weights("audio")
+        if learned:
+            return learned
+        return ENGINE_WEIGHTS.get("audio", {})
     return ENGINE_WEIGHTS.get(media_type, {})
 
 
@@ -600,6 +691,42 @@ def _clamp01(value):
     if v > 1.0:
         return 1.0
     return v
+
+
+def _runtime_thresholds_enabled():
+    return os.getenv("AIREALCHECK_ENABLE_RUNTIME_THRESHOLDS", "false").lower() in {"1", "true", "yes", "on"}
+
+
+def _resolve_runtime_thresholds_path():
+    raw = (os.getenv("AIREALCHECK_RUNTIME_THRESHOLDS_PATH", "data/benchmark_report.json") or "").strip()
+    if not raw:
+        return None
+    if os.path.isabs(raw):
+        return raw
+    return os.path.abspath(raw)
+
+
+def _resolve_decision_threshold(media_type):
+    manual_raw = os.getenv("AIREALCHECK_DECISION_THRESHOLD")
+    if manual_raw is not None:
+        manual_value = _clamp01(manual_raw)
+        if manual_value is not None:
+            return manual_value
+
+    if _runtime_thresholds_enabled():
+        path = _resolve_runtime_thresholds_path()
+        thresholds = load_thresholds(path) if path else None
+        if isinstance(thresholds, dict):
+            per_media = thresholds.get("per_media")
+            if isinstance(per_media, dict):
+                media_value = _clamp01(per_media.get(media_type))
+                if media_value is not None:
+                    return media_value
+            default_value = _clamp01(thresholds.get("default"))
+            if default_value is not None:
+                return default_value
+
+    return 0.5
 
 
 def _signal_value(signals, name):
@@ -1155,6 +1282,44 @@ def build_standard_result(
         final_ai, group_used = compute_final_score(normalized, media_type=media_type, return_groups=True)
     else:
         final_ai = compute_final_score(normalized, media_type=media_type)
+    fusion_applied = False
+    if media_type == "video" and final_ai is not None:
+        fusion_enabled = os.getenv("AIREALCHECK_ENABLE_AUDIO_VIDEO_FUSION", "false").lower() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }
+        if fusion_enabled:
+            audio_ai = None
+            for engine_name in ("reality_defender_audio", "audio_aasist", "audio_forensics", "audio_prosody"):
+                entry = by_engine.get(engine_name)
+                if not isinstance(entry, dict):
+                    continue
+                status = str(entry.get("status") or "").lower()
+                if status != "ok":
+                    continue
+                ai_value = _normalize_ai01(entry.get("ai_likelihood"))
+                if ai_value is None:
+                    continue
+                audio_ai = ai_value
+                break
+            if audio_ai is not None:
+                try:
+                    weight = float(os.getenv("AIREALCHECK_AUDIO_VIDEO_FUSION_WEIGHT", "0.2"))
+                except Exception:
+                    weight = 0.2
+                if weight < 0.0:
+                    weight = 0.0
+                if weight > 1.0:
+                    weight = 1.0
+                try:
+                    final_ai = float(final_ai)
+                except Exception:
+                    final_ai = None
+                if final_ai is not None:
+                    final_ai = (final_ai * (1.0 - weight)) + (audio_ai * weight)
+                    fusion_applied = True
     prosody_meta_signals = []
     prosody_conflict = False
     prosody_ai = None
@@ -1317,10 +1482,22 @@ def build_standard_result(
     real_out = None
     if ai_for_output is not None:
         ai_out, real_out = _percent_pair_from_ai(ai_for_output)
+    decision_threshold = _resolve_decision_threshold(media_type)
+    decision_threshold = _clamp01(decision_threshold)
+    if decision_threshold is None:
+        decision_threshold = 0.5
+    predicted_label = None
+    if ai_for_output is not None:
+        try:
+            predicted_label = 1 if float(ai_for_output) >= float(decision_threshold) else 0
+        except Exception:
+            predicted_label = None
 
     ensemble_signals = []
     if media_type == "video" and group_used:
         ensemble_signals.extend([f"group_used:{name}" for name in group_used])
+    if fusion_applied:
+        ensemble_signals.append("audio_video_fusion")
     if prosody_meta_signals:
         ensemble_signals.extend(prosody_meta_signals)
 
@@ -1378,6 +1555,8 @@ def build_standard_result(
         "analysis_id": analysis_id,
         "ai_likelihood": ai_out,
         "real_likelihood": real_out,
+        "decision_threshold": decision_threshold,
+        "predicted_label": predicted_label,
         "verdict": verdict,
         "traffic_light": traffic_light,
         "label_de": label_de,
@@ -1502,11 +1681,11 @@ def run_ensemble(file_path: str):
     use_forensics = os.getenv("AIREALCHECK_IMAGE_FALLBACK", "true").lower() in {"1", "true", "yes"}
     enable_hive = os.getenv("AIREALCHECK_ENABLE_HIVE_IMAGE", "false").lower() in {"1", "true", "yes", "on"}
     paid_enabled = _paid_apis_enabled()
-    enable_rd, enable_rd_raw = _resolve_paid_enable_flag("AIREALCHECK_ENABLE_REALITY_DEFENDER_IMAGE", paid_enabled)
-    enable_sightengine, enable_sightengine_raw = _resolve_paid_enable_flag(
-        "AIREALCHECK_ENABLE_SIGHTENGINE_IMAGE", paid_enabled
+    enable_rd_flag, enable_rd_raw = _resolve_paid_enable_flag("AIREALCHECK_ENABLE_REALITY_DEFENDER_IMAGE", False)
+    enable_sightengine_flag, enable_sightengine_raw = _resolve_paid_enable_flag(
+        "AIREALCHECK_ENABLE_SIGHTENGINE_IMAGE", False
     )
-    enable_sensity = os.getenv("AIREALCHECK_ENABLE_SENSITY_IMAGE", "false").lower() in {"1", "true", "yes", "on"}
+    enable_sensity_flag = os.getenv("AIREALCHECK_ENABLE_SENSITY_IMAGE", "false").lower() in {"1", "true", "yes", "on"}
     hive_result = None
     forensics_result = None
     sightengine_result = None
@@ -1531,6 +1710,18 @@ def run_ensemble(file_path: str):
             timing_ms=0,
         )
 
+    def _disabled_paid(engine_name: str):
+        return make_engine_result(
+            engine=engine_name,
+            status="disabled",
+            notes="disabled:paid_apis_off",
+            available=False,
+            ai_likelihood=None,
+            confidence=0.0,
+            signals=["paid_apis_disabled"],
+            timing_ms=0,
+        )
+
     def _exception_placeholder(engine_name: str, note: str):
         return make_engine_result(
             engine=engine_name,
@@ -1543,15 +1734,17 @@ def run_ensemble(file_path: str):
             timing_ms=0,
         )
 
-    def _debug_paid_reason(enabled, raw_value, paid_enabled_value, flag_name):
-        if enabled:
+    def _debug_paid_reason(flag_enabled, raw_value, paid_enabled_value, flag_name):
+        if flag_enabled and paid_enabled_value:
             return "request"
-        if raw_value is None:
-            if not paid_enabled_value:
-                return "disabled:flag_off:paid_apis_off"
-            return f"disabled:flag_off:{flag_name}:default"
-        raw_clean = str(raw_value).strip() or "empty"
-        return f"disabled:flag_off:{flag_name}={raw_clean}"
+        if not flag_enabled:
+            if raw_value is None:
+                return f"disabled:flag_off:{flag_name}:default"
+            raw_clean = str(raw_value).strip() or "empty"
+            return f"disabled:flag_off:{flag_name}={raw_clean}"
+        if not paid_enabled_value:
+            return "disabled:paid_apis_off"
+        return "disabled"
 
     debug_paid = None
     if _debug_paid_enabled():
@@ -1570,16 +1763,16 @@ def run_ensemble(file_path: str):
             "REALITY_DEFENDER_API_KEY",
         ]
         sight_reason = _debug_paid_reason(
-            enable_sightengine, enable_sightengine_raw, paid_enabled, "AIREALCHECK_ENABLE_SIGHTENGINE_IMAGE"
+            enable_sightengine_flag, enable_sightengine_raw, paid_enabled, "AIREALCHECK_ENABLE_SIGHTENGINE_IMAGE"
         )
         rd_reason = _debug_paid_reason(
-            enable_rd, enable_rd_raw, paid_enabled, "AIREALCHECK_ENABLE_REALITY_DEFENDER_IMAGE"
+            enable_rd_flag, enable_rd_raw, paid_enabled, "AIREALCHECK_ENABLE_REALITY_DEFENDER_IMAGE"
         )
         _debug_paid_log("sightengine", paid_enabled, sight_creds, sight_envs, sight_reason)
         _debug_paid_log("reality_defender", paid_enabled, rd_creds, rd_envs, rd_reason)
         debug_paid = {
-            "sightengine": {"attempted": bool(enable_sightengine), "reason": sight_reason},
-            "reality_defender": {"attempted": bool(enable_rd), "reason": rd_reason},
+            "sightengine": {"attempted": bool(enable_sightengine_flag), "reason": sight_reason},
+            "reality_defender": {"attempted": bool(enable_rd_flag), "reason": rd_reason},
         }
 
     def _attach_debug_paid(payload):
@@ -1635,21 +1828,24 @@ def run_ensemble(file_path: str):
         )
         c2pa_result = safe_engine_call("c2pa", analyze_c2pa, file_path)
         watermark_result = safe_engine_call("watermark", analyze_watermark, file_path)
-        sightengine_result = (
-            safe_engine_call("sightengine", run_sightengine, file_path)
-            if enable_sightengine
-            else _disabled_engine("sightengine")
-        )
-        reality_defender_result = (
-            safe_engine_call("reality_defender", analyze_reality_defender, file_path)
-            if enable_rd
-            else _disabled_engine("reality_defender")
-        )
-        sensity_image_result = (
-            safe_engine_call("sensity_image", analyze_sensity_image, file_path)
-            if enable_sensity
-            else _disabled_engine("sensity_image")
-        )
+        if not enable_sightengine_flag:
+            sightengine_result = _disabled_engine("sightengine")
+        elif not paid_enabled:
+            sightengine_result = _disabled_paid("sightengine")
+        else:
+            sightengine_result = safe_engine_call("sightengine", run_sightengine, file_path)
+        if not enable_rd_flag:
+            reality_defender_result = _disabled_engine("reality_defender")
+        elif not paid_enabled:
+            reality_defender_result = _disabled_paid("reality_defender")
+        else:
+            reality_defender_result = safe_engine_call("reality_defender", analyze_reality_defender, file_path)
+        if not enable_sensity_flag:
+            sensity_image_result = _disabled_engine("sensity_image")
+        elif not paid_enabled:
+            sensity_image_result = _disabled_paid("sensity_image")
+        else:
+            sensity_image_result = safe_engine_call("sensity_image", analyze_sensity_image, file_path)
         xception_result = safe_engine_call("xception", run_xception, file_path)
         clip_detector_result = safe_engine_call("clip_detector", run_clip_detector, file_path)
 

@@ -78,15 +78,28 @@ def _sensity_status():
     return True, "ok", "ok"
 
 
-def _sightengine_available():
-    if not _paid_apis_enabled():
-        return False
+def _sightengine_creds_present():
     api_key = (os.getenv("SIGHTENGINE_API_KEY") or "").strip()
     if api_key:
         return True
     api_user = (os.getenv("SIGHTENGINE_API_USER") or "").strip()
     api_secret = (os.getenv("SIGHTENGINE_API_SECRET") or "").strip()
     return bool(api_user and api_secret)
+
+
+def _sightengine_status():
+    if not _flag_enabled("AIREALCHECK_ENABLE_SIGHTENGINE_VIDEO", "false"):
+        return False, "disabled:flag_off", "disabled"
+    if not _paid_apis_enabled():
+        return False, "disabled:paid_apis_off", "disabled"
+    if not _sightengine_creds_present():
+        return False, "not_available:missing_key", "not_available"
+    return True, "ok", "ok"
+
+
+def _sightengine_available():
+    ok, _notes, _status = _sightengine_status()
+    return ok
 
 
 def _reality_defender_available():
@@ -780,7 +793,7 @@ def _safe_hive_result(frame_path):
         )
 
 
-def _apply_sightengine_scores(frame_infos, scores_by_path):
+def _apply_sightengine_scores(frame_infos, scores_by_path, sightengine_scores=None):
     scored = 0
     for info in frame_infos:
         frame_path = _p(info.get("path"))
@@ -788,7 +801,10 @@ def _apply_sightengine_scores(frame_infos, scores_by_path):
             continue
         result = _safe_sightengine_result(frame_path)
         if result.get("available") and isinstance(result.get("ai_likelihood"), (int, float)):
-            scores_by_path[frame_path].append(float(result.get("ai_likelihood")))
+            ai_value = float(result.get("ai_likelihood"))
+            scores_by_path[frame_path].append(ai_value)
+            if isinstance(sightengine_scores, list):
+                sightengine_scores.append(ai_value)
             scored += 1
     return scored
 
@@ -942,6 +958,7 @@ def run_video_frame_detectors(file_path: str) -> dict:
         rd_ok, rd_note, rd_status = _reality_defender_status()
         hive_ok, hive_note, hive_status = _hive_status()
         sensity_ok, sensity_note, sensity_status = _sensity_status()
+        se_ok, se_note, se_status = _sightengine_status()
         rd_engine_result = _provider_placeholder(
             "reality_defender_video", rd_status, rd_note, start_time=start
         )
@@ -952,6 +969,9 @@ def run_video_frame_detectors(file_path: str) -> dict:
             sensity_engine_result = _provider_placeholder(
                 "sensity_video", sensity_status, sensity_note, start_time=start
             )
+        sightengine_engine_result = _provider_placeholder(
+            "sightengine_video", se_status, se_note, start_time=start
+        )
         return make_engine_result(
             engine="video_frame_detectors",
             status="error",
@@ -960,14 +980,15 @@ def run_video_frame_detectors(file_path: str) -> dict:
             ai_likelihood=None,
             confidence=0.0,
             signals=["file_missing"],
-            extra={"extra_engine_results": [rd_engine_result, hive_engine_result, sensity_engine_result]},
+            extra={"extra_engine_results": [sightengine_engine_result, rd_engine_result, hive_engine_result, sensity_engine_result]},
             start_time=start,
         )
 
     rd_ok, rd_note, rd_status = _reality_defender_status()
     hive_ok, hive_note, hive_status = _hive_status()
     sensity_ok, sensity_note, sensity_status = _sensity_status()
-    use_sightengine = _sightengine_available()
+    se_ok, se_note, se_status = _sightengine_status()
+    use_sightengine = se_ok
     use_reality_defender = rd_ok
     use_hive = hive_ok
     use_sensity = sensity_ok
@@ -993,6 +1014,12 @@ def run_video_frame_detectors(file_path: str) -> dict:
         hive_note,
         start_time=start,
     )
+    sightengine_engine_result = _provider_placeholder(
+        "sightengine_video",
+        se_status,
+        se_note,
+        start_time=start,
+    )
     if sensity_ok:
         sensity_engine_result = _sensity_not_implemented_result()
     else:
@@ -1014,7 +1041,7 @@ def run_video_frame_detectors(file_path: str) -> dict:
             ai_likelihood=None,
             confidence=0.0,
             signals=["no_detectors"],
-            extra={"extra_engine_results": [rd_engine_result, hive_engine_result, sensity_engine_result]},
+            extra={"extra_engine_results": [sightengine_engine_result, rd_engine_result, hive_engine_result, sensity_engine_result]},
             start_time=start,
         )
     selection_config = _resolve_frame_selection_config()
@@ -1081,7 +1108,7 @@ def run_video_frame_detectors(file_path: str) -> dict:
                 confidence=0.0,
                 signals=signals,
                 extra={
-                    "extra_engine_results": [rd_engine_result, hive_engine_result, sensity_engine_result],
+                    "extra_engine_results": [sightengine_engine_result, rd_engine_result, hive_engine_result, sensity_engine_result],
                 },
                 start_time=start,
             )
@@ -1106,7 +1133,7 @@ def run_video_frame_detectors(file_path: str) -> dict:
                 confidence=0.0,
                 signals=signals,
                 extra={
-                    "extra_engine_results": [rd_engine_result, hive_engine_result, sensity_engine_result],
+                    "extra_engine_results": [sightengine_engine_result, rd_engine_result, hive_engine_result, sensity_engine_result],
                 },
                 start_time=start,
             )
@@ -1139,7 +1166,7 @@ def run_video_frame_detectors(file_path: str) -> dict:
                 confidence=0.0,
                 signals=signals,
                 extra={
-                    "extra_engine_results": [rd_engine_result, hive_engine_result, sensity_engine_result],
+                    "extra_engine_results": [sightengine_engine_result, rd_engine_result, hive_engine_result, sensity_engine_result],
                 },
                 start_time=start,
             )
@@ -1152,9 +1179,12 @@ def run_video_frame_detectors(file_path: str) -> dict:
         rd_results = []
         hive_results = []
         scores_by_path = {_p(info.get("path")): [] for info in scoring_infos if _p(info.get("path"))}
+        sightengine_scores = []
 
         if use_sightengine and engine_frames.get("sightengine"):
-            sightengine_scored = _apply_sightengine_scores(engine_frames["sightengine"], scores_by_path)
+            sightengine_scored = _apply_sightengine_scores(
+                engine_frames["sightengine"], scores_by_path, sightengine_scores
+            )
 
         if use_hive and engine_frames.get("hive"):
             hive_scored, hive_results = _apply_hive_scores(engine_frames["hive"], scores_by_path)
@@ -1203,7 +1233,7 @@ def run_video_frame_detectors(file_path: str) -> dict:
                 confidence=0.0,
                 signals=signals,
                 extra={
-                    "extra_engine_results": [rd_engine_result, hive_engine_result, sensity_engine_result],
+                    "extra_engine_results": [sightengine_engine_result, rd_engine_result, hive_engine_result, sensity_engine_result],
                 },
                 start_time=start,
             )
@@ -1234,6 +1264,25 @@ def run_video_frame_detectors(file_path: str) -> dict:
         rd_engine_result = coerce_engine_result(rd_engine_result, "reality_defender_video", start_time=start)
         hive_engine_result = coerce_engine_result(hive_engine_result, "hive_video", start_time=start)
         sensity_engine_result = coerce_engine_result(sensity_engine_result, "sensity_video", start_time=start)
+        if sightengine_scores:
+            sightengine_ai = _trimmed_mean(sightengine_scores, trim_ratio)
+            if sightengine_ai is None:
+                sightengine_ai = median(sightengine_scores)
+            if sightengine_ai is not None:
+                sightengine_conf = max(sightengine_ai, 1.0 - sightengine_ai)
+                sightengine_engine_result = make_engine_result(
+                    engine="sightengine_video",
+                    status="ok",
+                    notes="ok" if failures == 0 else "partial",
+                    available=True,
+                    ai_likelihood=sightengine_ai,
+                    confidence=sightengine_conf,
+                    signals=[
+                        f"frames_scored:{sightengine_scored}",
+                        f"agg:trimmed_mean;trim:{trim_label}",
+                    ],
+                    start_time=start,
+                )
         notes = "ok" if failures == 0 else "partial"
         signals = list(selection_signals)
         signals.extend(
@@ -1258,7 +1307,7 @@ def run_video_frame_detectors(file_path: str) -> dict:
             confidence=confidence_value,
             signals=signals,
             extra={
-                "extra_engine_results": [rd_engine_result, hive_engine_result, sensity_engine_result],
+                "extra_engine_results": [sightengine_engine_result, rd_engine_result, hive_engine_result, sensity_engine_result],
             },
             start_time=start,
         )

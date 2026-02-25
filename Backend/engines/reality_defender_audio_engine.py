@@ -18,7 +18,7 @@ def _creds_present():
 
 def _placeholder(status, notes, signals):
     return make_engine_result(
-        engine="reality_defender_video",
+        engine="reality_defender_audio",
         status=status,
         notes=notes,
         available=False,
@@ -29,8 +29,8 @@ def _placeholder(status, notes, signals):
     )
 
 
-def analyze_reality_defender_video(asset_path: str) -> dict:
-    if not _flag_enabled("AIREALCHECK_ENABLE_REALITY_DEFENDER_VIDEO", "false"):
+def analyze_reality_defender_audio(asset_path: str) -> dict:
+    if not _flag_enabled("AIREALCHECK_ENABLE_REALITY_DEFENDER_AUDIO", "false"):
         return _placeholder("disabled", "disabled:flag_off", ["disabled"])
     if not _paid_apis_enabled():
         return _placeholder("disabled", "disabled:paid_apis_off", ["paid_apis_disabled"])
@@ -39,6 +39,6 @@ def analyze_reality_defender_video(asset_path: str) -> dict:
     result = analyze_reality_defender(asset_path)
     if isinstance(result, dict):
         result = dict(result)
-        result["engine"] = "reality_defender_video"
+        result["engine"] = "reality_defender_audio"
         result.setdefault("optional", True)
     return result

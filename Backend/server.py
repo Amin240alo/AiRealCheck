@@ -76,6 +76,8 @@ _log_env_summary()
 from Backend.ensemble import run_ensemble, build_standard_result, run_audio_ensemble
 from Backend.engines.video_forensics_engine import run_video_forensics, log_ffmpeg_diagnostics
 from Backend.engines.video_frame_detectors_engine import run_video_frame_detectors
+from Backend.engines.reality_defender_video_engine import analyze_reality_defender_video
+from Backend.engines.reality_defender_audio_engine import analyze_reality_defender_audio
 from Backend.engines.video_temporal_engine import run_video_temporal
 from Backend.engines.video_temporal_cnn_engine import run_video_temporal_cnn
 from Backend.video_url_fetcher import fetch_video_from_url, VideoUrlError
@@ -726,6 +728,9 @@ def _run_analysis_path(file_path, filename, media_type="image", user_ctx=None, c
 
             video_forensics = safe_engine_call("video_forensics", run_video_forensics, file_path)
             video_detectors = safe_engine_call("video_frame_detectors", run_video_frame_detectors, file_path)
+            reality_defender_video = safe_engine_call(
+                "reality_defender_video", analyze_reality_defender_video, file_path
+            )
             video_temporal_cnn = safe_engine_call("video_temporal_cnn", run_video_temporal_cnn, file_path)
             video_temporal = safe_engine_call("video_temporal", run_video_temporal, file_path)
 
@@ -734,8 +739,14 @@ def _run_analysis_path(file_path, filename, media_type="image", user_ctx=None, c
                 extra = video_detectors.get("extra_engine_results")
                 if isinstance(extra, list):
                     extra_engines = [e for e in extra if isinstance(e, dict)]
+            if extra_engines:
+                extra_engines = [
+                    e for e in extra_engines if e.get("engine") != "reality_defender_video"
+                ]
             engine_results_raw = [video_detectors] + extra_engines
-            engine_results_raw.extend([video_temporal_cnn, video_temporal, video_forensics])
+            engine_results_raw.extend(
+                [reality_defender_video, video_temporal_cnn, video_temporal, video_forensics]
+            )
             audio_from_video = os.getenv("AIREALCHECK_ENABLE_AUDIO_FROM_VIDEO", "false").lower() in {"1", "true", "yes"}
             if audio_from_video:
                 audio_flags = _audio_enable_flags()
@@ -836,6 +847,10 @@ def _run_analysis_path(file_path, filename, media_type="image", user_ctx=None, c
             engine_results_raw = audio_bundle.get("engine_results_raw") if isinstance(audio_bundle, dict) else []
             if not isinstance(engine_results_raw, list):
                 engine_results_raw = []
+            reality_defender_audio = safe_engine_call(
+                "reality_defender_audio", analyze_reality_defender_audio, file_path
+            )
+            engine_results_raw.append(reality_defender_audio)
 
             standard_payload = build_standard_result(
                 media_type=media_type,

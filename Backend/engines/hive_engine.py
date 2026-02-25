@@ -57,8 +57,8 @@ def run_hive(file_path: str):
         status = "error"
         notes = "error"
         if health.get("status") == "missing_key":
-            status = "disabled"
-            notes = "disabled:missing_key"
+            status = "not_available"
+            notes = "not_available:missing_key"
         elif health.get("status") == "disabled":
             status = "disabled"
             notes = "disabled:hive_off"
@@ -70,7 +70,7 @@ def run_hive(file_path: str):
             available=False,
             ai_likelihood=None,
             confidence=0.0,
-            signals=["missing_key" if status == "disabled" else "api_error"],
+            signals=["missing_key" if status == "not_available" else "api_error"],
             start_time=start,
             extra={
                 "warnings": warnings,

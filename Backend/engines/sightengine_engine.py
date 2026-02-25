@@ -81,9 +81,9 @@ def _disabled_missing_key():
         "ai_likelihood": None,
         "confidence": 0.0,
         "signals": ["missing_credentials"],
-        "notes": "disabled:missing_credentials",
+        "notes": "not_available:missing_credentials",
         "available": False,
-        "status": "disabled",
+        "status": "not_available",
     }
 
 
