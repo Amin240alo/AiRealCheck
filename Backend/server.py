@@ -47,6 +47,18 @@ def _reality_defender_creds_present():
     return bool(api_key)
 
 
+def _env_flag(name, default="false"):
+    return os.getenv(name, default).lower() in {"1", "true", "yes"}
+
+
+def _audio_enable_flags():
+    return {
+        "audio_aasist": _env_flag("AIREALCHECK_ENABLE_AUDIO_AASIST", "true"),
+        "audio_forensics": _env_flag("AIREALCHECK_ENABLE_AUDIO_FORENSICS", "true"),
+        "audio_prosody": _env_flag("AIREALCHECK_ENABLE_AUDIO_PROSODY", "true"),
+    }
+
+
 def _log_env_summary():
     dotenv_label = _DOTENV_PATH if _DOTENV_PATH else "none"
     paid_value = os.getenv("AIREALCHECK_USE_PAID_APIS")
@@ -726,8 +738,9 @@ def _run_analysis_path(file_path, filename, media_type="image", user_ctx=None, c
             engine_results_raw.extend([video_temporal_cnn, video_temporal, video_forensics])
             audio_from_video = os.getenv("AIREALCHECK_ENABLE_AUDIO_FROM_VIDEO", "false").lower() in {"1", "true", "yes"}
             if audio_from_video:
+                audio_flags = _audio_enable_flags()
                 try:
-                    audio_bundle = run_audio_ensemble(file_path)
+                    audio_bundle = run_audio_ensemble(file_path, enable_flags=audio_flags)
                     extra_audio = audio_bundle.get("engine_results_raw") if isinstance(audio_bundle, dict) else None
                     if isinstance(extra_audio, list):
                         engine_results_raw.extend([e for e in extra_audio if isinstance(e, dict)])
@@ -815,7 +828,8 @@ def _run_analysis_path(file_path, filename, media_type="image", user_ctx=None, c
                 }
             return jsonify(response_payload)
         elif media_type_detected == "audio" and media_type == "audio":
-            audio_bundle = run_audio_ensemble(file_path)
+            audio_flags = _audio_enable_flags()
+            audio_bundle = run_audio_ensemble(file_path, enable_flags=audio_flags)
             audio_primary_source = "audio_aasist"
             if isinstance(audio_bundle, dict):
                 audio_primary_source = audio_bundle.get("primary_source") or audio_primary_source
