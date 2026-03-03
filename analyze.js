@@ -185,21 +185,24 @@ export function initAnalyze(auth, helpers) {
       const mode = btn.dataset.mode || 'file';
       if (isAnalyzing) return;
       const cost = getAnalysisCost(kind);
-      const isGuest = !authRef.isLoggedIn();
-      if (!isGuest && !authRef.requireSession()) {
+      const isLoggedIn = authRef.isLoggedIn?.() === true;
+      const guestAllowed = authRef.canUseGuest?.() === true;
+      if (!isLoggedIn && !guestAllowed) {
+        const area = $('#analysisArea');
+        if (area) {
+          area.innerHTML = '<div class="ac-card"><b>Login erforderlich</b><p class="ac-subtle">Gastmodus ist deaktiviert. Bitte einloggen oder registrieren.</p></div>';
+        }
+        authRef.navigate?.('/login');
         return;
       }
-      if (isGuest) {
-        const guestCredits = typeof authRef.getGuestCredits === 'function' ? authRef.getGuestCredits() : 0;
-        if (guestCredits < cost) {
-          const area = $('#analysisArea');
-          if (area) {
-            area.innerHTML = '<div class="ac-card"><b>Keine Credits mehr</b><p class="ac-subtle">Bitte registrieren oder einloggen.</p></div>';
-          }
-         
-          return;
+      if (isLoggedIn && !authRef.isEmailVerified?.()) {
+        const area = $('#analysisArea');
+        if (area) {
+          area.innerHTML = '<div class="ac-card"><b>E-Mail nicht bestätigt</b><p class="ac-subtle">Bitte E-Mail bestätigen – ohne Verifikation sind Analysen gesperrt.</p></div>';
         }
-      } else if (!authRef.isPremium()) {
+        return;
+      }
+      if (isLoggedIn && !authRef.isPremium()) {
         const currentCredits = typeof authRef?.balance?.credits === 'number' ? authRef.balance.credits : 0;
         if (currentCredits < cost) {
           const area = $('#analysisArea');
@@ -321,10 +324,11 @@ async function analyzeFile(mediaType) {
 
   try {
     const isGuest = !authRef.isLoggedIn();
-    const endpoint = isGuest ? '/analyze/guest' : '/analyze';
+    const useGuest = isGuest && authRef.canUseGuest?.();
+    const endpoint = useGuest ? '/analyze/guest' : '/analyze';
     const url = `${apiBase}${endpoint}?t=${nonce}`;
 
-    const headers = isGuest
+    const headers = useGuest
       ? { Accept: 'application/json' }
       : Object.assign({ Accept: 'application/json' }, authRef.authHeaders());
 
@@ -361,6 +365,19 @@ async function analyzeFile(mediaType) {
         await authRef.logout('Bitte erneut einloggen.');
         if (area) {
           area.innerHTML = '<div class="ac-card"><b>Login erforderlich</b><p class="ac-subtle">Deine Session ist beendet.</p></div>';
+        }
+      } else if (resp.status === 403 && data?.error === 'email_not_verified') {
+        if (area) {
+          area.innerHTML = '<div class="ac-card"><b>E-Mail nicht bestätigt</b><p class="ac-subtle">Bitte E-Mail bestätigen – ohne Verifikation sind Analysen gesperrt.</p></div>';
+        }
+      } else if (resp.status === 403 && data?.error === 'guest_disabled') {
+        if (area) {
+          area.innerHTML = '<div class="ac-card"><b>Login erforderlich</b><p class="ac-subtle">Gastmodus ist deaktiviert. Bitte einloggen.</p></div>';
+        }
+        authRef.navigate?.('/login');
+      } else if (resp.status === 429 || data?.error === 'rate_limited') {
+        if (area) {
+          area.innerHTML = '<div class="ac-card"><b>Zu viele Versuche</b><p class="ac-subtle">Bitte warte kurz und versuche es erneut.</p></div>';
         }
       } else if (resp.status === 402 && data?.error === 'no_credits') {
         authRef.balance = Object.assign({}, authRef.balance || {}, { credits: 0, is_premium: false });
@@ -399,8 +416,6 @@ async function analyzeFile(mediaType) {
     }
 
     if (!authRef.isLoggedIn()) {
-      const currentGuest = typeof authRef.getGuestCredits === 'function' ? authRef.getGuestCredits() : 0;
-      authRef.setGuestCredits?.(currentGuest - cost);
       helpersRef?.updateCreditsUI?.(authRef);
     }
 
@@ -503,10 +518,11 @@ async function analyzeLink(mediaType) {
 
   try {
     const isGuest = !authRef.isLoggedIn();
-    const endpoint = isGuest ? '/analyze/video-url/guest' : '/analyze/video-url';
+    const useGuest = isGuest && authRef.canUseGuest?.();
+    const endpoint = useGuest ? '/analyze/video-url/guest' : '/analyze/video-url';
     const urlReq = `${apiBase}${endpoint}?t=${Date.now()}`;
 
-    const headers = isGuest
+    const headers = useGuest
       ? { Accept: 'application/json', 'Content-Type': 'application/json' }
       : Object.assign({ Accept: 'application/json', 'Content-Type': 'application/json' }, authRef.authHeaders());
 
@@ -541,6 +557,19 @@ async function analyzeLink(mediaType) {
         if (area) {
           area.innerHTML = '<div class="ac-card"><b>Login erforderlich</b><p class="ac-subtle">Deine Session ist beendet.</p></div>';
         }
+      } else if (resp.status === 403 && data?.error === 'email_not_verified') {
+        if (area) {
+          area.innerHTML = '<div class="ac-card"><b>E-Mail nicht bestätigt</b><p class="ac-subtle">Bitte E-Mail bestätigen – ohne Verifikation sind Analysen gesperrt.</p></div>';
+        }
+      } else if (resp.status === 403 && data?.error === 'guest_disabled') {
+        if (area) {
+          area.innerHTML = '<div class="ac-card"><b>Login erforderlich</b><p class="ac-subtle">Gastmodus ist deaktiviert. Bitte einloggen.</p></div>';
+        }
+        authRef.navigate?.('/login');
+      } else if (resp.status === 429 || data?.error === 'rate_limited') {
+        if (area) {
+          area.innerHTML = '<div class="ac-card"><b>Zu viele Versuche</b><p class="ac-subtle">Bitte warte kurz und versuche es erneut.</p></div>';
+        }
       } else if (resp.status === 402 && data?.error === 'no_credits') {
         authRef.balance = Object.assign({}, authRef.balance || {}, { credits: 0, is_premium: false });
         helpersRef?.updateCreditsUI?.(authRef);
@@ -574,8 +603,6 @@ async function analyzeLink(mediaType) {
     }
 
     if (!authRef.isLoggedIn()) {
-      const currentGuest = typeof authRef.getGuestCredits === 'function' ? authRef.getGuestCredits() : 0;
-      authRef.setGuestCredits?.(currentGuest - cost);
       helpersRef?.updateCreditsUI?.(authRef);
     }
 
@@ -606,12 +633,16 @@ async function analyzeLink(mediaType) {
 
 
 function updateAnalyzeState() {
-  const buttons = $$('.ac-primary');
+  const buttons = $$('.ac-primary[data-kind]');
   if (isAnalyzing) {
     buttons.forEach((btn) => { btn.disabled = true; });
     return;
   }
   buttons.forEach((btn) => {
+    if (btn.dataset.locked === 'true') {
+      btn.disabled = true;
+      return;
+    }
     const kind = btn.dataset.kind;
     const mode = btn.dataset.mode || 'file';
     if (mode === 'file') {

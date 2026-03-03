@@ -1,16 +1,55 @@
 import os
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, scoped_session
 
-DB_PATH = os.path.join("data", "app.db")
+from Backend.runtime import is_production, is_test, is_dev
 
 
-def _ensure_data_dir():
-    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+def _normalize_database_url(raw_url: str) -> str:
+    raw = (raw_url or "").strip()
+    if not raw:
+        return ""
+    if raw.startswith("postgres://"):
+        return "postgresql+psycopg2://" + raw[len("postgres://") :]
+    return raw
 
 
-_ensure_data_dir()
-engine = create_engine(f"sqlite:///{DB_PATH}", connect_args={"check_same_thread": False})
+def _sqlite_fallback_url():
+    db_path = os.path.join("data", "app.db")
+    os.makedirs(os.path.dirname(db_path), exist_ok=True)
+    return f"sqlite:///{db_path}"
+
+
+_RAW_DATABASE_URL = (os.getenv("DATABASE_URL") or "").strip()
+_DATABASE_URL = _normalize_database_url(_RAW_DATABASE_URL)
+_USING_SQLITE = False
+
+
+def _assert_postgres_config():
+    if not _RAW_DATABASE_URL:
+        raise RuntimeError(
+            "DATABASE_URL is required in production and must point to PostgreSQL."
+        )
+    if not _RAW_DATABASE_URL.startswith(("postgres://", "postgresql://", "postgresql+psycopg2://")):
+        raise RuntimeError(
+            "DATABASE_URL must be a PostgreSQL URL in production (postgres:// or postgresql://)."
+        )
+
+
+if is_production():
+    _assert_postgres_config()
+
+if _DATABASE_URL:
+    engine = create_engine(_DATABASE_URL, pool_pre_ping=True)
+else:
+    _USING_SQLITE = True
+    if not (is_test() or is_dev() or not is_production()):
+        raise RuntimeError("SQLite fallback is disabled in production.")
+    engine = create_engine(
+        _sqlite_fallback_url(),
+        connect_args={"check_same_thread": False},
+    )
+
 SessionLocal = scoped_session(sessionmaker(autocommit=False, autoflush=False, bind=engine))
 
 
@@ -20,16 +59,7 @@ def get_session():
 
 def init_db(Base):
     Base.metadata.create_all(bind=engine)
-    _ensure_user_admin_column()
 
 
-def _ensure_user_admin_column():
-    """Ensure is_admin exists on users for older databases."""
-    try:
-        with engine.begin() as conn:
-            cols = [row[1] for row in conn.execute(text("PRAGMA table_info(users)"))]
-            if "is_admin" not in cols:
-                conn.execute(text("ALTER TABLE users ADD COLUMN is_admin BOOLEAN NOT NULL DEFAULT 0"))
-    except Exception:
-        # If adding fails (e.g., during first-time setup), ignore to not break startup.
-        pass
+def using_sqlite():
+    return _USING_SQLITE

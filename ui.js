@@ -5,6 +5,12 @@ const pages = {
   start: $('#page-start'),
   history: $('#page-history'),
   details: $('#page-details'),
+  login: $('#page-login'),
+  authCallback: $('#page-auth-callback'),
+  register: $('#page-register'),
+  verify: $('#page-verify'),
+  forgot: $('#page-forgot'),
+  reset: $('#page-reset'),
   profile: $('#page-profile'),
   settings: $('#page-settings'),
   premium: $('#page-premium'),
@@ -14,21 +20,26 @@ const pages = {
   admin: $('#page-admin'),
 };
 
+const header = $('#mainHeader');
+const headerAuth = $('#headerAuth');
+const headerBack = $('#headerBack');
+const creditsBox = $('#creditsBox');
 const creditsLabel = $('#creditsText');
 const profileAvatar = $('#profileAvatar');
 const profileGuestCard = $('#profileGuestCard');
 const profileDataCard = $('#profileDataCard');
+const profileName = $('#profileName');
 const profileEmail = $('#profileEmail');
 const profilePlan = $('#profilePlan');
 const profileCredits = $('#profileCredits');
 const profileReset = $('#profileReset');
 const profilePremium = $('#profilePremium');
+const profileVerified = $('#profileVerified');
 const profileCreated = $('#profileCreated');
 const profileBadge = $('#profileBadge');
 const profileDropdown = $('#profileDropdown');
 const profileHistoryBtn = $('#profileHistory');
 const profileLogoutBtn = $('#profileLogout');
-const profileGuestAction = $('#profileGuestAction');
 const profileTrigger = $('#profileTrigger');
 const profileAdminBtn = $('#profileAdmin');
 const sidebar = $('#sidebar');
@@ -39,9 +50,52 @@ const navHistory = $('#navHistory');
 const sideAdmin = $('#sideAdmin');
 const brandHome = $('#brandHome');
 const menuList = $('#menuList');
+const emailVerifyBanner = $('#emailVerifyBanner');
+const analysisGateNotice = $('#analysisGateNotice');
+const analysisTool = $('#analysisTool');
+const resendVerifyBtn = $('#resendVerifyBtn');
+const resendVerifyStatus = $('#resendVerifyStatus');
+const profileVerifyBanner = $('#profileVerifyBanner');
+const profileResendVerifyBtn = $('#profileResendVerifyBtn');
+const profileResendVerifyStatus = $('#profileResendVerifyStatus');
 
 let currentAnalyzing = false;
 let expertToggleBound = false;
+let resendVerifyBound = false;
+let currentRoute = window.location.pathname || '/';
+
+const RETURN_TO_KEY = 'airealcheck_return_to';
+
+const AUTH_ROUTES = new Set([
+  '/login',
+  '/auth/callback',
+  '/register',
+  '/verify-email',
+  '/forgot-password',
+  '/reset-password',
+]);
+
+const PUBLIC_ROUTES = new Set([...AUTH_ROUTES, '/legal']);
+
+function normalizePath(value) {
+  return String(value || '').split('?')[0];
+}
+
+function isAuthRoute(path) {
+  return AUTH_ROUTES.has(normalizePath(path));
+}
+
+function isPublicRoute(path) {
+  return PUBLIC_ROUTES.has(normalizePath(path));
+}
+
+function setRouteClasses(path) {
+  const safePath = normalizePath(path);
+  const root = document.documentElement;
+  root.classList.toggle('ac-route-login', safePath === '/login');
+  root.classList.toggle('ac-route-register', safePath === '/register');
+  root.classList.toggle('ac-route-reset', safePath === '/reset-password');
+}
 
 export function showPage(name) {
   Object.values(pages).forEach((p) => p && p.classList.add('ac-hide'));
@@ -51,8 +105,123 @@ export function showPage(name) {
   navHistory?.classList.toggle('ac-active', name === 'history');
 }
 
-const getGuestCredits = (auth) =>
-  (typeof auth?.getGuestCredits === 'function' ? auth.getGuestCredits() : null);
+function updateHeaderUI(auth, path = currentRoute) {
+  const loggedIn = auth?.isLoggedIn?.() === true;
+  const authRoute = isAuthRoute(path);
+  if (header) header.classList.toggle('ac-header-simple', authRoute);
+  if (headerBack) headerBack.classList.toggle('ac-hide', !authRoute);
+  if (headerAuth) headerAuth.hidden = loggedIn || authRoute;
+  if (hamburger) hamburger.hidden = !loggedIn || authRoute;
+  if (creditsBox) creditsBox.hidden = !loggedIn || authRoute;
+  if (profileTrigger) profileTrigger.hidden = !loggedIn || authRoute;
+  if (profileDropdown) {
+    profileDropdown.hidden = !loggedIn || authRoute;
+    if (!loggedIn || authRoute) closeProfileDropdown();
+  }
+  if (!loggedIn) {
+    sidebar?.classList.remove('open');
+    sidebarOverlay?.classList.remove('show');
+  }
+}
+
+function updateAnalysisVisibility(auth) {
+  const loggedIn = auth?.isLoggedIn?.() === true;
+  if (analysisTool) analysisTool.classList.toggle('ac-hide', !loggedIn);
+  if (!loggedIn && analysisGateNotice) {
+    analysisGateNotice.classList.add('ac-hide');
+    analysisGateNotice.innerHTML = '';
+  }
+}
+
+function enforceAuthGuard(auth, path = currentRoute, navigate) {
+  const loggedIn = auth?.isLoggedIn?.() === true;
+  const safePath = normalizePath(path);
+  if (!loggedIn && !isPublicRoute(safePath)) {
+    try {
+      const returnTarget = `${window.location.pathname}${window.location.search}`;
+      if (returnTarget && !isAuthRoute(normalizePath(returnTarget))) {
+        sessionStorage.setItem(RETURN_TO_KEY, returnTarget);
+      }
+    } catch (err) {
+      // ignore storage errors
+    }
+    const target = '/login';
+    currentRoute = target;
+    if (typeof navigate === 'function' && safePath !== target) {
+      navigate(target);
+      return true;
+    }
+    if (!navigate) {
+      window.location.replace(target);
+      return true;
+    }
+  }
+  return false;
+}
+
+export function initRouter(auth) {
+  const listeners = new Set();
+  const routeMap = {
+    '/login': 'login',
+    '/auth/callback': 'authCallback',
+    '/register': 'register',
+    '/verify-email': 'verify',
+    '/forgot-password': 'forgot',
+    '/reset-password': 'reset',
+    '/legal': 'legal',
+  };
+
+  function render(pathname = window.location.pathname) {
+    const safePath = normalizePath(pathname);
+    setRouteClasses(safePath);
+    if (!auth?.isLoggedIn?.() && !isPublicRoute(safePath)) {
+      navigate('/login');
+      return;
+    }
+    const page = routeMap[safePath] || 'start';
+    showPage(page);
+    if (safePath === '/legal') {
+      const params = new URLSearchParams(window.location.search || '');
+      showLegal(params.get('section') || params.get('tab') || 'impressum');
+    }
+    listeners.forEach((cb) => {
+      try {
+        cb(safePath);
+      } catch (err) {
+        console.error('router listener error', err);
+      }
+    });
+  }
+
+  function navigate(path) {
+    if (!path) return;
+    const target = String(path);
+    if (`${window.location.pathname}${window.location.search}` === target) {
+      render(window.location.pathname);
+      return;
+    }
+    history.pushState({}, '', target);
+    render(window.location.pathname);
+  }
+
+  function subscribe(fn) {
+    if (typeof fn === 'function') listeners.add(fn);
+    return () => listeners.delete(fn);
+  }
+
+  window.addEventListener('popstate', () => render());
+  document.addEventListener('click', (e) => {
+    const link = e.target.closest('[data-link]');
+    if (!link) return;
+    const target = link.getAttribute('data-link') || link.getAttribute('href');
+    if (!target || target.startsWith('http')) return;
+    e.preventDefault();
+    navigate(target);
+  });
+
+  return { navigate, render, subscribe };
+}
+
 const ANALYSIS_COSTS = { image: 10, video: 15, audio: 20 };
 const getAnalysisCost = (kind = 'image') => ANALYSIS_COSTS[kind] || 10;
 
@@ -531,9 +700,8 @@ export function renderAnalysisResult(resultJson, { expertMode = false } = {}) {
 
 export function updateCreditsUI(auth) {
   if (!creditsLabel) return;
-  if (!auth || !auth.token) {
-    const guest = getGuestCredits(auth);
-    creditsLabel.textContent = typeof guest === 'number' ? `${guest} Credits` : '\u2014';
+  if (!auth || !auth.isLoggedIn?.()) {
+    creditsLabel.textContent = '—';
     return;
   }
   if (auth.isPremium()) {
@@ -553,22 +721,31 @@ export function updateAnalyzeButtons(auth, isAnalyzing = currentAnalyzing) {
   buttons.forEach((btn) => {
     const kind = btn.dataset.kind || 'image';
     const cost = getAnalysisCost(kind);
-    const guestCredits = getGuestCredits(auth) ?? 0;
-    const hasToken = !!auth?.token;
+    const isLoggedIn = auth?.isLoggedIn?.() === true;
+    const guestAllowed = auth?.canUseGuest?.() === true;
+    const emailVerified = auth?.isEmailVerified?.() !== false;
     const balanceCredits = typeof auth?.balance?.credits === 'number'
       ? auth.balance.credits
       : (typeof auth?.user?.credits === 'number' ? auth.user.credits : null);
     const hasUserCredits = auth?.isPremium()
       ? true
-      : (typeof balanceCredits === 'number' ? balanceCredits >= cost : false);
-    const hasGuestCredits = guestCredits >= cost;
-    const hasCredits = hasToken ? hasUserCredits : hasGuestCredits;
+      : (typeof balanceCredits === 'number' ? balanceCredits >= cost : true);
+
     let tooltip = '';
-    if (!hasCredits) {
-      tooltip = hasToken ? 'Nicht genug Credits.' : 'Keine Credits mehr - bitte registrieren oder einloggen.';
-    }
-    if (currentAnalyzing) tooltip = 'Analyse laeuft...';
     if (currentAnalyzing) {
+      tooltip = 'Analyse läuft...';
+    } else if (!isLoggedIn && !guestAllowed) {
+      tooltip = 'Gastmodus deaktiviert. Bitte einloggen.';
+    } else if (isLoggedIn && !emailVerified) {
+      tooltip = 'Bitte E-Mail bestätigen – Analysen sind gesperrt.';
+    } else if (isLoggedIn && !hasUserCredits) {
+      tooltip = 'Nicht genug Credits.';
+    }
+
+    const locked = !!tooltip;
+    btn.dataset.locked = locked ? 'true' : 'false';
+    btn.dataset.state = locked ? 'blocked' : 'ready';
+    if (locked) {
       btn.setAttribute('disabled', 'disabled');
       btn.classList.add('ac-btn-disabled');
     } else {
@@ -582,23 +759,114 @@ export function updateAnalyzeButtons(auth, isAnalyzing = currentAnalyzing) {
       btn.classList.remove('has-tooltip');
       btn.removeAttribute('data-tooltip');
     }
-    btn.dataset.state = hasCredits ? 'ready' : 'no-credits';
+  });
+}
+
+function updateVerifyBanner(auth) {
+  const needsVerify = auth?.isLoggedIn?.() === true && auth?.user && auth.user.email_verified === false;
+  if (emailVerifyBanner) emailVerifyBanner.classList.toggle('ac-hide', !needsVerify);
+  if (profileVerifyBanner) profileVerifyBanner.classList.toggle('ac-hide', !needsVerify);
+  if (!needsVerify) {
+    if (resendVerifyStatus) {
+      resendVerifyStatus.textContent = '';
+      resendVerifyStatus.hidden = true;
+      resendVerifyStatus.dataset.tone = '';
+    }
+    if (profileResendVerifyStatus) {
+      profileResendVerifyStatus.textContent = '';
+      profileResendVerifyStatus.hidden = true;
+      profileResendVerifyStatus.dataset.tone = '';
+    }
+  }
+}
+
+function updateAnalysisGateNotice(auth) {
+  if (!analysisGateNotice) return;
+  const isLoggedIn = auth?.isLoggedIn?.() === true;
+  if (!isLoggedIn) {
+    analysisGateNotice.classList.add('ac-hide');
+    analysisGateNotice.innerHTML = '';
+    return;
+  }
+  analysisGateNotice.classList.add('ac-hide');
+  analysisGateNotice.innerHTML = '';
+}
+
+function setResendStatus(message, tone = 'info') {
+  const targets = [resendVerifyStatus, profileResendVerifyStatus].filter(Boolean);
+  targets.forEach((el) => {
+    el.textContent = message || '';
+    el.hidden = !message;
+    if (tone) el.dataset.tone = tone;
+  });
+}
+
+function bindResendVerify(auth) {
+  if (resendVerifyBound) return;
+  resendVerifyBound = true;
+  const buttons = [resendVerifyBtn, profileResendVerifyBtn].filter(Boolean);
+  if (!buttons.length) return;
+  buttons.forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      if (!auth?.isLoggedIn?.()) {
+        setResendStatus('Bitte zuerst einloggen.', 'error');
+        auth?.navigate?.('/login');
+        return;
+      }
+      if (btn.dataset.loading === 'true') return;
+      const original = btn.dataset.label || btn.textContent;
+      btn.dataset.label = original;
+      btn.dataset.loading = 'true';
+      btn.textContent = 'Sende...';
+      btn.disabled = true;
+      setResendStatus('');
+      try {
+        const result = await auth.resendVerify?.();
+        if (result?.already_verified) {
+          setResendStatus('E-Mail ist bereits bestätigt.', 'success');
+        } else {
+          setResendStatus('Bestätigungs-E-Mail wurde versendet.', 'success');
+        }
+      } catch (err) {
+        const code = err?.response?.error;
+        if (code === 'smtp_not_configured') {
+          setResendStatus('E-Mail-Versand ist in dieser Umgebung nicht aktiv.', 'error');
+        } else if (code === 'rate_limited' || err?.status === 429) {
+          setResendStatus('Zu viele Versuche. Bitte später erneut senden.', 'error');
+        } else {
+          setResendStatus('Versand fehlgeschlagen. Bitte später erneut versuchen.', 'error');
+        }
+      } finally {
+        btn.dataset.loading = 'false';
+        btn.textContent = btn.dataset.label || original;
+        btn.disabled = false;
+      }
+    });
   });
 }
 
 export function updateProfileView(auth) {
   const isLoggedIn = auth?.isLoggedIn?.() === true;
   const email = auth?.user?.email ?? null;
+  const displayName = auth?.user?.display_name || auth?.user?.name || null;
+  const initialSource = displayName || email || 'A';
 
   if (profileAvatar) {
     if (isLoggedIn && email) {
       profileTrigger?.classList.remove('login-mode');
-      profileAvatar.textContent = email.charAt(0).toUpperCase();
+      profileAvatar.textContent = initialSource.charAt(0).toUpperCase();
     } else {
       profileTrigger?.classList.add('login-mode');
       profileAvatar.textContent = 'Login';
     }
     profileTrigger?.setAttribute('aria-expanded', 'false');
+  }
+  if (profileTrigger) {
+    if (isLoggedIn) {
+      profileTrigger.removeAttribute('data-link');
+    } else {
+      profileTrigger.setAttribute('data-link', '/login');
+    }
   }
 
   if (!profileGuestCard || !profileDataCard) return;
@@ -614,11 +882,12 @@ export function updateProfileView(auth) {
   profileGuestCard.hidden = true;
   profileDataCard.hidden = false;
 
+  if (profileName) profileName.textContent = displayName || email || '-';
   profileEmail.textContent = email ?? '-';
   profilePlan.textContent = auth.isPremium() ? 'Premium' : 'Free';
 
   if (profileBadge) {
-    profileBadge.textContent = (email ?? 'A').charAt(0).toUpperCase();
+    profileBadge.textContent = initialSource.charAt(0).toUpperCase();
   }
 
   const creditsValue = auth.isPremium()
@@ -635,6 +904,9 @@ export function updateProfileView(auth) {
   profileReset.textContent = resetAt ? new Date(resetAt).toLocaleString() : '—';
 
   profilePremium.textContent = auth.isPremium() ? 'Ja' : 'Nein';
+  if (profileVerified) {
+    profileVerified.textContent = auth.user?.email_verified ? 'Ja' : 'Nein';
+  }
 
   const createdAt = auth.user?.created_at
     ? new Date(auth.user.created_at).toLocaleDateString()
@@ -660,8 +932,8 @@ function toggleProfileDropdown() {
 
 export function showProfilePage(auth, promptLogin = false) {
   if (!auth?.isLoggedIn() && promptLogin) {
-    auth.open('login');
-    auth.setError('Bitte zuerst einloggen.', 'info');
+    auth.setNotice?.('Bitte zuerst einloggen.', 'info');
+    auth.navigate?.('/login');
     return;
   }
   updateProfileView(auth);
@@ -689,7 +961,22 @@ export function showLegal(section) {
 
 export function initUI(auth, extras = {}) {
   const onOpenAdmin = extras?.onOpenAdmin;
-  navStart?.addEventListener('click', (e) => { e.preventDefault(); showPage('start'); });
+  const navigate = extras?.navigate;
+  const router = extras?.router;
+  const navigateFn = typeof navigate === 'function'
+    ? navigate
+    : (typeof auth?.navigate === 'function' ? auth.navigate.bind(auth) : null);
+  currentRoute = normalizePath(window.location.pathname || currentRoute);
+  setRouteClasses(currentRoute);
+  const shouldRedirect = enforceAuthGuard(auth, currentRoute, navigateFn);
+  updateHeaderUI(auth, currentRoute);
+  updateAnalysisVisibility(auth);
+  if (shouldRedirect) return;
+  navStart?.addEventListener('click', (e) => {
+    e.preventDefault();
+    if (navigate) navigate('/');
+    else showPage('start');
+  });
 
   navHistory?.addEventListener('click', (e) => {
     e.preventDefault();
@@ -698,7 +985,11 @@ export function initUI(auth, extras = {}) {
     showPage('history');
   });
 
-  brandHome?.addEventListener('click', (e) => { e.preventDefault(); showPage('start'); });
+  brandHome?.addEventListener('click', (e) => {
+    e.preventDefault();
+    if (navigate) navigate('/');
+    else showPage('start');
+  });
 
   hamburger?.addEventListener('click', (e) => {
     e.preventDefault();
@@ -717,7 +1008,8 @@ export function initUI(auth, extras = {}) {
     const [type, page, sub] = (el.dataset.action || '').split(':');
     if (type !== 'open') return;
     if (['video', 'image', 'audio'].includes(page)) {
-      showPage('start');
+      if (navigate) navigate('/');
+      else showPage('start');
     } else if (page === 'history') {
       if (!auth.requireSession()) return;
       renderHistory();
@@ -747,16 +1039,11 @@ export function initUI(auth, extras = {}) {
 
   profileLogoutBtn?.addEventListener('click', () => auth.logout());
 
-  profileGuestAction?.addEventListener('click', () => {
-    auth.open('login');
-    auth.setError('');
-  });
-
   profileTrigger?.addEventListener('click', (e) => {
     e.preventDefault();
     if (!auth.isLoggedIn()) {
-      auth.open('login');
-      auth.setError('');
+      auth.setNotice?.('Bitte zuerst einloggen.', 'info');
+      auth.navigate?.('/login');
       return;
     }
     toggleProfileDropdown();
@@ -789,18 +1076,35 @@ export function initUI(auth, extras = {}) {
   });
 
   auth.subscribe(() => {
+    updateAnalysisVisibility(auth);
+    if (enforceAuthGuard(auth, currentRoute, navigateFn)) return;
     updateCreditsUI(auth);
     updateProfileView(auth);
     updateAnalyzeButtons(auth);
+    updateVerifyBanner(auth);
+    updateAnalysisGateNotice(auth);
     updateAdminVisibility(auth);
+    updateHeaderUI(auth, currentRoute);
   });
 
   setupExpertModeToggle();
   updateCreditsUI(auth);
   updateProfileView(auth);
   updateAnalyzeButtons(auth, false);
+  updateVerifyBanner(auth);
+  updateAnalysisGateNotice(auth);
+  updateAnalysisVisibility(auth);
   updateAdminVisibility(auth);
-  showPage('start');
+  updateHeaderUI(auth, currentRoute);
+  bindResendVerify(auth);
+  if (router?.subscribe) {
+    router.subscribe((path) => {
+      currentRoute = path;
+      updateAnalysisVisibility(auth);
+      if (enforceAuthGuard(auth, path, navigateFn)) return;
+      updateHeaderUI(auth, path);
+    });
+  }
 }
 
 function setupExpertModeToggle() {

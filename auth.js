@@ -1,38 +1,94 @@
 const $ = (sel) => document.querySelector(sel);
-const $$ = (sel) => Array.from(document.querySelectorAll(sel));
-const GUEST_CREDITS_KEY = 'guest_credits';
-const DEFAULT_GUEST_CREDITS = 100;
+const TOKEN_KEY = 'airealcheck_token';
+const LEGACY_TOKEN_KEY = 'aireal_token';
+const RETURN_TO_KEY = 'airealcheck_return_to';
 
-function loadGuestCredits() {
-  const raw = localStorage.getItem(GUEST_CREDITS_KEY);
-  const parsed = Number.parseInt(raw, 10);
-  if (Number.isFinite(parsed) && parsed >= 0) return parsed;
-  localStorage.setItem(GUEST_CREDITS_KEY, String(DEFAULT_GUEST_CREDITS));
-  return DEFAULT_GUEST_CREDITS;
+function parseBoolean(value, fallback = false) {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'string') {
+    const v = value.trim().toLowerCase();
+    if (['1', 'true', 'yes', 'on'].includes(v)) return true;
+    if (['0', 'false', 'no', 'off'].includes(v)) return false;
+  }
+  return fallback;
 }
 
-export function createAuth(API_BASE) {
-  const overlay = $('#authOverlay');
-  const closeBtn = $('#authClose');
-  const form = $('#authForm');
-  const emailInput = $('#authEmail');
-  const passwordInput = $('#authPassword');
-  const errorBox = $('#authError');
-  const submitBtn = $('#authSubmit');
-  const submitLabel = $('#authSubmitLabel');
-  const tabs = $$('.auth-tab');
-  const passwordToggle = $('#authTogglePassword');
-  const passwordWrap = passwordInput?.closest('.auth-input-wrap') || passwordInput?.parentElement;
+function readStoredToken(persistToken) {
+  if (!persistToken) return null;
+  try {
+    return localStorage.getItem(TOKEN_KEY) || localStorage.getItem(LEGACY_TOKEN_KEY);
+  } catch (err) {
+    return null;
+  }
+}
 
+function migrateLegacyToken(token, persistToken) {
+  if (!persistToken || !token) return;
+  try {
+    const hasNew = localStorage.getItem(TOKEN_KEY);
+    const hasLegacy = localStorage.getItem(LEGACY_TOKEN_KEY);
+    if (!hasNew && hasLegacy) {
+      localStorage.setItem(TOKEN_KEY, token);
+      localStorage.removeItem(LEGACY_TOKEN_KEY);
+    }
+  } catch (err) {
+    // ignore storage errors
+  }
+}
+
+function consumeReturnPath() {
+  try {
+    const raw = sessionStorage.getItem(RETURN_TO_KEY);
+    sessionStorage.removeItem(RETURN_TO_KEY);
+    if (!raw) return '/';
+    const normalized = String(raw);
+    const pathOnly = normalized.split('?')[0];
+    if (!pathOnly.startsWith('/')) return '/';
+    if (['/login', '/auth/callback'].includes(pathOnly)) return '/';
+    return normalized;
+  } catch (err) {
+    return '/';
+  }
+}
+
+function readTokenFromHash() {
+  const hash = window.location.hash || '';
+  const params = new URLSearchParams(hash.startsWith('#') ? hash.slice(1) : hash);
+  return (params.get('token') || '').trim();
+}
+
+function clearUrlHash() {
+  if (!window.location.hash) return;
+  try {
+    history.replaceState({}, '', `${window.location.pathname}${window.location.search}`);
+  } catch (err) {
+    // ignore history errors
+  }
+}
+
+function normalizeApiBase(base) {
+  const raw = (base || '').trim();
+  return raw ? raw.replace(/\/+$/, '') : 'http://127.0.0.1:5001';
+}
+
+export function createAuth(apiBaseInput, config = {}) {
   const listeners = new Set();
+  const options = {
+    apiBase: normalizeApiBase(apiBaseInput || config.apiBase || config.api_base),
+    enableGuestAnalyze: parseBoolean(config.enableGuestAnalyze ?? config.enable_guest_analyze, false),
+    persistToken: parseBoolean(config.persistToken ?? config.persist_token, true),
+  };
+  const storedToken = readStoredToken(options.persistToken);
+  let navigator = null;
 
   const auth = {
-    token: localStorage.getItem('aireal_token') || null,
+    token: storedToken,
     user: null,
     balance: null,
-    mode: 'login',
+    notice: null,
+    noticeTone: 'info',
     loading: false,
-    guestCredits: loadGuestCredits(),
+    config: options,
     subscribe(fn) {
       if (typeof fn === 'function') {
         listeners.add(fn);
@@ -49,148 +105,161 @@ export function createAuth(API_BASE) {
         }
       });
     },
+    setNavigator(fn) {
+      navigator = typeof fn === 'function' ? fn : null;
+    },
+    navigate(path) {
+      if (navigator) navigator(path);
+      else if (path) window.location.assign(path);
+    },
+    setNotice(message, tone = 'info') {
+      this.notice = message;
+      this.noticeTone = tone || 'info';
+      this.notify();
+    },
+    consumeNotice() {
+      const payload = { message: this.notice, tone: this.noticeTone };
+      this.notice = null;
+      this.noticeTone = 'info';
+      return payload;
+    },
+    clearNotice() {
+      this.notice = null;
+      this.noticeTone = 'info';
+    },
+    getToken() {
+      return this.token;
+    },
+    getApiBase() {
+      return options.apiBase;
+    },
     authHeaders() {
       return this.token ? { Authorization: `Bearer ${this.token}` } : {};
     },
-    getGuestCredits() {
-      if (typeof this.guestCredits !== 'number') {
-        this.guestCredits = loadGuestCredits();
+    apiFetch,
+    setToken(token) {
+      this.token = token || null;
+      if (options.persistToken) {
+        try {
+          if (token) localStorage.setItem(TOKEN_KEY, token);
+          else localStorage.removeItem(TOKEN_KEY);
+          localStorage.removeItem(LEGACY_TOKEN_KEY);
+        } catch (err) {
+          // ignore storage errors
+        }
       }
-      return this.guestCredits;
     },
-    setGuestCredits(value) {
-      const safeValue = Math.max(0, Math.floor(Number(value)));
-      this.guestCredits = safeValue;
-      localStorage.setItem(GUEST_CREDITS_KEY, String(safeValue));
-      this.notify();
+    clearToken() {
+      this.setToken(null);
+      this.user = null;
+      this.balance = null;
     },
-    resetGuestCredits() {
-      this.guestCredits = DEFAULT_GUEST_CREDITS;
-      localStorage.setItem(GUEST_CREDITS_KEY, String(DEFAULT_GUEST_CREDITS));
-      this.notify();
-    },
-    clearGuestCredits() {
-      this.guestCredits = null;
-      localStorage.removeItem(GUEST_CREDITS_KEY);
+    clearSession() {
+      this.clearToken();
     },
     isLoggedIn() {
       return !!this.token;
     },
+    isAdmin() {
+      return !!this.user?.is_admin;
+    },
     isPremium() {
       return !!(this.user?.is_premium || this.balance?.is_premium);
     },
-    isAdmin() {
-      return !!(this.user?.is_admin);
+    isEmailVerified() {
+      if (!this.user) return false;
+      return !!this.user.email_verified;
     },
-    setMode(mode = 'login') {
-      this.mode = mode;
-      tabs.forEach((tab) => tab.classList.toggle('active', tab.dataset.authMode === mode));
-      if (submitLabel) submitLabel.textContent = mode === 'login' ? 'Login' : 'Registrieren';
+    canUseGuest() {
+      return !this.isLoggedIn() && !!options.enableGuestAnalyze;
     },
-    open(mode = 'login') {
-      this.setMode(mode);
-      overlay?.classList.add('open');
-      overlay?.setAttribute('aria-hidden', 'false');
-      setTimeout(() => emailInput?.focus(), 50);
+    async login(email, password) {
+      const data = await apiFetch('/auth/login', {
+        method: 'POST',
+        body: { email, password },
+        credentials: 'include',
+      });
+      if (!data?.token) throw new Error('login_failed');
+      this.setToken(data.token);
+      this.user = data.user || null;
+      await this.fetchBalance(true);
+      this.notify();
+      return data;
     },
-    close() {
-      overlay?.classList.remove('open');
-      overlay?.setAttribute('aria-hidden', 'true');
-      this.setError('');
-      form?.reset();
-      if (passwordInput) passwordInput.type = 'password';
-      passwordToggle?.classList.remove('visible');
-      this.toggleLoading(false);
+    async register(email, password, displayName, consentTerms = false) {
+      return apiFetch('/auth/register', {
+        method: 'POST',
+        body: {
+          email,
+          password,
+          display_name: displayName,
+          consent_terms: !!consentTerms,
+        },
+        credentials: 'include',
+      });
     },
-    setToken(token) {
-      this.token = token;
-      if (token) {
-        localStorage.setItem('aireal_token', token);
-      } else {
-        localStorage.removeItem('aireal_token');
-      }
+    async verifyEmail(token) {
+      return apiFetch('/auth/verify', {
+        method: 'POST',
+        body: { token },
+        credentials: 'include',
+      });
     },
-    setError(message, tone = 'error') {
-      if (!errorBox) return;
-      if (!message) {
-        errorBox.hidden = true;
-        errorBox.textContent = '';
-        errorBox.dataset.tone = 'error';
-      } else {
-        errorBox.hidden = false;
-        errorBox.textContent = message;
-        errorBox.dataset.tone = tone;
-        if (tone === 'error' && passwordWrap) {
-          passwordWrap.classList.remove('auth-shake');
-          void passwordWrap.offsetWidth; // force reflow
-          passwordWrap.classList.add('auth-shake');
-        }
-      }
+    async resendVerify() {
+      return apiFetch('/auth/resend-verify', {
+        method: 'POST',
+        credentials: 'include',
+      });
     },
-    toggleLoading(state) {
-      this.loading = state;
-      if (submitBtn) {
-        submitBtn.disabled = state;
-        submitBtn.classList.toggle('is-loading', state);
-      }
+    async forgot(email) {
+      return apiFetch('/auth/forgot', {
+        method: 'POST',
+        body: { email },
+        credentials: 'include',
+      });
     },
-    async login() {
-      const email = (emailInput?.value || '').trim().toLowerCase();
-      const password = passwordInput?.value || '';
-      if (!email || !password) {
-        this.setError('Bitte E-Mail und Passwort eingeben.');
-        return;
-      }
-      this.setError('');
-      this.toggleLoading(true);
+    async resetPassword(token, password) {
+      return apiFetch('/auth/reset', {
+        method: 'POST',
+        body: { token, password },
+        credentials: 'include',
+      });
+    },
+    async refresh() {
       try {
-        const data = await apiRequest('/auth/login', { method: 'POST', body: { email, password } });
-        if (!data?.token) throw new Error('login_failed');
+        const data = await apiFetch('/auth/refresh', {
+          method: 'POST',
+          credentials: 'include',
+        });
+        if (!data?.token) return false;
         this.setToken(data.token);
         this.user = data.user || null;
         await this.fetchBalance(true);
-        this.clearGuestCredits();
-        this.close();
+        this.notify();
+        return true;
       } catch (err) {
-        this.setError(resolveAuthError(err, 'login'));
-      } finally {
-        this.toggleLoading(false);
-      }
-    },
-    async register() {
-      const email = (emailInput?.value || '').trim().toLowerCase();
-      const password = passwordInput?.value || '';
-      if (!email || !password || password.length < 8) {
-        this.setError('Passwort muss mindestens 8 Zeichen haben.');
-        return;
-      }
-      this.setError('');
-      this.toggleLoading(true);
-      try {
-        await apiRequest('/auth/register', { method: 'POST', body: { email, password } });
-        this.setMode('login');
-        this.toggleLoading(false);
-        await this.login();
-      } catch (err) {
-        this.toggleLoading(false);
-        this.setError(resolveAuthError(err, 'register'));
+        return false;
       }
     },
     async fetchMe() {
       if (!this.token) return null;
       try {
-        const data = await apiRequest('/auth/me');
-        this.user = data.user;
+        const data = await apiFetch('/auth/me', { credentials: 'include' });
+        this.user = data.user || null;
         this.notify();
-        return data.user;
+        return this.user;
       } catch (err) {
+        if (err?.status === 401 || err?.status === 403) {
+          this.clearSession();
+          this.notify();
+        }
         return null;
       }
     },
     async fetchBalance(shouldNotify = false) {
       if (!this.token) return null;
       try {
-        const data = await apiRequest('/credits/balance');
+        const data = await apiFetch('/credits/balance', { credentials: 'include' });
         this.balance = {
           credits: data.credits,
           is_premium: data.is_premium,
@@ -203,42 +272,41 @@ export function createAuth(API_BASE) {
         return null;
       }
     },
-    async refreshContext() {
-      if (!this.token) return;
-      await this.fetchMe();
-      await this.fetchBalance(true);
-    },
     async bootstrap() {
-      if (!this.token) {
-        if (typeof this.guestCredits !== 'number') {
-          this.guestCredits = loadGuestCredits();
-        }
-        this.notify();
-        return;
+      const hasStoredToken = options.persistToken && !!readStoredToken(options.persistToken);
+      const shouldRefresh = hasStoredToken || this.isLoggedIn();
+      const refreshed = shouldRefresh ? await this.refresh() : false;
+      if (!refreshed && this.token) {
+        const me = await this.fetchMe();
+        if (me) await this.fetchBalance(true);
       }
-      await this.refreshContext();
+      if (!this.token) {
+        this.clearSession();
+      }
+      this.notify();
     },
     async logout(reason) {
-      this.setToken(null);
-      this.user = null;
-      this.balance = null;
-      this.resetGuestCredits();
-      if (reason) {
-        this.open('login');
-        this.setError(reason, 'info');
+      try {
+        await apiFetch('/auth/logout', { method: 'POST', credentials: 'include' });
+      } catch (err) {
+        // ignore
       }
+      this.clearSession();
+      if (reason) this.setNotice(reason, 'info');
+      this.notify();
+      this.navigate('/login');
     },
     requireSession() {
       if (this.isLoggedIn()) return true;
-      this.open('login');
-      this.setError('Bitte zuerst einloggen.', 'info');
+      this.setNotice('Bitte zuerst einloggen.', 'info');
+      this.navigate('/login');
       return false;
     },
   };
 
-  async function apiRequest(path, { method = 'GET', body = null, headers = {} } = {}) {
+  async function apiFetch(path, { method = 'GET', body = null, headers = {}, credentials = 'include' } = {}) {
     const finalHeaders = Object.assign({ Accept: 'application/json' }, headers, auth.authHeaders());
-    const opts = { method, headers: finalHeaders };
+    const opts = { method, headers: finalHeaders, credentials };
     if (body instanceof FormData) {
       opts.body = body;
       delete opts.headers['Content-Type'];
@@ -246,15 +314,12 @@ export function createAuth(API_BASE) {
       opts.body = JSON.stringify(body);
       opts.headers['Content-Type'] = 'application/json';
     }
-    const response = await fetch(`${API_BASE}${path}`, opts);
+    const response = await fetch(`${options.apiBase}${path}`, opts);
     let data = null;
     try {
       data = await response.clone().json();
     } catch (err) {
       data = null;
-    }
-    if (response.status === 401 && auth.token) {
-      await auth.logout('Deine Session ist abgelaufen. Bitte erneut einloggen.');
     }
     if (!response.ok) {
       const error = new Error((data && (data.error || data.message)) || 'request_failed');
@@ -265,57 +330,393 @@ export function createAuth(API_BASE) {
     return data;
   }
 
-  function resolveAuthError(err, mode = 'login') {
-    const code = err?.response?.error;
-    if (code === 'email_exists') return 'Diese E-Mail ist bereits registriert.';
-    if (code === 'invalid_credentials') return 'E-Mail oder Passwort ist falsch.';
-    if (code === 'invalid_input') return 'Bitte alle Felder korrekt ausfuellen.';
-    if (code === 'auth_required') return 'Bitte melde dich zuerst an.';
-    if (err?.status >= 500) return 'Serverfehler. Bitte spaeter erneut probieren.';
-    return mode === 'login' ? 'Login fehlgeschlagen.' : 'Registrierung fehlgeschlagen.';
+  migrateLegacyToken(storedToken, options.persistToken);
+  return auth;
+}
+
+function setAlert(el, message, tone = 'error') {
+  if (!el) return;
+  if (!message) {
+    el.hidden = true;
+    el.textContent = '';
+    el.dataset.tone = 'error';
+    return;
+  }
+  el.hidden = false;
+  el.textContent = message;
+  el.dataset.tone = tone || 'error';
+}
+
+function setLoading(btn, state) {
+  if (!btn) return;
+  btn.disabled = state;
+  btn.classList.toggle('is-loading', state);
+}
+
+function resolveAuthError(err, mode = 'login') {
+  const code = err?.response?.error;
+  if (code === 'email_exists') return 'Diese E-Mail ist bereits registriert.';
+  if (code === 'invalid_credentials') return 'E-Mail oder Passwort ist falsch.';
+  if (code === 'invalid_input') return 'Bitte alle Felder korrekt ausfüllen.';
+  if (code === 'invalid_token') return 'Der Link ist ungültig oder abgelaufen.';
+  if (code === 'email_not_verified') return 'Bitte bestätige zuerst deine E-Mail.';
+  if (code === 'smtp_not_configured') return 'E-Mail-Versand ist in dieser Umgebung nicht aktiv.';
+  if (code === 'email_send_failed') return 'E-Mail konnte nicht versendet werden. Bitte spÃ¤ter erneut versuchen.';
+  if (code === 'terms_not_accepted') return 'Bitte AGB und Datenschutz akzeptieren.';
+  if (code === 'rate_limited' || err?.status === 429) return 'Zu viele Versuche. Bitte kurz warten und erneut probieren.';
+  if (err?.status === 403) return 'Aktion nicht erlaubt.';
+  if (err?.status >= 500) return 'Serverfehler. Bitte später erneut probieren.';
+  return mode === 'login' ? 'Login fehlgeschlagen.' : 'Aktion fehlgeschlagen.';
+}
+
+export function initAuthPages(auth, router) {
+  const loginForm = $('#loginForm');
+  const loginEmail = $('#loginEmail');
+  const loginPassword = $('#loginPassword');
+  const loginNotice = $('#loginNotice');
+  const loginSubmit = $('#loginSubmit');
+  const googleLoginBtn = $('#googleLoginBtn');
+
+  const registerForm = $('#registerForm');
+  const registerName = $('#registerName');
+  const registerEmail = $('#registerEmail');
+  const registerPassword = $('#registerPassword');
+  const registerPasswordConfirm = $('#registerPasswordConfirm');
+  const registerConsent = $('#registerConsent');
+  const registerNotice = $('#registerNotice');
+  const registerSubmit = $('#registerSubmit');
+  const registerSuccess = $('#registerSuccess');
+  const registerSuccessEmail = $('#registerSuccessEmail');
+
+  const forgotForm = $('#forgotForm');
+  const forgotEmail = $('#forgotEmail');
+  const forgotNotice = $('#forgotNotice');
+  const forgotSuccess = $('#forgotSuccess');
+  const forgotSubmit = $('#forgotSubmit');
+
+  const resetForm = $('#resetForm');
+  const resetPassword = $('#resetPassword');
+  const resetPasswordConfirm = $('#resetPasswordConfirm');
+  const resetNotice = $('#resetNotice');
+  const resetSuccess = $('#resetSuccess');
+  const resetSubmit = $('#resetSubmit');
+
+  const verifyStatus = $('#verifyStatus');
+  const verifyIcon = $('#verifyIcon');
+  const verifyTitle = $('#verifyTitle');
+  const verifyMessage = $('#verifyMessage');
+  const oauthStatus = $('#oauthStatus');
+  const oauthIcon = $('#oauthIcon');
+  const oauthTitle = $('#oauthTitle');
+  const oauthMessage = $('#oauthMessage');
+  const googleRegisterBtn = $('#googleRegisterBtn');
+
+  let lastVerifyToken = null;
+  let verifyInFlight = false;
+  let oauthInFlight = false;
+  let lastOauthToken = null;
+  const passwordFields = [
+    loginPassword,
+    registerPassword,
+    registerPasswordConfirm,
+    resetPassword,
+    resetPasswordConfirm,
+  ].filter(Boolean);
+  const passwordToggles = Array.from(document.querySelectorAll('[data-password-toggle]'));
+
+  function routeToken() {
+    const params = new URLSearchParams(window.location.search || '');
+    return (params.get('token') || '').trim();
   }
 
-  form?.addEventListener('submit', async (e) => {
+  function showOauthErrorNotice() {
+    if (!loginNotice) return;
+    const params = new URLSearchParams(window.location.search || '');
+    if (params.get('oauth_error')) {
+      setAlert(loginNotice, 'Google-Login fehlgeschlagen. Bitte erneut versuchen.', 'error');
+    }
+  }
+
+  function setOauthStatus(state, title, message, icon) {
+    if (!oauthStatus) return;
+    if (state) oauthStatus.dataset.state = state;
+    if (oauthIcon && icon) oauthIcon.textContent = icon;
+    if (oauthTitle && title) oauthTitle.textContent = title;
+    if (oauthMessage && message) oauthMessage.textContent = message;
+  }
+
+  function startGoogleLogin() {
+    const apiBase = auth?.getApiBase?.() || auth?.config?.apiBase;
+    if (!apiBase) return;
+    window.location.assign(`${apiBase}/auth/google`);
+  }
+
+  function clearSensitiveFields() {
+    passwordFields.forEach((input) => {
+      input.value = '';
+      input.type = 'password';
+    });
+    passwordToggles.forEach((btn) => {
+      btn.classList.remove('is-visible');
+      btn.setAttribute('aria-pressed', 'false');
+    });
+  }
+
+  function bindPasswordToggles() {
+    passwordToggles.forEach((btn) => {
+      if (btn.dataset.bound === 'true') return;
+      btn.dataset.bound = 'true';
+      btn.addEventListener('click', () => {
+        const targetId = btn.getAttribute('data-password-toggle');
+        const input = targetId ? document.getElementById(targetId) : null;
+        if (!input) return;
+        const makeVisible = input.type === 'password';
+        input.type = makeVisible ? 'text' : 'password';
+        btn.classList.toggle('is-visible', makeVisible);
+        btn.setAttribute('aria-pressed', String(makeVisible));
+      });
+    });
+  }
+
+  function showLoginNoticeFromAuth() {
+    if (!loginNotice) return;
+    const notice = auth.consumeNotice();
+    if (notice?.message) {
+      setAlert(loginNotice, notice.message, notice.tone || 'info');
+    }
+  }
+
+  router?.subscribe((path) => {
+    clearSensitiveFields();
+    if (path === '/login') {
+      showLoginNoticeFromAuth();
+      showOauthErrorNotice();
+    } else if (loginNotice) {
+      setAlert(loginNotice, '');
+    }
+    if (path === '/register') {
+      if (registerNotice) setAlert(registerNotice, '');
+    }
+    if (path === '/forgot-password') {
+      if (forgotNotice) setAlert(forgotNotice, '');
+    }
+    if (path === '/reset-password') {
+      if (resetNotice) setAlert(resetNotice, '');
+    }
+    if (path === '/auth/callback') {
+      handleOauthCallback();
+    }
+  });
+
+  loginForm?.addEventListener('submit', async (e) => {
     e.preventDefault();
-    if (auth.loading) return;
-    if (auth.mode === 'login') await auth.login();
-    else await auth.register();
+    const email = (loginEmail?.value || '').trim().toLowerCase();
+    const password = loginPassword?.value || '';
+    if (!email || !password) {
+      setAlert(loginNotice, 'Bitte E-Mail und Passwort eingeben.', 'error');
+      return;
+    }
+    setAlert(loginNotice, '');
+    setLoading(loginSubmit, true);
+    try {
+      await auth.login(email, password);
+      auth.clearNotice();
+      setAlert(loginNotice, '');
+      clearSensitiveFields();
+      auth.navigate('/');
+    } catch (err) {
+      setAlert(loginNotice, resolveAuthError(err, 'login'), 'error');
+    } finally {
+      setLoading(loginSubmit, false);
+    }
   });
 
-  form?.addEventListener('input', () => {
-    auth.setError('');
-    passwordWrap?.classList.remove('auth-shake');
-  });
-
-  closeBtn?.addEventListener('click', (e) => {
+  registerForm?.addEventListener('submit', async (e) => {
     e.preventDefault();
-    auth.close();
+    const displayName = (registerName?.value || '').trim();
+    const email = (registerEmail?.value || '').trim().toLowerCase();
+    const password = registerPassword?.value || '';
+    const confirm = registerPasswordConfirm?.value || '';
+    const consentAccepted = !!registerConsent?.checked;
+    if (!displayName) {
+      setAlert(registerNotice, 'Bitte deinen Namen eingeben.', 'error');
+      return;
+    }
+    if (!email || !password || password.length < 8) {
+      setAlert(registerNotice, 'Passwort muss mindestens 8 Zeichen haben.', 'error');
+      return;
+    }
+    if (password !== confirm) {
+      setAlert(registerNotice, 'Passwörter stimmen nicht überein.', 'error');
+      return;
+    }
+    if (!consentAccepted) {
+      setAlert(registerNotice, 'Bitte AGB und Datenschutz akzeptieren.', 'error');
+      return;
+    }
+    setAlert(registerNotice, '');
+    setLoading(registerSubmit, true);
+    try {
+      await auth.register(email, password, displayName, consentAccepted);
+      try {
+        await auth.login(email, password);
+        auth.clearNotice();
+        setAlert(registerNotice, '');
+        clearSensitiveFields();
+        auth.navigate('/');
+        return;
+      } catch (loginErr) {
+        clearSensitiveFields();
+        if (registerSuccessEmail) registerSuccessEmail.textContent = email;
+        registerSuccess?.classList.remove('ac-hide');
+        registerForm?.classList.add('ac-hide');
+      }
+    } catch (err) {
+      setAlert(registerNotice, resolveAuthError(err, 'register'), 'error');
+    } finally {
+      setLoading(registerSubmit, false);
+    }
   });
 
-  let overlayPointerDown = false;
-  overlay?.addEventListener('pointerdown', (e) => {
-    overlayPointerDown = e.target === overlay;
-  });
-  overlay?.addEventListener('pointerup', (e) => {
-    if (overlayPointerDown && e.target === overlay) auth.close();
-    overlayPointerDown = false;
-  });
-  overlay?.addEventListener('pointerleave', () => {
-    overlayPointerDown = false;
-  });
-
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && overlay?.classList.contains('open')) auth.close();
-  });
-
-  tabs.forEach((tab) => tab.addEventListener('click', () => auth.setMode(tab.dataset.authMode)));
-
-  passwordToggle?.addEventListener('click', () => {
-    if (!passwordInput) return;
-    const visible = passwordInput.type === 'password';
-    passwordInput.type = visible ? 'text' : 'password';
-    passwordToggle.classList.toggle('visible', visible);
+  forgotForm?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const email = (forgotEmail?.value || '').trim().toLowerCase();
+    if (!email) {
+      setAlert(forgotNotice, 'Bitte E-Mail eingeben.', 'error');
+      return;
+    }
+    setAlert(forgotNotice, '');
+    setLoading(forgotSubmit, true);
+    try {
+      await auth.forgot(email);
+      forgotSuccess?.classList.remove('ac-hide');
+    } catch (err) {
+      setAlert(forgotNotice, resolveAuthError(err, 'forgot'), 'error');
+    } finally {
+      setLoading(forgotSubmit, false);
+    }
   });
 
-  return auth;
+  resetForm?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const token = routeToken();
+    const password = resetPassword?.value || '';
+    const confirm = resetPasswordConfirm?.value || '';
+    if (!token) {
+      setAlert(resetNotice, 'Reset-Link fehlt.', 'error');
+      return;
+    }
+    if (!password || password.length < 8) {
+      setAlert(resetNotice, 'Passwort muss mindestens 8 Zeichen haben.', 'error');
+      return;
+    }
+    if (password !== confirm) {
+      setAlert(resetNotice, 'Passwörter stimmen nicht überein.', 'error');
+      return;
+    }
+    setAlert(resetNotice, '');
+    setLoading(resetSubmit, true);
+    try {
+      await auth.resetPassword(token, password);
+      clearSensitiveFields();
+      resetSuccess?.classList.remove('ac-hide');
+      resetForm?.classList.add('ac-hide');
+    } catch (err) {
+      setAlert(resetNotice, resolveAuthError(err, 'reset'), 'error');
+    } finally {
+      setLoading(resetSubmit, false);
+    }
+  });
+
+  async function handleVerifyRoute() {
+    if (!verifyStatus || verifyInFlight) return;
+    const token = routeToken();
+    if (!token) {
+      verifyStatus.dataset.state = 'error';
+      if (verifyIcon) verifyIcon.textContent = '!';
+      if (verifyTitle) verifyTitle.textContent = 'Token fehlt';
+      if (verifyMessage) verifyMessage.textContent = 'Bitte nutze den Link aus der E-Mail.';
+      return;
+    }
+    if (token === lastVerifyToken) return;
+    lastVerifyToken = token;
+    verifyInFlight = true;
+    verifyStatus.dataset.state = 'loading';
+    if (verifyIcon) verifyIcon.textContent = '…';
+    if (verifyTitle) verifyTitle.textContent = 'Bestätigung prüfen…';
+    if (verifyMessage) verifyMessage.textContent = 'Wir prüfen deinen Link.';
+    try {
+      await auth.verifyEmail(token);
+      verifyStatus.dataset.state = 'success';
+      if (verifyIcon) verifyIcon.textContent = '✓';
+      if (verifyTitle) verifyTitle.textContent = 'E-Mail bestätigt';
+      if (verifyMessage) verifyMessage.textContent = 'Du kannst dich jetzt anmelden.';
+    } catch (err) {
+      verifyStatus.dataset.state = 'error';
+      if (verifyIcon) verifyIcon.textContent = '!';
+      if (verifyTitle) verifyTitle.textContent = 'Bestätigung fehlgeschlagen';
+      if (verifyMessage) verifyMessage.textContent = resolveAuthError(err, 'verify');
+    } finally {
+      verifyInFlight = false;
+    }
+  }
+
+  async function handleOauthCallback() {
+    if (!oauthStatus || oauthInFlight) return;
+    const token = readTokenFromHash();
+    if (!token) {
+      setOauthStatus('error', 'Token fehlt', 'Bitte erneut anmelden.', '!');
+      clearUrlHash();
+      auth.clearSession();
+      auth.navigate('/login?oauth_error=1');
+      return;
+    }
+    if (token === lastOauthToken) return;
+    lastOauthToken = token;
+    oauthInFlight = true;
+    setOauthStatus('loading', 'Anmeldung abschliessen...', 'Wir melden dich an und laden dein Profil.', '...');
+    clearUrlHash();
+    auth.setToken(token);
+    try {
+      const me = await auth.fetchMe();
+      if (!me) throw new Error('oauth_me_failed');
+      await auth.fetchBalance(true);
+      setOauthStatus('success', 'Angemeldet', 'Weiterleitung...', 'OK');
+      const target = consumeReturnPath();
+      auth.navigate(target);
+    } catch (err) {
+      auth.clearSession();
+      setOauthStatus('error', 'Anmeldung fehlgeschlagen', 'Bitte erneut anmelden.', '!');
+      auth.navigate('/login?oauth_error=1');
+    } finally {
+      oauthInFlight = false;
+    }
+  }
+
+  router?.subscribe((path) => {
+    if (path === '/verify-email') {
+      handleVerifyRoute();
+    }
+    if (path === '/register') {
+      registerSuccess?.classList.add('ac-hide');
+      registerForm?.classList.remove('ac-hide');
+    }
+    if (path === '/reset-password') {
+      resetSuccess?.classList.add('ac-hide');
+      resetForm?.classList.remove('ac-hide');
+    }
+    if (path === '/forgot-password') {
+      forgotSuccess?.classList.add('ac-hide');
+    }
+  });
+
+  googleLoginBtn?.addEventListener('click', () => startGoogleLogin());
+  googleRegisterBtn?.addEventListener('click', () => {
+    if (!registerConsent?.checked) {
+      setAlert(registerNotice, 'Bitte AGB und Datenschutz akzeptieren.', 'error');
+      return;
+    }
+    startGoogleLogin();
+  });
+  bindPasswordToggles();
 }

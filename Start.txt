@@ -4,17 +4,27 @@ Backend server Starten in einem Neuen Terminal: python -m Backend.server
 
 
 Schritt 2:
-Neues Terminal auf machen und Frontend server (http) an machen auf port (5500): python -m http.server 5500 
+Neues Terminal auf machen und Frontend server (http) an machen auf port (5500): npx serve -s . -l 5500
 
 
 
 Schritt 3:
-Auf diese URL gehen:  http://127.0.0.1:5500
-
-
+Auf diese URL gehen:  
+ - Local:    http://localhost:5500  
+ - Network:  http://192.168.0.225:5500 
 
 Hinweis: 
 Beide Server immer im Jeweiligen Terminal mit "Strg + c" Schließen
+
+
+Schritt 4 (OAuth Test):
+ - Auf http://localhost:5500/login gehen
+ - "Mit Google anmelden" klicken
+ - Google Login durchlaufen, Redirect kommt auf /auth/callback zurueck
+ - Danach bist du eingeloggt und landest auf /
+
+Hinweis OAuth:
+ AIREALCHECK_PUBLIC_WEB_URL und GOOGLE_OAUTH_* muessen gesetzt sein
 
 
 

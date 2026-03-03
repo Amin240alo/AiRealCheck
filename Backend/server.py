@@ -5,14 +5,13 @@ from flask_cors import CORS
 import os
 import sys
 import hashlib
+import datetime as dt
 import json
 import shutil
 import subprocess
 import uuid
 from typing import Tuple
 from dotenv import load_dotenv, find_dotenv
-
-import jwt
 
 _DOTENV_PATH = find_dotenv(".env", usecwd=True)
 if _DOTENV_PATH:
@@ -51,6 +50,14 @@ def _env_flag(name, default="false"):
     return os.getenv(name, default).lower() in {"1", "true", "yes"}
 
 
+def _guest_analyze_enabled():
+    return os.getenv("AIREALCHECK_ENABLE_GUEST_ANALYZE", "false").lower() in {"1", "true", "yes"}
+
+
+def _client_ip():
+    return request.headers.get("X-Forwarded-For", request.remote_addr) or "?"
+
+
 def _audio_enable_flags():
     return {
         "audio_aasist": _env_flag("AIREALCHECK_ENABLE_AUDIO_AASIST", "true"),
@@ -82,19 +89,23 @@ from Backend.engines.video_temporal_engine import run_video_temporal
 from Backend.engines.video_temporal_cnn_engine import run_video_temporal_cnn
 from Backend.video_url_fetcher import fetch_video_from_url, VideoUrlError
 from Backend.video_validation import validate_video_input
-from Backend.engines.engine_utils import make_engine_result, coerce_engine_result, safe_engine_call
+from Backend.engines.engine_utils import make_engine_result, safe_engine_call
 
-from Backend.db import init_db
+from Backend.db import init_db, get_session
 
-from Backend.models import Base, User
+from Backend.models import Base, User, Analysis, CreditLedger
 
 from Backend.auth import bp_auth
+from Backend.emailer import email_debug_status, send_email
 
 from Backend.credits import bp_credits
 
+from Backend.analyses import bp_analyses
+
 from Backend.admin import bp_admin
 
-from Backend.middleware import spend_one_credit, get_session, parse_auth_header, ensure_daily_reset
+from Backend.middleware import require_email_verified, require_admin, _error, rate_limit
+from Backend.ledger import get_credit_balance, add_ledger_entry
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -110,22 +121,27 @@ print("LOADED SERVER.PY FROM:", __file__)
 
 
 
-JWT_SECRET = os.getenv("AIREALCHECK_JWT_SECRET", "dev_change_me")
-
-
-
-
-
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB Upload-Limit
 log_ffmpeg_diagnostics()
 
 
 # Restrictive CORS per requirements
+_allowed_origins = ["http://localhost:5500", "http://127.0.0.1:5500"]
+_allowed_methods = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
+_allowed_headers = ["Content-Type", "Authorization"]
 
-_allowed_origins = ["http://127.0.0.1:5500", "http://127.0.0.1:5000"]
-
-CORS(app, resources={r"/*": {"origins": _allowed_origins}})
+CORS(
+    app,
+    resources={
+        r"/*": {
+            "origins": _allowed_origins,
+            "methods": _allowed_methods,
+            "allow_headers": _allowed_headers,
+        }
+    },
+    supports_credentials=True,
+)
 
 
 
@@ -216,6 +232,8 @@ app.register_blueprint(bp_auth)
 app.register_blueprint(bp_credits)
 
 app.register_blueprint(bp_admin)
+
+app.register_blueprint(bp_analyses)
 
 
 
@@ -558,6 +576,52 @@ def debug_env():
     )
 
 
+@app.get("/debug/email")
+def debug_email():
+    return jsonify(email_debug_status())
+
+
+@app.get("/debug/email/status")
+@require_admin
+def debug_email_status():
+    return jsonify(email_debug_status())
+
+
+def _debug_email_allowed():
+    return os.getenv("FLASK_ENV", "").lower() == "development"
+
+
+def _debug_email_test_impl():
+    data = request.get_json(silent=True) or {}
+    to_email = (data.get("email") or data.get("to") or "").strip().lower()
+    if not to_email or "@" not in to_email:
+        return _error("invalid_input", 400)
+    subject = (data.get("subject") or "AIRealCheck: Test Email").strip()
+    body = data.get("body") or "Dies ist eine Testmail vom AIRealCheck Debug Endpoint."
+    ok, err, reason = send_email(
+        to_email,
+        subject,
+        body,
+        logger=app.logger,
+        template_name="debug_test",
+    )
+    if not ok:
+        return _error(err or "email_send_failed", 500, [reason] if reason else [])
+    return jsonify({"ok": True, "reason": reason, "debug": email_debug_status()})
+
+
+@require_admin
+def _debug_email_test_admin():
+    return _debug_email_test_impl()
+
+
+@app.post("/debug/email/test")
+def debug_email_test():
+    if _debug_email_allowed():
+        return _debug_email_test_impl()
+    return _debug_email_test_admin()
+
+
 @app.get("/debug/paid")
 def debug_paid():
     paid_enabled = _paid_apis_enabled()
@@ -597,6 +661,117 @@ def _apply_no_cache_headers(resp):
     resp.headers["Expires"] = "0"
 
     return resp
+
+
+def _analysis_cost(media_type="image") -> int:
+    raw = os.getenv("AIREALCHECK_ANALYSIS_COST", "1")
+    try:
+        value = int(raw)
+    except Exception:
+        value = 1
+    if value < 0:
+        value = 0
+    return value
+
+
+class _InsufficientCredits(Exception):
+    pass
+
+
+def _create_analysis_record(user_id: int, media_type: str):
+    analysis_id = str(uuid.uuid4())
+    charge_key = uuid.uuid4().hex
+    now = dt.datetime.utcnow()
+    db = get_session()
+    try:
+        row = Analysis(
+            id=analysis_id,
+            user_id=int(user_id),
+            status="running",
+            media_type=media_type,
+            charge_idempotency_key=charge_key,
+            started_at=now,
+            created_at=now,
+        )
+        db.add(row)
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+    return analysis_id, charge_key, now
+
+
+def _finalize_analysis(
+    analysis_id: str,
+    status: str,
+    result_json: dict = None,
+    final_score_ai01=None,
+    cost_credits=None,
+):
+    db = get_session()
+    try:
+        row = db.query(Analysis).get(str(analysis_id))
+        if not row:
+            return
+        row.status = status
+        row.result_json = result_json
+        row.final_score_ai01 = final_score_ai01
+        row.cost_credits = cost_credits
+        row.finished_at = dt.datetime.utcnow()
+        db.add(row)
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+
+def _charge_analysis_if_needed(analysis_id: str, user_id: int, cost_credits: int):
+    if cost_credits is None or int(cost_credits) <= 0:
+        return False
+    db = get_session()
+    try:
+        with db.begin():
+            row = (
+                db.query(Analysis)
+                .filter(Analysis.id == str(analysis_id))
+                .with_for_update()
+                .first()
+            )
+            if not row:
+                return False
+            charge_key = row.charge_idempotency_key
+            if not charge_key:
+                return False
+            existing = (
+                db.query(CreditLedger)
+                .filter(CreditLedger.ref_type == "analysis", CreditLedger.ref_id == charge_key)
+                .first()
+            )
+            if existing:
+                return False
+            user = db.query(User).filter(User.id == int(user_id)).with_for_update().first()
+            if not user:
+                return False
+            balance = get_credit_balance(user_id, db=db)
+            if balance < int(cost_credits):
+                raise _InsufficientCredits()
+            add_ledger_entry(
+                user_id,
+                -int(cost_credits),
+                reason="analysis",
+                ref_type="analysis",
+                ref_id=charge_key,
+                db=db,
+            )
+        return True
+    except Exception:
+        raise
+    finally:
+        db.close()
 
 
 
@@ -658,15 +833,109 @@ def _run_analysis_path(file_path, filename, media_type="image", user_ctx=None, c
     media_type_detected = "unknown"
 
     detection_meta = None
+    cost_credits = 0
+    credit_spent = False
+    credits_left = None
+    user_is_premium = False
+    user_id = None
 
     force = (request.args.get("force") or request.form.get("force") or "").lower() in {"1", "true", "yes", "force"}
-    analysis_id = str(uuid.uuid4())
+    analysis_id = None
+    created_at = dt.datetime.utcnow()
+    created_at_iso = created_at.isoformat() + "Z"
+    if user_ctx:
+        analysis_id, _, created_at = _create_analysis_record(
+            int(user_ctx.get("id", 0)), media_type
+        )
+        created_at_iso = created_at.isoformat() + "Z"
+    else:
+        analysis_id = str(uuid.uuid4())
 
-    created_at_iso = __import__("datetime").datetime.utcnow().isoformat() + "Z"
+    def _finalize_failure(payload):
+        if user_ctx and analysis_id:
+            _finalize_analysis(
+                analysis_id,
+                "failed",
+                result_json=payload,
+                final_score_ai01=None,
+                cost_credits=cost_credits,
+            )
+        return payload
+
+    def _finalize_success(payload, source=None):
+        nonlocal credit_spent, credits_left
+        final_score = payload.get("final_ai")
+        if user_ctx and charge_credit and (not user_is_premium) and cost_credits > 0:
+            try:
+                credit_spent = _charge_analysis_if_needed(analysis_id, user_id, cost_credits)
+            except _InsufficientCredits:
+                error_payload = {
+                    "ok": False,
+                    "error": "no_credits",
+                    "details": ["Nicht genug Credits"],
+                    "media_type_detected": media_type_detected,
+                    "analysis_id": analysis_id,
+                }
+                if user_ctx and analysis_id:
+                    _finalize_analysis(
+                        analysis_id,
+                        "failed",
+                        result_json=error_payload,
+                        final_score_ai01=None,
+                        cost_credits=cost_credits,
+                    )
+                return error_payload, 402
+        if user_ctx and analysis_id:
+            _finalize_analysis(
+                analysis_id,
+                "done",
+                result_json=payload,
+                final_score_ai01=final_score,
+                cost_credits=cost_credits,
+            )
+        if user_ctx and not user_is_premium:
+            credits_left = get_credit_balance(user_id)
+        if user_ctx:
+            usage_source = source or payload.get("primary_source")
+        else:
+            usage_source = "guest"
+        payload["usage"] = {
+            "source": usage_source,
+            "credit_spent": bool(credit_spent),
+            "credits_left": credits_left if user_ctx and not user_is_premium else None,
+        }
+        return payload
 
     try:
 
         media_type_detected, detection_meta = detect_media_type(file_path)
+
+        if user_ctx:
+            user_id = int(user_ctx.get("id", 0))
+            user_is_premium = bool(user_ctx.get("is_premium"))
+            if user_is_premium:
+                cost_credits = 0
+            else:
+                cost_credits = _analysis_cost(media_type)
+                if cost_credits > 0:
+                    balance = get_credit_balance(user_id)
+                    if balance < cost_credits:
+                        error_payload = {
+                            "ok": False,
+                            "error": "no_credits",
+                            "details": ["Nicht genug Credits"],
+                            "media_type_detected": media_type_detected,
+                            "analysis_id": analysis_id,
+                        }
+                        if analysis_id:
+                            _finalize_analysis(
+                                analysis_id,
+                                "failed",
+                                result_json=error_payload,
+                                final_score_ai01=None,
+                                cost_credits=cost_credits,
+                            )
+                        return jsonify(error_payload), 402
 
         if media_type_detected == "image" and media_type == "image":
             # Cache-Hit?
@@ -697,9 +966,14 @@ def _run_analysis_path(file_path, filename, media_type="image", user_ctx=None, c
 
                         cached["timestamps"] = {"created_at": created_at_iso}
 
-                    cached["usage"] = {"source": cached.get("source"), "credit_spent": False, "credits_left": None}
-
                     _attach_media_type_detected(cached, media_type_detected, detection_meta)
+                    cached = _finalize_success(
+                        cached,
+                        source=cached.get("primary_source") or cached.get("source"),
+                    )
+                    if isinstance(cached, tuple):
+                        payload, status = cached
+                        return jsonify(payload), status
                     return jsonify(cached)
 
 
@@ -713,16 +987,16 @@ def _run_analysis_path(file_path, filename, media_type="image", user_ctx=None, c
         elif media_type_detected == "video" and media_type == "video":
             validation = validate_video_input(file_path, max_upload_bytes=app.config.get("MAX_CONTENT_LENGTH"))
             if not validation.get("ok"):
+                error_payload = {
+                    "ok": False,
+                    "error": validation.get("message", "invalid_video"),
+                    "details": validation.get("notes", []),
+                    "validation": validation,
+                    "media_type_detected": media_type_detected,
+                    "analysis_id": analysis_id,
+                }
                 return (
-                    jsonify(
-                        {
-                            "ok": False,
-                            "error": validation.get("message", "invalid_video"),
-                            "details": validation.get("notes", []),
-                            "validation": validation,
-                            "media_type_detected": media_type_detected,
-                        }
-                    ),
+                    jsonify(_finalize_failure(error_payload)),
                     int(validation.get("http_status") or 400),
                 )
 
@@ -814,17 +1088,11 @@ def _run_analysis_path(file_path, filename, media_type="image", user_ctx=None, c
 
             }
 
-            response_payload["usage"] = {
-
-                "source": "video_forensics",
-
-                "credit_spent": False,
-
-                "credits_left": None,
-
-            }
-
             _attach_media_type_detected(response_payload, media_type_detected, detection_meta)
+            response_payload = _finalize_success(response_payload, source="video_forensics")
+            if isinstance(response_payload, tuple):
+                payload, status = response_payload
+                return jsonify(payload), status
 
             if os.getenv("FLASK_ENV", "").lower() == "development":
                 response_payload["debug_flags"] = {
@@ -881,39 +1149,31 @@ def _run_analysis_path(file_path, filename, media_type="image", user_ctx=None, c
                 "warnings": audio_bundle.get("warnings", []) if isinstance(audio_bundle, dict) else [],
                 "source": audio_primary_source,
             }
-            response_payload["usage"] = {
-                "source": audio_primary_source,
-                "credit_spent": False,
-                "credits_left": None,
-            }
             _attach_media_type_detected(response_payload, media_type_detected, detection_meta)
+            response_payload = _finalize_success(response_payload, source=audio_primary_source)
+            if isinstance(response_payload, tuple):
+                payload, status = response_payload
+                return jsonify(payload), status
             return jsonify(response_payload)
         else:
-            return (
-                jsonify(
-                    {
-                        "ok": False,
-                        "error": "Nicht unterstuetzter Dateityp",
-                        "media_type_detected": media_type_detected,
-                    }
-                ),
-                415,
-            )
+            error_payload = {
+                "ok": False,
+                "error": "Nicht unterstuetzter Dateityp",
+                "media_type_detected": media_type_detected,
+                "analysis_id": analysis_id,
+            }
+            return (jsonify(_finalize_failure(error_payload)), 415)
 
 
         if result.get("error") or result.get("ok") is False:
-
-            return (
-                jsonify(
-                    {
-                        "ok": False,
-                        "error": result.get("message", "analyse_failed"),
-                        "details": result.get("details", []),
-                        "media_type_detected": media_type_detected,
-                    }
-                ),
-                502,
-            )
+            error_payload = {
+                "ok": False,
+                "error": result.get("message", "analyse_failed"),
+                "details": result.get("details", []),
+                "media_type_detected": media_type_detected,
+                "analysis_id": analysis_id,
+            }
+            return (jsonify(_finalize_failure(error_payload)), 502)
 
 
         # Score-Shaping optional anwenden
@@ -1022,37 +1282,10 @@ def _run_analysis_path(file_path, filename, media_type="image", user_ctx=None, c
 
 
 
-        # Spend credit atomically after successful analysis for hive/forensics
-
-        credit_spent = False
-
-        credits_left = None
-
-        if charge_credit and user_ctx and source_used in {"hive", "forensics"}:
-
-            try:
-
-                credits_left = spend_one_credit(user_ctx.get("id", 0), reason=f"analyze:{source_used}")
-
-                credit_spent = True
-
-            except Exception as e:
-
-                return (
-                    jsonify({"ok": False, "error": str(e), "details": [], "media_type_detected": media_type_detected}),
-                    402,
-                )
-
-
-        response_payload["usage"] = {
-
-            "source": source_used,
-
-            "credit_spent": credit_spent,
-
-            "credits_left": credits_left if user_ctx else None,
-
-        }
+        response_payload = _finalize_success(response_payload, source=source_used)
+        if isinstance(response_payload, tuple):
+            payload, status = response_payload
+            return jsonify(payload), status
 
 
 
@@ -1075,91 +1308,33 @@ def _run_analysis_path(file_path, filename, media_type="image", user_ctx=None, c
         return jsonify(response_payload)
 
     except Exception as e:
-
-        return jsonify({"ok": False, "error": str(e), "media_type_detected": media_type_detected}), 500
-
-
-def _resolve_user_context():
-
-    try:
-
-        token = parse_auth_header()
-
-        if not token:
-
-            app.logger.debug("resolve_user_context: no auth header")
-
-            return None
-
-        payload = jwt.decode(token, JWT_SECRET, algorithms=["HS256"])
-
-        user_id = payload.get("sub")
-
-        if not user_id:
-
-            app.logger.debug("resolve_user_context: payload missing sub")
-
-            return None
-
-        db = get_session()
-
-        try:
-
-            user = db.query(User).get(int(user_id))
-
-            if not user:
-
-                app.logger.debug("resolve_user_context: user not found %s", user_id)
-
-                return None
-
-            g.current_user_id = user.id
-
-            g.current_user_is_premium = bool(user.is_premium)
-
-            g.current_user_is_admin = bool(getattr(user, "is_admin", False))
-
-            ensure_daily_reset(user, db)
-
-            db.commit()
-
-            return {
-
-                "id": user.id,
-
-                "is_premium": bool(user.is_premium),
-
-                "is_admin": bool(getattr(user, "is_admin", False)),
-
-            }
-
-        finally:
-
-            db.close()
-
-    except Exception:
-
-        app.logger.exception("resolve_user_context error")
-
-        pass
-
-    return None
-
-
-
+        error_payload = {
+            "ok": False,
+            "error": str(e),
+            "media_type_detected": media_type_detected,
+            "analysis_id": analysis_id,
+        }
+        return jsonify(_finalize_failure(error_payload)), 500
 
 
 @app.post("/analyze")
-
+@require_email_verified
 def analyze():
 
     file = request.files.get("file")
 
     media_type = (request.form.get("type") or "image").lower()
 
-    user_ctx = _resolve_user_context()
+    db = get_session()
+    try:
+        user = db.query(User).get(int(g.current_user_id))
+        if not user:
+            return _error("user_not_found", 404)
+        user_ctx = {"id": user.id, "is_premium": bool(user.is_premium)}
+    finally:
+        db.close()
 
-    resp = _run_analysis(file, media_type, user_ctx, charge_credit=bool(user_ctx))
+    resp = _run_analysis(file, media_type, user_ctx, charge_credit=True)
 
     if isinstance(resp, tuple):
 
@@ -1186,15 +1361,6 @@ def analyze():
     if "media_type_detected" not in resp_obj:
 
         resp_obj["media_type_detected"] = "unknown"
-    if user_ctx:
-
-        resp_obj["usage"]["source"] = resp_obj["usage"].get("source")
-
-    else:
-
-        resp_obj["usage"]["source"] = "guest"
-
-        resp_obj["usage"]["credits_left"] = None
 
     resp_final = make_response(jsonify(resp_obj), status)
 
@@ -1209,6 +1375,10 @@ print("REGISTRIERE ANALYZE-GUEST ROUTE")
 @app.post("/analyze/guest")
 
 def analyze_guest():
+    if not _guest_analyze_enabled():
+        return _error("guest_disabled", 403)
+    if not rate_limit(f"guest_analyze:{_client_ip()}", limit=10, window_sec=600):
+        return _error("rate_limited", 429)
     file = request.files.get("file")
 
     media_type = (request.form.get("type") or "image").lower()
@@ -1279,9 +1449,17 @@ def analyze_guest():
 
 
 @app.post("/analyze/video-url")
+@require_email_verified
 def analyze_video_url():
-    user_ctx = _resolve_user_context()
-    resp = _handle_video_url_request(user_ctx, charge_credit=bool(user_ctx), as_guest=False)
+    db = get_session()
+    try:
+        user = db.query(User).get(int(g.current_user_id))
+        if not user:
+            return _error("user_not_found", 404)
+        user_ctx = {"id": user.id, "is_premium": bool(user.is_premium)}
+    finally:
+        db.close()
+    resp = _handle_video_url_request(user_ctx, charge_credit=True, as_guest=False)
     if isinstance(resp, tuple):
         resp_obj, status = resp
     else:
@@ -1292,6 +1470,10 @@ def analyze_video_url():
 
 @app.post("/analyze/video-url/guest")
 def analyze_video_url_guest():
+    if not _guest_analyze_enabled():
+        return _error("guest_disabled", 403)
+    if not rate_limit(f"guest_analyze:{_client_ip()}", limit=10, window_sec=600):
+        return _error("rate_limited", 429)
     resp = _handle_video_url_request(None, charge_credit=False, as_guest=True)
     if isinstance(resp, tuple):
         resp_obj, status = resp

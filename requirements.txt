@@ -1,5 +1,6 @@
 Flask
 flask-cors
+authlib
 requests
 Pillow
 pillow-heif
@@ -9,6 +10,7 @@ ImageHash
 pyjwt
 bcrypt
 SQLAlchemy
+psycopg2-binary
 python-dotenv
 torch
 timm
