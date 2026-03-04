@@ -33,12 +33,13 @@ class User(Base):
     credits_used = Column(Integer, default=0, nullable=False, server_default=text("0"))
     last_credit_reset = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now(), nullable=True)
     last_login = Column(DateTime(timezone=True), nullable=True)
 
     credit_ledger = relationship("CreditLedger", back_populates="user", lazy="select")
     credit_transactions = relationship("CreditTransaction", back_populates="user", lazy="select")
     analyses = relationship("Analysis", back_populates="user", lazy="select")
+    analysis_history = relationship("AnalysisHistory", back_populates="user", lazy="select")
     subscriptions = relationship("Subscription", back_populates="user", lazy="select")
     refresh_tokens = relationship("RefreshToken", back_populates="user", lazy="select")
     email_verify_tokens = relationship("EmailVerifyToken", back_populates="user", lazy="select")
@@ -135,6 +136,31 @@ class Analysis(Base):
 
     __table_args__ = (
         Index("ix_analyses_user_created", "user_id", "created_at"),
+    )
+
+
+class AnalysisHistory(Base):
+    __tablename__ = "analysis_history"
+
+    id = Column(String(64), primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    media_type = Column(String(20), nullable=True)
+    file_ref = Column(Text, nullable=True)
+    thumb_ref = Column(Text, nullable=True)
+    title = Column(String(255), nullable=True)
+    status = Column(String(20), nullable=False, server_default=text("'success'"))
+    final_score = Column(Float, nullable=True)
+    verdict_label = Column(String(120), nullable=True)
+    engine_breakdown = Column(Text, nullable=True)
+    result_payload = Column(Text, nullable=True)
+    credits_charged = Column(Integer, nullable=False, server_default=text("0"))
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    user = relationship("User", back_populates="analysis_history")
+
+    __table_args__ = (
+        Index("ix_analysis_history_user_created", "user_id", "created_at"),
     )
 
 

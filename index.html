@@ -22,7 +22,7 @@
   </script>
   <link rel="stylesheet" href="/style.css" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 </head>
 <body>
   <noscript><div style="padding:16px;background:#ffe7e7;color:#5b0000;text-align:center">
@@ -372,8 +372,29 @@
       <section id="page-history" class="ac-page ac-hide">
         <div class="ac-container">
           <div class="ac-page-title" data-i18n="history.title">Verlauf</div>
-          <div class="ac-card">
+          <div class="ac-card ac-history-shell history-container">
             <div class="ac-card-title" data-i18n="history.subtitle">Deine letzten Prüfungen</div>
+            <div class="history-stats-label">Letzte 7 Tage</div>
+            <div class="history-stats" id="historyStats">
+              <div class="stat">
+                <div class="stat-value" id="historyStatTotal">0</div>
+                <div class="stat-label">Analysen (7 Tage)</div>
+              </div>
+              <div class="stat">
+                <div class="stat-value" id="historyStatAi">0</div>
+                <div class="stat-label">KI erkannt</div>
+              </div>
+            </div>
+            <div class="history-filter-row">
+              <div class="history-filter-label">Filter</div>
+              <div class="history-sort" aria-disabled="true">Sortieren: <span>Neueste</span></div>
+            </div>
+            <div class="history-filter" id="historyFilter">
+              <button class="filter active" type="button" data-filter="all">Alle</button>
+              <button class="filter" type="button" data-filter="image">Bilder</button>
+              <button class="filter" type="button" data-filter="video">Videos</button>
+              <button class="filter" type="button" data-filter="audio">Audio</button>
+            </div>
             <div id="historyList" class="ac-history-list"></div>
           </div>
         </div>
@@ -871,6 +892,30 @@
       </section>
     </main>
   </div>
+
+  <div id="historyDrawerBackdrop" class="ac-drawer-backdrop" aria-hidden="true"></div>
+  <aside id="historyDrawer" class="ac-history-drawer result-drawer" aria-hidden="true" role="dialog" aria-modal="true">
+    <div class="ac-history-panel">
+      <div class="ac-history-panel-head">
+        <div class="ac-history-panel-info">
+          <div class="ac-history-panel-title" id="historyDetailTitle">Analyse</div>
+          <div class="ac-history-panel-meta-row">
+            <div class="ac-history-panel-meta" id="historyDetailMeta"></div>
+            <div class="ac-history-panel-badge" id="historyDetailBadge"></div>
+          </div>
+          <div class="ac-history-panel-actions">
+            <button id="historyDetailCopy" class="drawer-copy" type="button">Details kopieren</button>
+          </div>
+        </div>
+        <button id="historyDetailClose" class="ac-icon-btn drawer-close" type="button" aria-label="Schließen">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+      </div>
+      <div id="historyDetailBody" class="ac-history-panel-body"></div>
+    </div>
+  </aside>
 
   <!-- Bottom Navigation (nur Mobile) -->
   <nav class="ac-bottom">

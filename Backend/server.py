@@ -95,6 +95,7 @@ from Backend.engines.engine_utils import make_engine_result, safe_engine_call
 from Backend.db import init_db, get_session
 
 from Backend.models import Base, User, Analysis
+from Backend.history import bp_history, record_history_entry
 
 from Backend.auth import bp_auth
 from Backend.emailer import email_debug_status, send_email
@@ -244,6 +245,7 @@ app.register_blueprint(bp_admin)
 app.register_blueprint(bp_api_admin)
 
 app.register_blueprint(bp_analyses)
+app.register_blueprint(bp_history)
 
 
 
@@ -921,6 +923,29 @@ def _run_analysis_path(file_path, filename, media_type="image", user_ctx=None, c
                 final_score_ai01=final_score,
                 cost_credits=cost_credits,
             )
+        if user_ctx and analysis_id and isinstance(payload, dict):
+            should_record = bool(cost_credits <= 0 or credit_spent)
+            if should_record:
+                credits_charged = int(cost_credits or 0) if credit_spent else 0
+                record_history_entry(
+                    user_id=user_id,
+                    history_id=analysis_id,
+                    media_type=media_type,
+                    title=filename,
+                    status="success",
+                    payload=payload,
+                    credits_charged=credits_charged,
+                    created_at=created_at,
+                    file_ref=None,
+                    thumb_ref=None,
+                    logger=app.logger,
+                )
+            else:
+                app.logger.info(
+                    "HISTORY_SAVE_SKIPPED history_id=%s user_id=%s reason=no_credit_charge",
+                    analysis_id,
+                    user_id,
+                )
         if user_ctx:
             usage_source = source or payload.get("primary_source")
         else:

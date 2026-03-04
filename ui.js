@@ -59,13 +59,34 @@ const resendVerifyStatus = $('#resendVerifyStatus');
 const profileVerifyBanner = $('#profileVerifyBanner');
 const profileResendVerifyBtn = $('#profileResendVerifyBtn');
 const profileResendVerifyStatus = $('#profileResendVerifyStatus');
+const historyDrawer = $('#historyDrawer');
+const historyDrawerBackdrop = $('#historyDrawerBackdrop');
+const historyDetailBody = $('#historyDetailBody');
+const historyDetailTitle = $('#historyDetailTitle');
+const historyDetailMeta = $('#historyDetailMeta');
+const historyDetailBadge = $('#historyDetailBadge');
+const historyDetailClose = $('#historyDetailClose');
+const historyDetailCopy = $('#historyDetailCopy');
+const historyStatsTotal = $('#historyStatTotal');
+const historyStatsAi = $('#historyStatAi');
+const historyFilterBar = $('#historyFilter');
 
 let currentAnalyzing = false;
 let expertToggleBound = false;
 let resendVerifyBound = false;
 let currentRoute = window.location.pathname || '/';
+let historyLoading = false;
+let historyDetailLoading = false;
+let historyCache = [];
+let activeHistoryId = null;
+let activeHistoryPayload = null;
+let historyFilterValue = 'all';
+let historyFilterBound = false;
+let canCopyDetails = false;
 
 const RETURN_TO_KEY = 'airealcheck_return_to';
+const fmtDT = new Intl.DateTimeFormat('de-DE', { dateStyle: 'medium', timeStyle: 'short' });
+const fmtDate = new Intl.DateTimeFormat('de-DE', { dateStyle: 'medium' });
 
 const AUTH_ROUTES = new Set([
   '/login',
@@ -104,6 +125,7 @@ export function showPage(name) {
   if (target) target.classList.remove('ac-hide');
   navStart?.classList.toggle('ac-active', name === 'start');
   navHistory?.classList.toggle('ac-active', name === 'history');
+  if (name !== 'history') closeHistoryDrawer();
 }
 
 function updateHeaderUI(auth, path = currentRoute) {
@@ -257,6 +279,75 @@ function truthySignal(value) {
   return v === 'true' || v === '1' || v === 'yes';
 }
 
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function formatDateTime(value) {
+  if (!value) return '—';
+  try {
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return String(value);
+    return fmtDT.format(parsed);
+  } catch (err) {
+    return String(value);
+  }
+}
+
+function formatDate(value) {
+  if (!value) return '—';
+  try {
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return String(value);
+    return fmtDate.format(parsed);
+  } catch (err) {
+    return String(value);
+  }
+}
+
+function formatPercent(value) {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return null;
+  return `${Math.round(num)}%`;
+}
+
+function formatConfidenceLabel(value) {
+  const label = String(value || '').toLowerCase();
+  if (label === 'high') return 'Hoch';
+  if (label === 'medium') return 'Mittel';
+  if (label === 'low') return 'Niedrig';
+  return label ? label : 'Unbekannt';
+}
+
+function formatMediaLabel(value) {
+  const raw = String(value || '').toLowerCase();
+  if (raw === 'image') return 'Bild';
+  if (raw === 'video') return 'Video';
+  if (raw === 'audio') return 'Audio';
+  if (raw === 'text') return 'Text';
+  if (raw === 'unknown' || !raw) return 'Unbekannt';
+  return raw;
+}
+
+function mediaIconSvg(kind) {
+  const media = String(kind || '').toLowerCase();
+  if (media === 'video') {
+    return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="12" height="12" rx="2"/><path d="M15 10l6-3v10l-6-3"/></svg>';
+  }
+  if (media === 'audio') {
+    return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 10v4"/><path d="M6 6v12"/><path d="M10 3v18"/><path d="M14 8v8"/><path d="M18 5v14"/><path d="M22 10v4"/></svg>';
+  }
+  if (media === 'text') {
+    return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16"/><path d="M4 12h16"/><path d="M4 18h10"/></svg>';
+  }
+  return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="M21 15l-3.5-3.5a2.121 2.121 0 00-3 0L6 21"/></svg>';
+}
+
 function verdictFromPercent(aiPercent) {
   if (aiPercent === null || aiPercent === undefined) return { key: 'uncertain', label: 'Unsicher' };
   if (aiPercent >= 90) return { key: 'ai', label: 'Sehr wahrscheinlich KI' };
@@ -319,9 +410,9 @@ const ENGINE_LABELS = {
 };
 
 const ENGINE_DESCRIPTIONS = {
-  sightengine: 'API-Detector fuer AI-Content.',
-  reality_defender: 'API-Detector fuer Deepfakes.',
-  hive: 'API-Detector fuer KI-Generierung.',
+  sightengine: 'API-Detector für AI-Content.',
+  reality_defender: 'API-Detector für Deepfakes.',
+  hive: 'API-Detector für KI-Generierung.',
   xception: 'Lokales ML-Modell (Xception).',
   audio_aasist: 'Lokaler Audio-Spoofing-Detector.',
 };
@@ -396,7 +487,7 @@ export function renderAnalysisResult(resultJson, { expertMode = false } = {}) {
       const desc = ENGINE_DESCRIPTIONS[engine.engine] || '';
       let score = available
         ? (percentFromValue(engine.ai_likelihood) !== null ? `${percentFromValue(engine.ai_likelihood)}% KI` : '--')
-        : 'nicht verfuegbar';
+        : 'nicht verfügbar';
       if (
         mediaType === 'audio'
         && engine.engine === 'audio_aasist'
@@ -423,19 +514,19 @@ export function renderAnalysisResult(resultJson, { expertMode = false } = {}) {
             <div class="ac-engine-name">${label}</div>
             <div class="ac-engine-score">${score}</div>
           </div>
-          <div class="ac-engine-meta">Status: ${available ? 'verfuegbar' : 'nicht verfuegbar'}</div>
+          <div class="ac-engine-meta">Status: ${available ? 'verfügbar' : 'nicht verfügbar'}</div>
           ${desc ? `<div class="ac-engine-desc">${desc}</div>` : ''}
           ${notes ? `<div class="ac-engine-notes">${notes}</div>` : ''}
           ${xceptionExtras}
         </div>
       `;
     }).join('')
-    : '<div class="ac-subtle">Keine Detector-Engines verfuegbar.</div>';
+    : '<div class="ac-subtle">Keine Detector-Engines verfügbar.</div>';
 
   const c2pa = r.engine_results.find((e) => e.engine === 'c2pa');
   let c2paStatus = 'kein Nachweis';
   if (c2pa && c2pa.available === false) {
-    c2paStatus = 'nicht verfuegbar';
+    c2paStatus = 'nicht verfügbar';
   } else if (c2pa) {
     const signals = (c2pa.signals || []).map((s) => String(s).toLowerCase());
     if (signals.includes('signature_verified')) {
@@ -451,7 +542,7 @@ export function renderAnalysisResult(resultJson, { expertMode = false } = {}) {
   const watermark = r.engine_results.find((e) => e.engine === 'watermark');
   let watermarkStatus = 'kein Nachweis (neutral)';
   if (watermark && watermark.available === false) {
-    watermarkStatus = 'nicht verfuegbar';
+    watermarkStatus = 'nicht verfügbar';
   } else if (watermark) {
     const signals = (watermark.signals || []).map((s) => String(s).toLowerCase());
     const hint = signals.find((s) => s.startsWith('metadata_ai_hint'));
@@ -487,7 +578,7 @@ export function renderAnalysisResult(resultJson, { expertMode = false } = {}) {
       const available = forensics.available !== false;
       const score = available
         ? (percentFromValue(forensics.ai_likelihood) !== null ? `${percentFromValue(forensics.ai_likelihood)}% KI` : '—')
-        : 'nicht verfuegbar';
+        : 'nicht verfügbar';
       const notesRaw = String(forensics?.notes || '');
       let notes = notesRaw;
       if (mediaType === 'video') {
@@ -511,7 +602,7 @@ export function renderAnalysisResult(resultJson, { expertMode = false } = {}) {
             <div class="ac-engine-name">${forensicsEngine}</div>
             <div class="ac-engine-score">${score}</div>
           </div>
-          <div class="ac-engine-meta">Status: ${available ? 'verfuegbar' : 'nicht verfuegbar'}</div>
+          <div class="ac-engine-meta">Status: ${available ? 'verfügbar' : 'nicht verfügbar'}</div>
           ${notes ? `<div class="ac-engine-notes">${notes}</div>` : ''}
           ${signalsHtml || ''}
         </div>
@@ -539,7 +630,7 @@ export function renderAnalysisResult(resultJson, { expertMode = false } = {}) {
           <div class="ac-engine-name">video_frame_detectors</div>
           <div class="ac-engine-score">${finalAiPercent !== null ? `${finalAiPercent}% KI` : "--"}</div>
         </div>
-        <div class="ac-engine-meta">Status: ${frameDetectors.available !== false ? 'verfuegbar' : 'nicht verfuegbar'}</div>
+        <div class="ac-engine-meta">Status: ${frameDetectors.available !== false ? 'verfügbar' : 'nicht verfügbar'}</div>
         <div class="ac-engine-notes">
           ${framesScored !== null ? `Frames bewertet: ${framesScored}` : "Frames bewertet: --"}<br/>
           ${enginesUsed ? `Engines: ${enginesUsed}` : "Engines: --"}<br/>
@@ -610,7 +701,7 @@ export function renderAnalysisResult(resultJson, { expertMode = false } = {}) {
 
     const conflictSignals = extractSignalValue(ensembleSignals, 'conflict_signals');
     if (truthySignal(conflictSignals)) {
-      audioWhyLines.push('Widerspruechliche Signale \u2192 Sicherheit reduziert');
+      audioWhyLines.push('Widersprüchliche Signale \u2192 Konfidenz reduziert');
     }
 
     const voicedRatio = toNumber(extractSignalValue(prosody?.signals, 'voiced_ratio'));
@@ -640,7 +731,7 @@ export function renderAnalysisResult(resultJson, { expertMode = false } = {}) {
     <div class="ac-card ac-result-card" role="status" aria-live="polite">
       <div class="ac-result-headline">${displayVerdict.label}</div>
       <div class="ac-result-row">
-        <span class="ac-traffic-badge ${confidenceInfo.badge}">Sicherheit: ${confidenceInfo.label}</span>
+        <span class="ac-traffic-badge ${confidenceInfo.badge}">Konfidenz: ${confidenceInfo.label}</span>
         ${mediaType === 'video' && framesScored !== null ? `<span class="ac-subtle">Basierend auf ${framesScored} Frames</span>` : ''}
       </div>
       <div class="ac-result-hero">
@@ -939,7 +1030,7 @@ export function updateProfileView(auth) {
   profileCredits.textContent = creditsValue;
 
   const resetAt = auth.balance?.last_credit_reset || auth.user?.last_credit_reset || null;
-  profileReset.textContent = resetAt ? new Date(resetAt).toLocaleString() : '—';
+  profileReset.textContent = resetAt ? formatDateTime(resetAt) : '—';
 
   const subscriptionActive = auth.balance?.subscription_active ?? auth.user?.subscription_active;
   profilePremium.textContent = subscriptionActive ? 'Ja' : 'Nein';
@@ -948,7 +1039,7 @@ export function updateProfileView(auth) {
   }
 
   const createdAt = auth.user?.created_at
-    ? new Date(auth.user.created_at).toLocaleDateString()
+    ? formatDate(auth.user.created_at)
     : '—';
 
   profileCreated.textContent = createdAt;
@@ -979,9 +1070,495 @@ export function showProfilePage(auth, promptLogin = false) {
   showPage('profile');
 }
 
-export function renderHistory() {
+function historyStatusInfo(status) {
+  const raw = String(status || '').toLowerCase();
+  if (raw === 'success' || raw === 'done') return { label: 'Erfolgreich', className: 'success' };
+  if (raw === 'failed' || raw === 'error') return { label: 'Fehlgeschlagen', className: 'failed' };
+  if (raw === 'running' || raw === 'pending') return { label: 'Läuft', className: 'running' };
+  return { label: raw ? raw : 'Unbekannt', className: 'running' };
+}
+
+function renderStatusBadge(status) {
+  const info = historyStatusInfo(status);
+  return `<span class="ac-history-status ${info.className}">${info.label}</span>`;
+}
+
+function scoreClassFor(value) {
+  if (typeof value !== 'number') return 'score-medium';
+  if (value >= 70) return 'score-high';
+  if (value >= 31) return 'score-medium';
+  return 'score-low';
+}
+
+function renderHistorySkeleton(count = 4) {
+  return Array.from({ length: count })
+    .map(() => `
+      <div class="ac-history-skeleton">
+        <div class="ac-history-skeleton-line"></div>
+        <div class="ac-history-skeleton-line"></div>
+        <div class="ac-history-skeleton-line"></div>
+      </div>
+    `)
+    .join('');
+}
+
+function renderHistoryItem(item) {
+  const title = item?.title || 'Analyse';
+  const verdict = item?.verdict_label || 'Ergebnis';
+  const scoreValue = (typeof item?.final_score === 'number') ? Math.round(item.final_score) : null;
+  const score = (scoreValue !== null) ? `${scoreValue}% KI` : '—';
+  const scoreClass = scoreClassFor(scoreValue);
+  const createdAt = formatDateTime(item?.created_at);
+  const credits = (typeof item?.credits_charged === 'number') ? `${item.credits_charged} Credits` : '—';
+  const mediaIcon = mediaIconSvg(item?.media_type);
+  const statusBadge = renderStatusBadge(item?.status);
+  return `
+    <button class="ac-history-item history-item" type="button" data-history-id="${escapeHtml(item?.id || '')}">
+      <div class="ac-history-icon">${mediaIcon}</div>
+      <div class="ac-history-main">
+        <div class="ac-history-title">${escapeHtml(title)}</div>
+        <div class="ac-history-meta">
+          <span>${escapeHtml(createdAt)}</span>
+          <span class="history-meta-sep">•</span>
+          <span>${escapeHtml(credits)}</span>
+          <span class="history-meta-sep">•</span>
+          ${statusBadge}
+        </div>
+        <div class="ac-history-verdict">${escapeHtml(verdict)}</div>
+      </div>
+      <div class="history-item-right">
+        <span class="score-badge ${scoreClass}">${escapeHtml(score)}</span>
+        <span class="ac-history-arrow" aria-hidden="true">›</span>
+      </div>
+    </button>
+  `;
+}
+
+function historyMatchesFilter(item) {
+  if (historyFilterValue === 'all') return true;
+  const type = String(item?.media_type || '').toLowerCase();
+  return type === historyFilterValue;
+}
+
+function detectAiInHistory(item) {
+  const label = String(item?.verdict_label || '').toLowerCase();
+  if (label.includes('ki')) return true;
+  const score = Number(item?.final_score);
+  if (Number.isFinite(score) && score >= 60) return true;
+  return false;
+}
+
+function updateHistoryStats(items) {
+  if (!historyStatsTotal && !historyStatsAi) return;
+  const now = Date.now();
+  const windowStart = now - (7 * 24 * 60 * 60 * 1000);
+  let total = 0;
+  let aiCount = 0;
+  items.forEach((item) => {
+    const ts = Date.parse(item?.created_at || '');
+    if (!Number.isFinite(ts)) return;
+    if (ts < windowStart) return;
+    total += 1;
+    if (detectAiInHistory(item)) aiCount += 1;
+  });
+  if (historyStatsTotal) historyStatsTotal.textContent = String(total);
+  if (historyStatsAi) historyStatsAi.textContent = String(aiCount);
+}
+
+function renderHistoryEmpty(title, text) {
+  const heading = title || 'Noch keine Analysen';
+  const message = text || 'Starte deine erste Prüfung.';
+  return `
+    <div class="ac-history-empty">
+      <div class="history-empty-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>
+        </svg>
+      </div>
+      <div>
+        <div class="history-empty-title">${escapeHtml(heading)}</div>
+        <div class="history-empty-text">${escapeHtml(message)}</div>
+      </div>
+    </div>
+  `;
+}
+
+function updateHistoryFilterButtons() {
+  if (!historyFilterBar) return;
+  const buttons = Array.from(historyFilterBar.querySelectorAll('.filter'));
+  buttons.forEach((btn) => {
+    const value = btn.dataset.filter || 'all';
+    btn.classList.toggle('active', value === historyFilterValue);
+  });
+}
+
+function bindHistoryFilters(auth) {
+  if (historyFilterBound || !historyFilterBar) return;
+  historyFilterBound = true;
+  historyFilterBar.addEventListener('click', (event) => {
+    const btn = event.target.closest('.filter');
+    if (!btn) return;
+    const value = btn.dataset.filter || 'all';
+    if (value === historyFilterValue) return;
+    historyFilterValue = value;
+    updateHistoryFilterButtons();
+    renderHistory(auth, { force: false, skipFetch: true });
+  });
+}
+
+function renderEngineBreakdown(breakdown) {
+  if (!breakdown || typeof breakdown !== 'object') {
+    return '<div class="drawer-empty">Keine Engine-Details gespeichert.</div>';
+  }
+  const entries = Object.entries(breakdown);
+  if (!entries.length) {
+    return '<div class="drawer-empty">Keine Engine-Details gespeichert.</div>';
+  }
+  const scoreBucket = (score) => {
+    if (typeof score !== 'number') return '';
+    if (score >= 70) return 'is-danger';
+    if (score >= 31) return 'is-warning';
+    return 'is-success';
+  };
+  return `
+    <div class="ac-history-engine-list">
+      ${entries.map(([name, info]) => {
+        const scoreValue = (typeof info?.score === 'number') ? Math.round(info.score) : null;
+        const scoreText = scoreValue !== null ? `${scoreValue}% KI` : '—';
+        const confText = (typeof info?.confidence === 'number')
+          ? `${formatPercent(info.confidence)} Konfidenz`
+          : null;
+        const metaText = [scoreText, confText].filter(Boolean).join(' · ');
+        const width = scoreValue !== null ? Math.max(0, Math.min(100, scoreValue)) : 0;
+        const fillClass = scoreBucket(scoreValue);
+        return `
+          <div class="engine-row">
+            <div class="engine-row-head">
+              <span class="engine-row-label">${escapeHtml(name)}</span>
+              <span class="engine-row-meta">${escapeHtml(metaText || '—')}</span>
+            </div>
+            <div class="engine-row-bar">
+              <span class="engine-row-fill ${fillClass}" style="width:${width}%"></span>
+            </div>
+          </div>
+        `;
+      }).join('')}
+    </div>
+  `;
+}
+
+function buildHistoryCopyText(payload) {
+  if (!payload) return '';
+  const title = payload?.title || payload?.verdict_label || 'Analyse';
+  const createdAt = formatDateTime(payload?.created_at);
+  const mediaType = formatMediaLabel(payload?.media_type);
+  const verdict = payload?.verdict_label || 'Ergebnis';
+  const scoreValue = (typeof payload?.final_score === 'number') ? Math.round(payload.final_score) : null;
+  const scoreText = scoreValue !== null ? `${scoreValue}% KI` : '—';
+  const credits = (typeof payload?.credits_charged === 'number') ? `${payload.credits_charged} Credits` : '—';
+  const statusInfo = historyStatusInfo(payload?.status);
+  const result = payload?.result_payload || {};
+  const confidenceLabel = result?.confidence_label ? formatConfidenceLabel(result.confidence_label) : 'Unbekannt';
+  const reasons = Array.isArray(result?.reasons_user)
+    ? result.reasons_user
+    : (Array.isArray(result?.reasons) ? result.reasons : []);
+  const warnings = Array.isArray(result?.warnings_user) ? result.warnings_user : [];
+  const lines = [
+    `Titel: ${title}`,
+    `Datum: ${createdAt}`,
+    `Typ: ${mediaType}`,
+    `Ergebnis: ${verdict}`,
+    `KI-Score: ${scoreText}`,
+    `Konfidenz: ${confidenceLabel}`,
+    `Status: ${statusInfo.label}`,
+    `Credits: ${credits}`,
+  ];
+
+  if (reasons.length) {
+    lines.push('Hinweise:');
+    reasons.forEach((reason) => lines.push(`- ${reason}`));
+  }
+  if (warnings.length) {
+    lines.push('Warnungen:');
+    warnings.forEach((warning) => lines.push(`- ${warning}`));
+  }
+
+  const breakdown = payload?.engine_breakdown;
+  if (breakdown && typeof breakdown === 'object') {
+    const entries = Object.entries(breakdown);
+    if (entries.length) {
+      lines.push('Engine-Breakdown:');
+      entries.forEach(([name, info]) => {
+        const engineScore = (typeof info?.score === 'number') ? Math.round(info.score) : null;
+        const engineScoreText = engineScore !== null ? `${engineScore}% KI` : '—';
+        const confText = (typeof info?.confidence === 'number')
+          ? `${formatPercent(info.confidence)} Konfidenz`
+          : null;
+        const metaText = [engineScoreText, confText].filter(Boolean).join(' · ');
+        lines.push(`- ${name}: ${metaText || '—'}`);
+      });
+    }
+  }
+
+  return lines.join('\n');
+}
+
+async function copyHistoryDetail() {
+  if (!activeHistoryPayload || !historyDetailCopy || !canCopyDetails) return;
+  const text = buildHistoryCopyText(activeHistoryPayload);
+  if (!text) return;
+  let copied = false;
+  if (navigator?.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(text);
+      copied = true;
+    } catch (err) {
+      copied = false;
+    }
+  }
+  if (!copied) {
+    try {
+      const textarea = document.createElement('textarea');
+      textarea.value = text;
+      textarea.style.position = 'fixed';
+      textarea.style.opacity = '0';
+      document.body.appendChild(textarea);
+      textarea.focus();
+      textarea.select();
+      copied = document.execCommand('copy');
+      document.body.removeChild(textarea);
+    } catch (err) {
+      copied = false;
+    }
+  }
+  if (copied) {
+    historyDetailCopy.textContent = 'Kopiert';
+    historyDetailCopy.classList.add('is-copied');
+    setTimeout(() => {
+      if (!historyDetailCopy || !activeHistoryPayload) return;
+      historyDetailCopy.textContent = 'Details kopieren';
+      historyDetailCopy.classList.remove('is-copied');
+    }, 1800);
+  } else {
+    historyDetailCopy.textContent = 'Kopieren fehlgeschlagen';
+    historyDetailCopy.classList.remove('is-copied');
+    setTimeout(() => {
+      if (!historyDetailCopy) return;
+      historyDetailCopy.textContent = 'Details kopieren';
+    }, 2000);
+  }
+}
+
+function openHistoryDrawer() {
+  historyDrawer?.classList.add('open');
+  historyDrawer?.setAttribute('aria-hidden', 'false');
+  historyDrawerBackdrop?.classList.add('show');
+  historyDrawerBackdrop?.setAttribute('aria-hidden', 'false');
+}
+
+function closeHistoryDrawer() {
+  historyDrawer?.classList.remove('open');
+  historyDrawer?.setAttribute('aria-hidden', 'true');
+  historyDrawerBackdrop?.classList.remove('show');
+  historyDrawerBackdrop?.setAttribute('aria-hidden', 'true');
+  activeHistoryId = null;
+  activeHistoryPayload = null;
+  if (historyDetailBadge) historyDetailBadge.innerHTML = '';
+  if (historyDetailCopy) {
+    historyDetailCopy.disabled = true;
+    historyDetailCopy.textContent = canCopyDetails ? 'Details kopieren' : 'Kopieren nicht verfügbar';
+    historyDetailCopy.classList.remove('is-copied');
+  }
+  document.querySelectorAll('.ac-history-item.is-selected, .ac-history-item.is-active').forEach((el) => {
+    el.classList.remove('is-selected', 'is-active');
+  });
+}
+
+function setActiveHistoryItem(historyId) {
+  document.querySelectorAll('.ac-history-item').forEach((el) => {
+    const isSelected = el.dataset.historyId === historyId;
+    el.classList.toggle('is-selected', isSelected);
+    el.classList.toggle('is-active', isSelected);
+  });
+}
+
+function renderHistoryDetail(payload) {
+  const title = payload?.title || payload?.verdict_label || 'Analyse';
+  const createdAt = formatDateTime(payload?.created_at);
+  const mediaType = formatMediaLabel(payload?.media_type);
+  if (historyDetailTitle) historyDetailTitle.textContent = title;
+  if (historyDetailMeta) historyDetailMeta.textContent = `${mediaType} • ${createdAt}`;
+
+  const verdict = payload?.verdict_label || 'Ergebnis';
+  const scoreValue = (typeof payload?.final_score === 'number') ? Math.round(payload.final_score) : null;
+  const score = (scoreValue !== null) ? `${scoreValue}% KI` : '—';
+  const credits = (typeof payload?.credits_charged === 'number') ? `${payload.credits_charged} Credits` : '—';
+  const statusInfo = historyStatusInfo(payload?.status);
+  const result = payload?.result_payload || {};
+  const confidenceLabel = result?.confidence_label ? formatConfidenceLabel(result.confidence_label) : 'Unbekannt';
+  const reasons = Array.isArray(result?.reasons_user)
+    ? result.reasons_user
+    : (Array.isArray(result?.reasons) ? result.reasons : []);
+  const warnings = Array.isArray(result?.warnings_user) ? result.warnings_user : [];
+
+  activeHistoryPayload = payload || null;
+  if (historyDetailBadge) {
+    const badgeText = scoreValue !== null ? `${verdict} · ${scoreValue}% KI` : verdict;
+    historyDetailBadge.innerHTML = badgeText
+      ? `<span class="drawer-chip">${escapeHtml(badgeText)}</span>`
+      : '';
+  }
+  if (historyDetailCopy) {
+    historyDetailCopy.disabled = !canCopyDetails || !activeHistoryPayload;
+    historyDetailCopy.textContent = canCopyDetails ? 'Details kopieren' : 'Kopieren nicht verfügbar';
+    historyDetailCopy.classList.remove('is-copied');
+  }
+
+  const reasonsHtml = reasons.length
+    ? reasons.map((r) => `<div class="ac-history-meta">${escapeHtml(r)}</div>`).join('')
+    : '<div class="drawer-empty">Keine Hinweise gespeichert.</div>';
+  const warningsHtml = warnings.length
+    ? warnings.map((w) => `<div class="ac-history-meta">${escapeHtml(w)}</div>`).join('')
+    : '<div class="drawer-empty">Keine Warnungen gespeichert.</div>';
+
+  const timelineHtml = `
+    <div class="ac-history-panel-card drawer-card">
+      <div class="ac-history-card-title">Analyse Timeline</div>
+      <div class="analysis-timeline">
+        <div class="timeline-item"><span class="timeline-dot"></span><span class="timeline-text">Upload</span></div>
+        <div class="timeline-item"><span class="timeline-dot"></span><span class="timeline-text">Analyse gestartet</span></div>
+        <div class="timeline-item"><span class="timeline-dot"></span><span class="timeline-text">Engines ausgeführt</span></div>
+        <div class="timeline-item"><span class="timeline-dot"></span><span class="timeline-text">Ergebnis berechnet</span></div>
+      </div>
+    </div>
+  `;
+
+  const detailHtml = `
+    <div class="ac-history-panel-card drawer-card">
+      <div class="ac-history-card-title">Zusammenfassung</div>
+      <div class="ac-history-kv"><span>Ergebnis</span><span>${escapeHtml(verdict)}</span></div>
+      <div class="ac-history-kv"><span>KI-Score</span><span>${escapeHtml(score)}</span></div>
+      <div class="ac-history-kv"><span>Status</span><span>${escapeHtml(statusInfo.label)}</span></div>
+      <div class="ac-history-kv"><span>Credits</span><span>${escapeHtml(credits)}</span></div>
+      <div class="ac-history-kv"><span>Konfidenz</span><span>${escapeHtml(confidenceLabel)}</span></div>
+    </div>
+    ${timelineHtml}
+    <div class="ac-history-panel-card drawer-card">
+      <div class="ac-history-card-title">Hinweise</div>
+      ${reasonsHtml}
+    </div>
+    <div class="ac-history-panel-card drawer-card">
+      <div class="ac-history-card-title">Engine-Breakdown</div>
+      ${renderEngineBreakdown(payload?.engine_breakdown)}
+    </div>
+    <div class="ac-history-panel-card drawer-card">
+      <div class="ac-history-card-title">Warnungen</div>
+      ${warningsHtml}
+    </div>
+  `;
+  if (historyDetailBody) historyDetailBody.innerHTML = detailHtml;
+}
+
+function renderHistoryDetailSkeleton() {
+  return `
+    <div class="ac-history-skeleton">
+      <div class="ac-history-skeleton-line"></div>
+      <div class="ac-history-skeleton-line"></div>
+      <div class="ac-history-skeleton-line"></div>
+    </div>
+  `;
+}
+
+async function openHistoryDetail(auth, historyId) {
+  if (!historyId || historyDetailLoading) return;
+  historyDetailLoading = true;
+  activeHistoryId = historyId;
+  setActiveHistoryItem(historyId);
+  openHistoryDrawer();
+  if (historyDetailTitle) historyDetailTitle.textContent = 'Details laden...';
+  if (historyDetailMeta) historyDetailMeta.textContent = '';
+  if (historyDetailBadge) historyDetailBadge.innerHTML = '';
+  if (historyDetailCopy) {
+    historyDetailCopy.disabled = true;
+    historyDetailCopy.textContent = canCopyDetails ? 'Details kopieren' : 'Kopieren nicht verfügbar';
+    historyDetailCopy.classList.remove('is-copied');
+  }
+  activeHistoryPayload = null;
+  if (historyDetailBody) historyDetailBody.innerHTML = renderHistoryDetailSkeleton();
+  try {
+    const payload = await auth.apiFetch(`/api/history/${historyId}`);
+    renderHistoryDetail(payload);
+  } catch (err) {
+    if (err?.status === 401) {
+      await auth.logout('Bitte erneut einloggen.');
+      return;
+    }
+    const msg = err?.response?.error === 'forbidden'
+      ? 'Kein Zugriff auf diesen Eintrag.'
+      : 'Details konnten nicht geladen werden.';
+    if (historyDetailBody) historyDetailBody.innerHTML = `<div class="drawer-empty">${msg}</div>`;
+  } finally {
+    historyDetailLoading = false;
+  }
+}
+
+export async function renderHistory(auth, { force = false, skipFetch = false } = {}) {
   const h = $('#historyList');
-  if (h) h.innerHTML = '<div class="ac-subtle">Noch keine Eintraege.</div>';
+  if (!h) return;
+  if (!auth?.isLoggedIn?.()) {
+    h.innerHTML = renderHistoryEmpty('Bitte einloggen', 'Melde dich an, um deinen Verlauf zu sehen.');
+    return;
+  }
+  bindHistoryFilters(auth);
+  updateHistoryFilterButtons();
+  if (historyLoading) return;
+  const renderFromCache = () => {
+    const filtered = historyCache.filter(historyMatchesFilter);
+    updateHistoryStats(historyCache);
+    if (!filtered.length) {
+      const message = historyCache.length
+        ? 'Keine Einträge für diesen Filter.'
+        : 'Starte deine erste Prüfung.';
+      h.innerHTML = renderHistoryEmpty('Keine Analysen', message);
+      return;
+    }
+    h.innerHTML = filtered.map(renderHistoryItem).join('');
+  };
+
+  if (historyCache.length && !force) {
+    renderFromCache();
+    if (skipFetch) {
+      return;
+    }
+  } else {
+    h.innerHTML = renderHistorySkeleton(4);
+  }
+
+  historyLoading = true;
+  try {
+    const items = await auth.apiFetch('/api/history?limit=20');
+    historyCache = Array.isArray(items) ? items : [];
+    renderFromCache();
+  } catch (err) {
+    if (err?.status === 401) {
+      await auth.logout('Bitte erneut einloggen.');
+      return;
+    }
+    const msg = err?.response?.error === 'email_not_verified'
+      ? 'Bitte E-Mail bestätigen, um den Verlauf zu sehen.'
+      : 'Verlauf konnte nicht geladen werden.';
+    h.innerHTML = renderHistoryEmpty('Verlauf nicht verfügbar', msg);
+  } finally {
+    historyLoading = false;
+  }
+
+  h.onclick = (event) => {
+    const target = event.target.closest('[data-history-id]');
+    if (!target) return;
+    const historyId = target.dataset.historyId;
+    if (!historyId) return;
+    openHistoryDetail(auth, historyId);
+  };
 }
 
 function updateAdminVisibility(auth) {
@@ -1020,7 +1597,7 @@ export function initUI(auth, extras = {}) {
   navHistory?.addEventListener('click', (e) => {
     e.preventDefault();
     if (!auth.requireSession()) return;
-    renderHistory();
+    renderHistory(auth);
     showPage('history');
   });
 
@@ -1051,7 +1628,7 @@ export function initUI(auth, extras = {}) {
       else showPage('start');
     } else if (page === 'history') {
       if (!auth.requireSession()) return;
-      renderHistory();
+      renderHistory(auth);
       showPage('history');
     } else if (page === 'legal') {
       showPage('legal');
@@ -1072,7 +1649,7 @@ export function initUI(auth, extras = {}) {
 
   profileHistoryBtn?.addEventListener('click', () => {
     if (!auth.requireSession()) return;
-    renderHistory();
+    renderHistory(auth);
     showPage('history');
   });
 
@@ -1111,8 +1688,27 @@ export function initUI(auth, extras = {}) {
   });
 
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') closeProfileDropdown();
+    if (e.key === 'Escape') {
+      closeProfileDropdown();
+      closeHistoryDrawer();
+    }
   });
+
+  historyDetailClose?.addEventListener('click', () => closeHistoryDrawer());
+  historyDrawerBackdrop?.addEventListener('click', () => closeHistoryDrawer());
+  if (historyDetailCopy) {
+    canCopyDetails = !!(navigator?.clipboard?.writeText)
+      || (typeof document !== 'undefined'
+        && typeof document.queryCommandSupported === 'function'
+        && document.queryCommandSupported('copy'));
+    historyDetailCopy.disabled = true;
+    if (!canCopyDetails) {
+      historyDetailCopy.textContent = 'Kopieren nicht verfügbar';
+    } else {
+      historyDetailCopy.textContent = 'Details kopieren';
+    }
+    historyDetailCopy.addEventListener('click', () => copyHistoryDetail());
+  }
 
   auth.subscribe(() => {
     updateAnalysisVisibility(auth);
@@ -1157,7 +1753,7 @@ function setupExpertModeToggle() {
   wrap.className = 'ac-setting ac-setting-row';
   wrap.innerHTML = `
     <input type="checkbox" id="expertModeToggle" />
-    <label for="expertModeToggle">Expert Mode (Details fuer Profis)</label>
+    <label for="expertModeToggle">Expert Mode (Details für Profis)</label>
   `;
   card.appendChild(wrap);
   const input = wrap.querySelector('#expertModeToggle');
