@@ -25,6 +25,7 @@ const headerAuth = $('#headerAuth');
 const headerBack = $('#headerBack');
 const creditsBox = $('#creditsBox');
 const creditsLabel = $('#creditsText');
+const creditsValue = $('#creditsValue');
 const profileAvatar = $('#profileAvatar');
 const profileGuestCard = $('#profileGuestCard');
 const profileDataCard = $('#profileDataCard');
@@ -222,7 +223,7 @@ export function initRouter(auth) {
   return { navigate, render, subscribe };
 }
 
-const ANALYSIS_COSTS = { image: 10, video: 15, audio: 20 };
+const ANALYSIS_COSTS = { image: 10, video: 25, audio: 15 };
 const getAnalysisCost = (kind = 'image') => ANALYSIS_COSTS[kind] || 10;
 
 function clampPercent(value) {
@@ -699,19 +700,52 @@ export function renderAnalysisResult(resultJson, { expertMode = false } = {}) {
 }
 
 export function updateCreditsUI(auth) {
-  if (!creditsLabel) return;
+  if (!creditsLabel && !creditsValue) return;
   if (!auth || !auth.isLoggedIn?.()) {
-    creditsLabel.textContent = '—';
+    if (creditsValue) {
+      creditsValue.textContent = '—';
+    } else if (creditsLabel) {
+      creditsLabel.textContent = '—';
+    }
+    if (creditsBox) {
+      creditsBox.dataset.credits = '';
+      creditsBox.classList.remove('is-low', 'is-critical', 'is-animating');
+    }
     return;
   }
-  if (auth.isPremium()) {
-    creditsLabel.textContent = 'Premium';
-    return;
+
+  const available = (auth.balance && typeof auth.balance.credits_available === 'number')
+    ? auth.balance.credits_available
+    : null;
+  const displayValue = (typeof available === 'number') ? String(available) : '...';
+
+  const prevRaw = creditsBox?.dataset?.credits ?? '';
+  const prevValue = prevRaw === '' ? null : Number(prevRaw);
+
+  if (creditsValue) {
+    creditsValue.textContent = displayValue;
+  } else if (creditsLabel) {
+    creditsLabel.textContent = (typeof available === 'number') ? `${displayValue} Credits` : displayValue;
   }
-  if (auth.balance && typeof auth.balance.credits === 'number') {
-    creditsLabel.textContent = `${auth.balance.credits} Credits`;
-  } else {
-    creditsLabel.textContent = '...';
+
+  if (creditsBox) {
+    creditsBox.classList.remove('is-low', 'is-critical');
+    if (typeof available === 'number') {
+      if (available < 5) creditsBox.classList.add('is-critical');
+      else if (available < 20) creditsBox.classList.add('is-low');
+    }
+  }
+
+  if (typeof available === 'number') {
+    if (creditsBox) creditsBox.dataset.credits = String(available);
+    if (creditsBox && typeof prevValue === 'number' && prevValue !== available) {
+      creditsBox.classList.remove('is-animating');
+      void creditsBox.offsetWidth;
+      creditsBox.classList.add('is-animating');
+      window.setTimeout(() => creditsBox.classList.remove('is-animating'), 180);
+    }
+  } else if (creditsBox) {
+    creditsBox.dataset.credits = '';
   }
 }
 
@@ -724,12 +758,14 @@ export function updateAnalyzeButtons(auth, isAnalyzing = currentAnalyzing) {
     const isLoggedIn = auth?.isLoggedIn?.() === true;
     const guestAllowed = auth?.canUseGuest?.() === true;
     const emailVerified = auth?.isEmailVerified?.() !== false;
-    const balanceCredits = typeof auth?.balance?.credits === 'number'
-      ? auth.balance.credits
-      : (typeof auth?.user?.credits === 'number' ? auth.user.credits : null);
-    const hasUserCredits = auth?.isPremium()
-      ? true
-      : (typeof balanceCredits === 'number' ? balanceCredits >= cost : true);
+    const balanceCredits = typeof auth?.balance?.credits_available === 'number'
+      ? auth.balance.credits_available
+      : (
+          (typeof auth?.user?.credits_total === 'number' && typeof auth?.user?.credits_used === 'number')
+            ? Math.max(0, auth.user.credits_total - auth.user.credits_used)
+            : null
+        );
+    const hasUserCredits = (typeof balanceCredits === 'number' ? balanceCredits >= cost : true);
 
     let tooltip = '';
     if (currentAnalyzing) {
@@ -884,26 +920,29 @@ export function updateProfileView(auth) {
 
   if (profileName) profileName.textContent = displayName || email || '-';
   profileEmail.textContent = email ?? '-';
-  profilePlan.textContent = auth.isPremium() ? 'Premium' : 'Free';
+  const planTypeRaw = (auth.balance?.plan_type || auth.user?.plan_type || 'free');
+  const planType = planTypeRaw ? `${planTypeRaw.charAt(0).toUpperCase()}${planTypeRaw.slice(1)}` : 'Free';
+  profilePlan.textContent = planType;
 
   if (profileBadge) {
     profileBadge.textContent = initialSource.charAt(0).toUpperCase();
   }
 
-  const creditsValue = auth.isPremium()
-    ? '∞'
+  const creditsValue = (typeof auth?.balance?.credits_available === 'number')
+    ? auth.balance.credits_available
     : (
-        (typeof auth?.balance?.credits === 'number')
-        ? auth.balance.credits
-        : (auth.user?.credits ?? '0')
+        (typeof auth?.user?.credits_total === 'number' && typeof auth?.user?.credits_used === 'number')
+          ? Math.max(0, auth.user.credits_total - auth.user.credits_used)
+          : '0'
       );
 
   profileCredits.textContent = creditsValue;
 
-  const resetAt = auth.balance?.reset_at || auth.user?.credits_reset_at || null;
+  const resetAt = auth.balance?.last_credit_reset || auth.user?.last_credit_reset || null;
   profileReset.textContent = resetAt ? new Date(resetAt).toLocaleString() : '—';
 
-  profilePremium.textContent = auth.isPremium() ? 'Ja' : 'Nein';
+  const subscriptionActive = auth.balance?.subscription_active ?? auth.user?.subscription_active;
+  profilePremium.textContent = subscriptionActive ? 'Ja' : 'Nein';
   if (profileVerified) {
     profileVerified.textContent = auth.user?.email_verified ? 'Ja' : 'Nein';
   }

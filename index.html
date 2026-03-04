@@ -50,12 +50,18 @@
       <div class="ac-header-auth" id="headerAuth" hidden>
         <button type="button" class="ac-primary" data-link="/register">Konto erstellen</button>
       </div>
-      <div class="ac-credits" id="creditsBox" hidden>
-        <!-- shield (outline) -->
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-        </svg>
-        <span id="creditsText">_</span>
+      <div class="ac-credits credits-badge" id="creditsBox" hidden title="Credits remaining this month">
+        <span class="credits-icon" aria-hidden="true">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="9" />
+            <circle cx="12" cy="12" r="4.5" opacity="0.6" />
+            <path d="M9 8.5c1.2-.9 2.6-1.4 4-1.4" opacity="0.6" />
+          </svg>
+        </span>
+        <span id="creditsText" class="credits-text">
+          <span id="creditsValue" class="credits-value">—</span>
+          <span class="credits-unit">Credits</span>
+        </span>
       </div>
       <button id="profileTrigger" class="profile-trigger" type="button" data-link="/login" aria-haspopup="true" aria-expanded="false" hidden>
         <span id="profileAvatar" class="profile-avatar">•</span>
@@ -280,7 +286,7 @@
       class="ac-primary analyze-btn"
       data-kind="video"
       data-mode="file">
-      Analysieren (20 Credits)
+      Analysieren (ab 25 Credits)
     </button>
   </div>
 
@@ -321,7 +327,7 @@
       class="ac-primary analyze-btn"
       data-kind="video"
       data-mode="link">
-      Analysieren (20 Credits)
+      Analysieren (ab 25 Credits)
     </button>
   </div>
 
@@ -676,11 +682,11 @@
                 <p class="profile-value" id="profileCredits">0</p>
               </div>
               <div>
-                <p class="profile-label">Naechster Reset</p>
+                <p class="profile-label">Letzter Reset</p>
                 <p class="profile-value" id="profileReset">&mdash;</p>
               </div>
               <div>
-                <p class="profile-label">Premium</p>
+                <p class="profile-label">Abo aktiv</p>
                 <p class="profile-value" id="profilePremium">Nein</p>
               </div>
               <div>
@@ -753,7 +759,9 @@
                   <div class="admin-inline">
                     <select id="adminPlanSelect" class="ac-input" disabled>
                       <option value="free">Free</option>
-                      <option value="premium">Premium</option>
+                      <option value="basic">Basic</option>
+                      <option value="pro">Pro</option>
+                      <option value="business">Business</option>
                     </select>
                     <button type="submit" class="ac-primary">Plan speichern</button>
                   </div>

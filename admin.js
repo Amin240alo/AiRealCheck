@@ -58,8 +58,11 @@ export function initAdminPanel(auth, apiBaseInput) {
   function badgeMarkup(user) {
     const pills = [];
     if (user.is_admin) pills.push('<span class="admin-pill admin-pill-accent">Admin</span>');
-    if (user.is_premium) pills.push('<span class="admin-pill">Premium</span>');
-    else pills.push('<span class="admin-pill admin-pill-muted">Free</span>');
+    const planRaw = (user.plan_type || (user.is_premium ? 'pro' : 'free'));
+    const plan = String(planRaw || 'free').toLowerCase();
+    const planLabel = plan ? `${plan.charAt(0).toUpperCase()}${plan.slice(1)}` : 'Free';
+    if (plan === 'free') pills.push('<span class="admin-pill admin-pill-muted">Free</span>');
+    else pills.push(`<span class="admin-pill">${planLabel}</span>`);
     return pills.join('');
   }
 
@@ -103,7 +106,7 @@ export function initAdminPanel(auth, apiBaseInput) {
     detailMeta.textContent = `ID ${user.id} • Credits: ${user.credits} • Erstellt: ${created}`;
     detailBadges.innerHTML = badgeMarkup(user);
     if (creditsInput) creditsInput.value = user.credits ?? 0;
-    if (planSelect) planSelect.value = user.is_premium ? 'premium' : 'free';
+    if (planSelect) planSelect.value = user.plan_type || (user.is_premium ? 'pro' : 'free');
     [pwInput, creditsInput, planSelect].forEach((el) => el && (el.disabled = false));
     setAlert('');
   }
@@ -229,15 +232,21 @@ export function initAdminPanel(auth, apiBaseInput) {
   async function handlePlanUpdate(e) {
     e.preventDefault();
     if (!state.selectedUser) return;
-    const plan = planSelect?.value || 'free';
+    const plan_type = planSelect?.value || 'free';
     try {
       const data = await adminRequest(`/admin/users/${state.selectedUser.id}/set_plan`, {
         method: 'POST',
-        body: { plan },
+        body: { plan_type },
       });
-      state.selectedUser.is_premium = !!data.is_premium;
+      state.selectedUser.plan_type = data.plan_type || plan_type;
+      state.selectedUser.subscription_active = !!data.subscription_active;
+      state.selectedUser.is_premium = !!(data.subscription_active && data.plan_type && data.plan_type !== 'free');
       const listUser = state.users.find((u) => u.id === state.selectedUser.id);
-      if (listUser) listUser.is_premium = !!data.is_premium;
+      if (listUser) {
+        listUser.plan_type = state.selectedUser.plan_type;
+        listUser.subscription_active = state.selectedUser.subscription_active;
+        listUser.is_premium = state.selectedUser.is_premium;
+      }
       fillDetail(state.selectedUser);
       renderList();
       setAlert('Plan gespeichert.', 'success');

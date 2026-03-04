@@ -10,6 +10,7 @@ from sqlalchemy import (
     JSON,
     Index,
     func,
+    text,
 )
 from sqlalchemy.orm import declarative_base, relationship
 
@@ -26,11 +27,17 @@ class User(Base):
     password_hash = Column(String(255), nullable=False)
     role = Column(String(20), default="user", nullable=False)
     is_premium = Column(Boolean, default=False, nullable=False)
+    plan_type = Column(String(20), nullable=False, default="free", server_default=text("'free'"))
+    subscription_active = Column(Boolean, default=False, nullable=False, server_default=text("false"))
+    credits_total = Column(Integer, default=0, nullable=False, server_default=text("0"))
+    credits_used = Column(Integer, default=0, nullable=False, server_default=text("0"))
+    last_credit_reset = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
     last_login = Column(DateTime(timezone=True), nullable=True)
 
     credit_ledger = relationship("CreditLedger", back_populates="user", lazy="select")
+    credit_transactions = relationship("CreditTransaction", back_populates="user", lazy="select")
     analyses = relationship("Analysis", back_populates="user", lazy="select")
     subscriptions = relationship("Subscription", back_populates="user", lazy="select")
     refresh_tokens = relationship("RefreshToken", back_populates="user", lazy="select")
@@ -69,6 +76,26 @@ class CreditLedger(Base):
 
     __table_args__ = (
         Index("ix_credit_ledger_user_created", "user_id", "created_at"),
+    )
+
+
+class CreditTransaction(Base):
+    __tablename__ = "credit_transactions"
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    kind = Column(String(30), nullable=False)
+    amount = Column(Integer, nullable=False)
+    analysis_id = Column(String(36), nullable=True)
+    media_type = Column(String(20), nullable=True)
+    idempotency_key = Column(String(64), unique=True, nullable=True)
+    note = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    user = relationship("User", back_populates="credit_transactions")
+
+    __table_args__ = (
+        Index("ix_credit_transactions_user_created", "user_id", "created_at"),
     )
 
 

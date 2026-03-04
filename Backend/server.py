@@ -9,6 +9,7 @@ import datetime as dt
 import json
 import shutil
 import subprocess
+import time
 import uuid
 from typing import Tuple
 from dotenv import load_dotenv, find_dotenv
@@ -93,19 +94,26 @@ from Backend.engines.engine_utils import make_engine_result, safe_engine_call
 
 from Backend.db import init_db, get_session
 
-from Backend.models import Base, User, Analysis, CreditLedger
+from Backend.models import Base, User, Analysis
 
 from Backend.auth import bp_auth
 from Backend.emailer import email_debug_status, send_email
 
-from Backend.credits import bp_credits
+from Backend.credits import (
+    bp_credits,
+    bp_api_credits,
+    get_cost,
+    ensure_has_credits,
+    charge_credits_on_success,
+    InsufficientCredits,
+    get_available,
+)
 
 from Backend.analyses import bp_analyses
 
-from Backend.admin import bp_admin
+from Backend.admin import bp_admin, bp_api_admin
 
 from Backend.middleware import require_email_verified, require_admin, _error, rate_limit
-from Backend.ledger import get_credit_balance, add_ledger_entry
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -129,7 +137,7 @@ log_ffmpeg_diagnostics()
 # Restrictive CORS per requirements
 _allowed_origins = ["http://localhost:5500", "http://127.0.0.1:5500"]
 _allowed_methods = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
-_allowed_headers = ["Content-Type", "Authorization"]
+_allowed_headers = ["Content-Type", "Authorization", "Idempotency-Key"]
 
 CORS(
     app,
@@ -230,8 +238,10 @@ init_db(Base)
 app.register_blueprint(bp_auth)
 
 app.register_blueprint(bp_credits)
+app.register_blueprint(bp_api_credits)
 
 app.register_blueprint(bp_admin)
+app.register_blueprint(bp_api_admin)
 
 app.register_blueprint(bp_analyses)
 
@@ -663,21 +673,6 @@ def _apply_no_cache_headers(resp):
     return resp
 
 
-def _analysis_cost(media_type="image") -> int:
-    raw = os.getenv("AIREALCHECK_ANALYSIS_COST", "1")
-    try:
-        value = int(raw)
-    except Exception:
-        value = 1
-    if value < 0:
-        value = 0
-    return value
-
-
-class _InsufficientCredits(Exception):
-    pass
-
-
 def _create_analysis_record(user_id: int, media_type: str):
     analysis_id = str(uuid.uuid4())
     charge_key = uuid.uuid4().hex
@@ -724,51 +719,6 @@ def _finalize_analysis(
         db.commit()
     except Exception:
         db.rollback()
-        raise
-    finally:
-        db.close()
-
-
-def _charge_analysis_if_needed(analysis_id: str, user_id: int, cost_credits: int):
-    if cost_credits is None or int(cost_credits) <= 0:
-        return False
-    db = get_session()
-    try:
-        with db.begin():
-            row = (
-                db.query(Analysis)
-                .filter(Analysis.id == str(analysis_id))
-                .with_for_update()
-                .first()
-            )
-            if not row:
-                return False
-            charge_key = row.charge_idempotency_key
-            if not charge_key:
-                return False
-            existing = (
-                db.query(CreditLedger)
-                .filter(CreditLedger.ref_type == "analysis", CreditLedger.ref_id == charge_key)
-                .first()
-            )
-            if existing:
-                return False
-            user = db.query(User).filter(User.id == int(user_id)).with_for_update().first()
-            if not user:
-                return False
-            balance = get_credit_balance(user_id, db=db)
-            if balance < int(cost_credits):
-                raise _InsufficientCredits()
-            add_ledger_entry(
-                user_id,
-                -int(cost_credits),
-                reason="analysis",
-                ref_type="analysis",
-                ref_id=charge_key,
-                db=db,
-            )
-        return True
-    except Exception:
         raise
     finally:
         db.close()
@@ -836,20 +786,77 @@ def _run_analysis_path(file_path, filename, media_type="image", user_ctx=None, c
     cost_credits = 0
     credit_spent = False
     credits_left = None
-    user_is_premium = False
     user_id = None
+    idempotency_key = None
 
     force = (request.args.get("force") or request.form.get("force") or "").lower() in {"1", "true", "yes", "force"}
     analysis_id = None
     created_at = dt.datetime.utcnow()
     created_at_iso = created_at.isoformat() + "Z"
     if user_ctx:
-        analysis_id, _, created_at = _create_analysis_record(
-            int(user_ctx.get("id", 0)), media_type
-        )
+        user_id = int(user_ctx.get("id", 0))
+        analysis_id, _, created_at = _create_analysis_record(user_id, media_type)
         created_at_iso = created_at.isoformat() + "Z"
     else:
         analysis_id = str(uuid.uuid4())
+
+    IDEMPOTENCY_BUCKET_SEC = 600
+
+    def _normalize_idempotency_key(value):
+        key = (value or "").strip()
+        if not key:
+            return None
+        if len(key) > 64:
+            key = hashlib.sha256(key.encode("utf-8")).hexdigest()
+        return key
+
+    def _resolve_idempotency_key(file_hash_value=None):
+        nonlocal idempotency_key, file_hash
+        if idempotency_key:
+            return idempotency_key
+        header_key = _normalize_idempotency_key(request.headers.get("Idempotency-Key"))
+        if header_key:
+            idempotency_key = header_key
+            return idempotency_key
+        if not file_hash_value:
+            if not file_hash:
+                file_hash = _sha256_of_file(file_path)
+            file_hash_value = file_hash
+        bucket = int(time.time() // IDEMPOTENCY_BUCKET_SEC)
+        raw = f"{user_id}:{file_hash_value}:{bucket}"
+        idempotency_key = hashlib.sha256(raw.encode("utf-8")).hexdigest()
+        return idempotency_key
+
+    def _precheck_credits(required_cost):
+        nonlocal cost_credits
+        cost_credits = int(required_cost or 0)
+        if not user_ctx or not charge_credit or cost_credits <= 0:
+            return True, None
+        db = get_session()
+        try:
+            ok, available = ensure_has_credits(db, user_id, cost_credits)
+        finally:
+            db.close()
+        if not ok:
+            error_payload = {
+                "ok": False,
+                "error": "insufficient_credits",
+                "required": int(cost_credits),
+                "available": int(available or 0),
+                "details": ["Nicht genug Credits"],
+                "media_type_detected": media_type_detected,
+                "analysis_id": analysis_id,
+            }
+            if analysis_id:
+                _finalize_analysis(
+                    analysis_id,
+                    "failed",
+                    result_json=error_payload,
+                    final_score_ai01=None,
+                    cost_credits=cost_credits,
+                )
+            return False, error_payload
+        return True, None
 
     def _finalize_failure(payload):
         if user_ctx and analysis_id:
@@ -865,13 +872,26 @@ def _run_analysis_path(file_path, filename, media_type="image", user_ctx=None, c
     def _finalize_success(payload, source=None):
         nonlocal credit_spent, credits_left
         final_score = payload.get("final_ai")
-        if user_ctx and charge_credit and (not user_is_premium) and cost_credits > 0:
+        if user_ctx and charge_credit and cost_credits > 0:
             try:
-                credit_spent = _charge_analysis_if_needed(analysis_id, user_id, cost_credits)
-            except _InsufficientCredits:
+                db = get_session()
+                try:
+                    credit_spent, credits_left = charge_credits_on_success(
+                        db,
+                        user_id,
+                        cost_credits,
+                        media_type,
+                        analysis_id,
+                        idempotency_key,
+                    )
+                finally:
+                    db.close()
+            except InsufficientCredits as exc:
                 error_payload = {
                     "ok": False,
-                    "error": "no_credits",
+                    "error": "insufficient_credits",
+                    "required": int(cost_credits),
+                    "available": int(getattr(exc, "available", 0) or 0),
                     "details": ["Nicht genug Credits"],
                     "media_type_detected": media_type_detected,
                     "analysis_id": analysis_id,
@@ -884,7 +904,15 @@ def _run_analysis_path(file_path, filename, media_type="image", user_ctx=None, c
                         final_score_ai01=None,
                         cost_credits=cost_credits,
                     )
-                return error_payload, 402
+                return error_payload, 409
+        elif user_ctx and charge_credit:
+            db = get_session()
+            try:
+                user_row = db.query(User).get(int(user_id))
+                if user_row:
+                    credits_left = get_available(user_row)
+            finally:
+                db.close()
         if user_ctx and analysis_id:
             _finalize_analysis(
                 analysis_id,
@@ -893,8 +921,6 @@ def _run_analysis_path(file_path, filename, media_type="image", user_ctx=None, c
                 final_score_ai01=final_score,
                 cost_credits=cost_credits,
             )
-        if user_ctx and not user_is_premium:
-            credits_left = get_credit_balance(user_id)
         if user_ctx:
             usage_source = source or payload.get("primary_source")
         else:
@@ -902,7 +928,7 @@ def _run_analysis_path(file_path, filename, media_type="image", user_ctx=None, c
         payload["usage"] = {
             "source": usage_source,
             "credit_spent": bool(credit_spent),
-            "credits_left": credits_left if user_ctx and not user_is_premium else None,
+            "credits_left": credits_left if user_ctx else None,
         }
         return payload
 
@@ -910,39 +936,18 @@ def _run_analysis_path(file_path, filename, media_type="image", user_ctx=None, c
 
         media_type_detected, detection_meta = detect_media_type(file_path)
 
-        if user_ctx:
-            user_id = int(user_ctx.get("id", 0))
-            user_is_premium = bool(user_ctx.get("is_premium"))
-            if user_is_premium:
-                cost_credits = 0
-            else:
-                cost_credits = _analysis_cost(media_type)
-                if cost_credits > 0:
-                    balance = get_credit_balance(user_id)
-                    if balance < cost_credits:
-                        error_payload = {
-                            "ok": False,
-                            "error": "no_credits",
-                            "details": ["Nicht genug Credits"],
-                            "media_type_detected": media_type_detected,
-                            "analysis_id": analysis_id,
-                        }
-                        if analysis_id:
-                            _finalize_analysis(
-                                analysis_id,
-                                "failed",
-                                result_json=error_payload,
-                                final_score_ai01=None,
-                                cost_credits=cost_credits,
-                            )
-                        return jsonify(error_payload), 402
-
         if media_type_detected == "image" and media_type == "image":
             # Cache-Hit?
+
+            ok, error_payload = _precheck_credits(get_cost("image"))
+            if not ok:
+                return jsonify(error_payload), 402
 
             use_cache = (os.getenv("AIREALCHECK_CACHE", "false").lower() in {"1", "true", "yes"})
 
             file_hash = _sha256_of_file(file_path)
+            if user_ctx and charge_credit:
+                idempotency_key = _resolve_idempotency_key(file_hash)
 
             if use_cache and (not force) and file_hash in _RESULT_CACHE:
 
@@ -999,6 +1004,13 @@ def _run_analysis_path(file_path, filename, media_type="image", user_ctx=None, c
                     jsonify(_finalize_failure(error_payload)),
                     int(validation.get("http_status") or 400),
                 )
+
+            duration_sec = validation.get("duration_sec")
+            ok, error_payload = _precheck_credits(get_cost("video", duration_sec))
+            if not ok:
+                return jsonify(error_payload), 402
+            if user_ctx and charge_credit:
+                idempotency_key = _resolve_idempotency_key()
 
             video_forensics = safe_engine_call("video_forensics", run_video_forensics, file_path)
             video_detectors = safe_engine_call("video_frame_detectors", run_video_frame_detectors, file_path)
@@ -1107,6 +1119,12 @@ def _run_analysis_path(file_path, filename, media_type="image", user_ctx=None, c
                 }
             return jsonify(response_payload)
         elif media_type_detected == "audio" and media_type == "audio":
+            ok, error_payload = _precheck_credits(get_cost("audio"))
+            if not ok:
+                return jsonify(error_payload), 402
+            if user_ctx and charge_credit:
+                idempotency_key = _resolve_idempotency_key()
+
             audio_flags = _audio_enable_flags()
             audio_bundle = run_audio_ensemble(file_path, enable_flags=audio_flags)
             audio_primary_source = "audio_aasist"

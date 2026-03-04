@@ -164,7 +164,10 @@ export function createAuth(apiBaseInput, config = {}) {
       return !!this.user?.is_admin;
     },
     isPremium() {
-      return !!(this.user?.is_premium || this.balance?.is_premium);
+      const plan = String(this.balance?.plan_type || this.user?.plan_type || '').toLowerCase();
+      const active = this.balance?.subscription_active ?? this.user?.subscription_active;
+      if (!plan || plan === 'free') return false;
+      return !!active;
     },
     isEmailVerified() {
       if (!this.user) return false;
@@ -259,13 +262,22 @@ export function createAuth(apiBaseInput, config = {}) {
     async fetchBalance(shouldNotify = false) {
       if (!this.token) return null;
       try {
-        const data = await apiFetch('/credits/balance', { credentials: 'include' });
+        const data = await apiFetch('/api/credits', { credentials: 'include' });
         this.balance = {
-          credits: data.credits,
-          is_premium: data.is_premium,
-          reset_at: data.reset_at,
+          plan_type: data.plan_type,
+          subscription_active: data.subscription_active,
+          credits_total: data.credits_total,
+          credits_used: data.credits_used,
+          credits_available: data.credits_available,
+          last_credit_reset: data.last_credit_reset,
         };
-        if (this.user) this.user.is_premium = data.is_premium;
+        if (this.user) {
+          this.user.plan_type = data.plan_type;
+          this.user.subscription_active = data.subscription_active;
+          this.user.credits_total = data.credits_total;
+          this.user.credits_used = data.credits_used;
+          this.user.last_credit_reset = data.last_credit_reset;
+        }
         if (shouldNotify) this.notify();
         return this.balance;
       } catch (err) {

@@ -14,6 +14,7 @@ from Backend.runtime import is_production
 
 JWT_SECRET = os.getenv("AIREALCHECK_JWT_SECRET", "dev_change_me")
 ACCESS_TOKEN_MINUTES = int(os.getenv("AIREALCHECK_ACCESS_TOKEN_MINUTES", "15") or 15)
+ADMIN_ALLOWED = os.getenv("AIREALCHECK_ALLOW_ADMIN", "false").lower() in {"1", "true", "yes", "on"}
 
 _RATE_BUCKET = {}
 
@@ -100,6 +101,8 @@ def require_admin(fn):
     def wrapper(*args, **kwargs):
         if not bool(getattr(g, "current_user_is_admin", False)):
             return _error("forbidden", 403)
+        if not ADMIN_ALLOWED:
+            return _error("admin_disabled", 403)
         return fn(*args, **kwargs)
     return wrapper
 

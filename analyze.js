@@ -7,7 +7,7 @@ const $$ = (sel) => Array.from(document.querySelectorAll(sel));
 
 const idMap = { image: '#imageInput', video: '#videoInput', audio: '#audioInput' };
 const urlIdMap = { image: '#imageUrl', video: '#videoUrl', audio: '#audioUrl' };
-const ANALYSIS_COSTS = { image: 10, video: 15, audio: 20 };
+const ANALYSIS_COSTS = { image: 10, video: 25, audio: 15 };
 const DEFAULT_API_BASE = 'http://127.0.0.1:5001';
 const DEFAULT_ANALYZE_TIMEOUT_MS = 180000;
 let authRef = null;
@@ -202,14 +202,15 @@ export function initAnalyze(auth, helpers) {
         }
         return;
       }
-      if (isLoggedIn && !authRef.isPremium()) {
-        const currentCredits = typeof authRef?.balance?.credits === 'number' ? authRef.balance.credits : 0;
-        if (currentCredits < cost) {
+      if (isLoggedIn) {
+        const currentCredits = typeof authRef?.balance?.credits_available === 'number'
+          ? authRef.balance.credits_available
+          : null;
+        if (typeof currentCredits === 'number' && currentCredits < cost) {
           const area = $('#analysisArea');
           if (area) {
-            area.innerHTML = '<div class="ac-card"><b>Keine Credits verfuegbar</b><p class="ac-subtle">Bitte spaeter erneut versuchen.</p></div>';
+            area.innerHTML = '<div class="ac-card"><b>Nicht genug Credits</b><p class="ac-subtle">Nicht genug Credits. Bitte upgraden oder warten bis dein Credits-Reset wieder greift.</p></div>';
           }
-         
           return;
         }
       }
@@ -379,13 +380,14 @@ async function analyzeFile(mediaType) {
         if (area) {
           area.innerHTML = '<div class="ac-card"><b>Zu viele Versuche</b><p class="ac-subtle">Bitte warte kurz und versuche es erneut.</p></div>';
         }
-      } else if (resp.status === 402 && data?.error === 'no_credits') {
-        authRef.balance = Object.assign({}, authRef.balance || {}, { credits: 0, is_premium: false });
+      } else if ((resp.status === 402 || resp.status === 409) && (data?.error === 'insufficient_credits' || data?.error === 'no_credits')) {
+        const available = typeof data?.available === 'number' ? data.available : 0;
+        authRef.balance = Object.assign({}, authRef.balance || {}, { credits_available: available });
         helpersRef?.updateCreditsUI?.(authRef);
-       
+        
         helpersRef?.renderProfileView?.(authRef);
         if (area) {
-          area.innerHTML = '<div class="ac-card"><b>Keine Credits mehr</b><p class="ac-subtle">Bitte warte auf den naechsten Reset oder upgrade.</p></div>';
+          area.innerHTML = '<div class="ac-card"><b>Nicht genug Credits</b><p class="ac-subtle">Nicht genug Credits. Bitte upgraden oder warten bis dein Credits-Reset wieder greift.</p></div>';
         }
       } else {
         const msg = (data && (data.error || data.message)) || 'Analyse fehlgeschlagen';
@@ -400,15 +402,10 @@ async function analyzeFile(mediaType) {
     const expertMode = getExpertMode();
     const cost = getAnalysisCost(mediaType);
 
-    if (data.usage) {
-      if (authRef.isPremium()) {
-        authRef.balance = Object.assign({}, authRef.balance || {}, { credits: null, is_premium: true });
-      } else if (typeof data.usage.credits_left === 'number') {
-        authRef.balance = Object.assign({}, authRef.balance || {}, {
-          credits: data.usage.credits_left,
-          is_premium: false,
-        });
-      }
+    if (data.usage && typeof data.usage.credits_left === 'number') {
+      authRef.balance = Object.assign({}, authRef.balance || {}, {
+        credits_available: data.usage.credits_left,
+      });
       helpersRef?.updateCreditsUI?.(authRef);
     
       helpersRef?.renderProfileView?.(authRef);
@@ -570,12 +567,13 @@ async function analyzeLink(mediaType) {
         if (area) {
           area.innerHTML = '<div class="ac-card"><b>Zu viele Versuche</b><p class="ac-subtle">Bitte warte kurz und versuche es erneut.</p></div>';
         }
-      } else if (resp.status === 402 && data?.error === 'no_credits') {
-        authRef.balance = Object.assign({}, authRef.balance || {}, { credits: 0, is_premium: false });
+      } else if ((resp.status === 402 || resp.status === 409) && (data?.error === 'insufficient_credits' || data?.error === 'no_credits')) {
+        const available = typeof data?.available === 'number' ? data.available : 0;
+        authRef.balance = Object.assign({}, authRef.balance || {}, { credits_available: available });
         helpersRef?.updateCreditsUI?.(authRef);
         helpersRef?.renderProfileView?.(authRef);
         if (area) {
-          area.innerHTML = '<div class="ac-card"><b>Keine Credits mehr</b><p class="ac-subtle">Bitte warte auf den naechsten Reset oder upgrade.</p></div>';
+          area.innerHTML = '<div class="ac-card"><b>Nicht genug Credits</b><p class="ac-subtle">Nicht genug Credits. Bitte upgraden oder warten bis dein Credits-Reset wieder greift.</p></div>';
         }
       } else {
         const msg = (data && (data.error || data.message || (data.details && data.details[0]))) || 'Analyse fehlgeschlagen';
@@ -589,15 +587,10 @@ async function analyzeLink(mediaType) {
     const expertMode = getExpertMode();
     const cost = getAnalysisCost(mediaType);
 
-    if (data.usage) {
-      if (authRef.isPremium()) {
-        authRef.balance = Object.assign({}, authRef.balance || {}, { credits: null, is_premium: true });
-      } else if (typeof data.usage.credits_left === 'number') {
-        authRef.balance = Object.assign({}, authRef.balance || {}, {
-          credits: data.usage.credits_left,
-          is_premium: false,
-        });
-      }
+    if (data.usage && typeof data.usage.credits_left === 'number') {
+      authRef.balance = Object.assign({}, authRef.balance || {}, {
+        credits_available: data.usage.credits_left,
+      });
       helpersRef?.updateCreditsUI?.(authRef);
       helpersRef?.renderProfileView?.(authRef);
     }

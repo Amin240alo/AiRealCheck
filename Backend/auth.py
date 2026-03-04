@@ -8,7 +8,14 @@ from flask import Blueprint, request, jsonify, current_app, make_response, redir
 from authlib.integrations.flask_client import OAuth
 
 from Backend.db import get_session
-from Backend.models import User, EmailVerifyToken, PasswordResetToken, RefreshToken, UserConsent
+from Backend.models import (
+    User,
+    EmailVerifyToken,
+    PasswordResetToken,
+    RefreshToken,
+    UserConsent,
+    CreditTransaction,
+)
 from Backend.middleware import (
     create_password_hash,
     check_password,
@@ -19,7 +26,6 @@ from Backend.middleware import (
     rate_limit,
 )
 from Backend.runtime import is_production
-from Backend.ledger import add_ledger_entry
 from Backend.emailer import email_ready, send_email
 
 
@@ -92,6 +98,13 @@ def _parse_bool(value) -> bool:
     return False
 
 
+def _is_premium_user(u: User) -> bool:
+    plan = (u.plan_type or "free").strip().lower()
+    if plan == "free":
+        return False
+    return bool(u.subscription_active)
+
+
 def _sanitize_user(u: User):
     return {
         "id": u.id,
@@ -100,7 +113,12 @@ def _sanitize_user(u: User):
         "email_verified": bool(u.email_verified),
         "role": u.role,
         "is_admin": u.role == "admin",
-        "is_premium": bool(u.is_premium),
+        "is_premium": _is_premium_user(u),
+        "plan_type": (u.plan_type or "free"),
+        "subscription_active": bool(u.subscription_active),
+        "credits_total": int(u.credits_total or 0),
+        "credits_used": int(u.credits_used or 0),
+        "last_credit_reset": (u.last_credit_reset.isoformat() + "Z") if u.last_credit_reset else None,
         "created_at": (u.created_at.isoformat() + "Z") if u.created_at else None,
         "updated_at": (u.updated_at.isoformat() + "Z") if u.updated_at else None,
     }
@@ -275,6 +293,7 @@ def register():
         exists = db.query(User).filter(User.email == email).first()
         if exists:
             return jsonify({"ok": False, "error": "email_exists"}), 400
+        now = dt.datetime.now(dt.timezone.utc)
         user = User(
             email=email,
             display_name=display_name,
@@ -282,17 +301,22 @@ def register():
             role="user",
             email_verified=False,
             is_premium=False,
+            plan_type="free",
+            subscription_active=False,
+            credits_total=int(FREE_CREDITS_DEFAULT),
+            credits_used=0,
+            last_credit_reset=now,
         )
         db.add(user)
         db.flush()
         if FREE_CREDITS_DEFAULT:
-            add_ledger_entry(
-                user.id,
-                FREE_CREDITS_DEFAULT,
-                reason="signup_bonus",
-                ref_type="system",
-                ref_id="signup",
-                db=db,
+            db.add(
+                CreditTransaction(
+                    user_id=user.id,
+                    kind="grant",
+                    amount=int(FREE_CREDITS_DEFAULT),
+                    note="signup_free_credits",
+                )
             )
         token = secrets.token_urlsafe(32)
         token_row = EmailVerifyToken(
@@ -441,6 +465,7 @@ def google_callback():
     try:
         user = db.query(User).filter(User.email == email).first()
         if not user:
+            now = dt.datetime.now(dt.timezone.utc)
             user = User(
                 email=email,
                 display_name=display_name,
@@ -448,18 +473,23 @@ def google_callback():
                 role="user",
                 email_verified=True,
                 is_premium=False,
-                last_login=dt.datetime.utcnow(),
+                plan_type="free",
+                subscription_active=False,
+                credits_total=int(FREE_CREDITS_DEFAULT),
+                credits_used=0,
+                last_credit_reset=now,
+                last_login=now,
             )
             db.add(user)
             db.flush()
             if FREE_CREDITS_DEFAULT:
-                add_ledger_entry(
-                    user.id,
-                    FREE_CREDITS_DEFAULT,
-                    reason="signup_bonus",
-                    ref_type="system",
-                    ref_id="signup",
-                    db=db,
+                db.add(
+                    CreditTransaction(
+                        user_id=user.id,
+                        kind="grant",
+                        amount=int(FREE_CREDITS_DEFAULT),
+                        note="signup_free_credits",
+                    )
                 )
         else:
             user.last_login = dt.datetime.utcnow()

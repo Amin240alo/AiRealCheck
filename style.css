@@ -140,16 +140,73 @@ body {
 }
 .ac-link-btn:hover { text-decoration: underline; }
 
-.ac-credits {
-  background: var(--panel);
-  border: 1px solid var(--border);
-  padding: 8px 12px;
-  border-radius: var(--radius);
-  display: flex;
+.ac-credits,
+.credits-badge {
+  display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: .9rem;
-  font-weight: 700;
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  background: rgba(37, 99, 235, 0.08);
+  border: 1px solid rgba(37, 99, 235, 0.15);
+  color: var(--text);
+  backdrop-filter: blur(4px);
+  white-space: nowrap;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+}
+.credits-badge.is-low {
+  background: rgba(245, 158, 11, 0.12);
+  border-color: rgba(245, 158, 11, 0.25);
+}
+.credits-badge.is-critical {
+  background: rgba(239, 68, 68, 0.12);
+  border-color: rgba(239, 68, 68, 0.25);
+}
+.credits-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: inherit;
+}
+.credits-icon svg {
+  width: 16px;
+  height: 16px;
+}
+.credits-text {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.credits-value {
+  display: inline-block;
+  font-weight: 600;
+  transition: transform 150ms ease, opacity 150ms ease;
+}
+.credits-unit {
+  opacity: 0.8;
+}
+.credits-badge.is-animating .credits-value {
+  transform: scale(1.08);
+  opacity: 0.6;
+}
+body.dark .credits-badge {
+  background: rgba(59, 130, 246, 0.18);
+  border-color: rgba(59, 130, 246, 0.35);
+  color: #e2e8f0;
+}
+body.dark .credits-badge.is-low {
+  background: rgba(245, 158, 11, 0.2);
+  border-color: rgba(245, 158, 11, 0.4);
+}
+body.dark .credits-badge.is-critical {
+  background: rgba(239, 68, 68, 0.22);
+  border-color: rgba(239, 68, 68, 0.4);
+}
+body.dark .credits-unit {
+  opacity: 0.9;
 }
 .profile-trigger {
   border: none;
@@ -1102,9 +1159,17 @@ html, body {
     transform: none;
     justify-content: flex-start;
   }
-  .ac-credits {
-    font-size: .8rem;
-    padding: 6px 10px;
+  .credits-badge {
+    font-size: 0.75rem;
+    padding: 4px 8px;
+    gap: 4px;
+  }
+  .credits-icon svg {
+    width: 14px;
+    height: 14px;
+  }
+  .credits-text {
+    gap: 4px;
   }
   .profile-dropdown {
     right: 8px;
