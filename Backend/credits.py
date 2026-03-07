@@ -213,30 +213,38 @@ def grant_credits(db, user_id: int, amount: int, kind: str = "grant", note: str 
         raise ValueError("invalid_amount")
     if amt == 0:
         raise ValueError("invalid_amount")
-    with db.begin():
-        user = (
-            db.query(User)
-            .filter(User.id == int(user_id))
-            .with_for_update()
-            .first()
-        )
-        if not user:
-            raise ValueError("user_not_found")
-        maybe_reset_credits(db, user)
-        new_total = int(user.credits_total or 0) + int(amt)
-        if new_total < 0:
-            raise ValueError("credits_total_negative")
-        user.credits_total = int(new_total)
-        db.add(
-            CreditTransaction(
-                user_id=int(user_id),
-                kind=str(kind or "grant"),
-                amount=int(amt),
-                note=note,
+    started_in_tx = db.in_transaction()
+    ctx = db.begin_nested() if started_in_tx else db.begin()
+    try:
+        with ctx:
+            user = (
+                db.query(User)
+                .filter(User.id == int(user_id))
+                .with_for_update()
+                .first()
             )
-        )
-        db.add(user)
-        available = get_available(user)
+            if not user:
+                raise ValueError("user_not_found")
+            maybe_reset_credits(db, user)
+            new_total = int(user.credits_total or 0) + int(amt)
+            if new_total < 0:
+                raise ValueError("credits_total_negative")
+            user.credits_total = int(new_total)
+            db.add(
+                CreditTransaction(
+                    user_id=int(user_id),
+                    kind=str(kind or "grant"),
+                    amount=int(amt),
+                    note=note,
+                )
+            )
+            db.add(user)
+            available = get_available(user)
+        if started_in_tx:
+            db.commit()
+    except Exception:
+        db.rollback()
+        raise
     return user, available
 
 

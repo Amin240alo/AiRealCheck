@@ -50,8 +50,8 @@ def test_history_endpoints_smoke(tmp_path, monkeypatch):
             status="success",
             final_score=87.0,
             verdict_label="Wahrscheinlich KI",
-            engine_breakdown=json.dumps({"engine_x": {"score": 87, "confidence": 72.5}}),
-            result_payload=json.dumps({"reasons": ["Test"]}),
+            engine_breakdown=json.dumps({"engine_x": 87}),
+            result_payload=json.dumps({"confidence_label": "high", "reasons_user": ["Test"]}),
             credits_charged=10,
             created_at=dt.datetime.utcnow(),
         )

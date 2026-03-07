@@ -113,6 +113,7 @@ def _sanitize_user(u: User):
         "email_verified": bool(u.email_verified),
         "role": u.role,
         "is_admin": u.role == "admin",
+        "is_banned": bool(getattr(u, "is_banned", False)),
         "is_premium": _is_premium_user(u),
         "plan_type": (u.plan_type or "free"),
         "subscription_active": bool(u.subscription_active),

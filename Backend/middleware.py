@@ -87,10 +87,13 @@ def require_auth(fn):
             db.close()
         if not user:
             return _error("user_not_found", 404)
+        if bool(getattr(user, "is_banned", False)):
+            return _error("user_banned", 403)
         g.current_user_id = user.id
         g.current_user_role = user.role
         g.current_user_email_verified = bool(user.email_verified)
         g.current_user_is_admin = user.role == "admin"
+        g.current_user_is_banned = bool(getattr(user, "is_banned", False))
         return fn(*args, **kwargs)
     return wrapper
 

@@ -20,7 +20,7 @@
       }
     })();
   </script>
-  <link rel="stylesheet" href="/style.css" />
+  <link rel="stylesheet" href="/style.css?v=20260305_2" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 </head>
@@ -38,12 +38,12 @@
           <line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/>
         </svg>
       </button>
-      
-    </div>
-    <div class="ac-header-center">
       <button class="ac-brand-btn" id="brandHome" aria-label="Start">
         <img class="ac-brand-logo" src="/Assets/Logos/airealcheck-secondary.png" alt="AIRealCheck" />
       </button>
+    </div>
+    <div class="ac-header-center">
+      <div id="pageIndicator" class="ac-page-indicator" hidden>Analyse</div>
     </div>
 
     <div class="ac-header-right">
@@ -83,123 +83,111 @@
     <aside class="ac-sidebar" id="sidebar" aria-hidden="true">
       <div>
         <div class="ac-sidebar-title" data-i18n="sidebar.nav">Navigation</div>
-        <nav id="menuList" class="ac-sidebar-list">
-          <button class="ac-side-item" data-action="open:video">
-            <span class="ac-icon">
-              <!-- video -->
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <rect x="3" y="6" width="12" height="12" rx="2"/>
-                <path d="M15 10l6-3v10l-6-3"/>
-              </svg>
-            </span>
-            <span data-i18n="menu.video">Video prüfen</span>
-          </button>
+                <nav id="menuList" class="ac-sidebar-list">
+          <div class="ac-nav-section">
+            <div class="ac-nav-title">Workspace</div>
+            <button class="ac-side-item ac-side-primary" data-link="/" data-nav="analysis">
+              <span class="ac-icon">
+                <!-- search -->
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="11" cy="11" r="7"/><line x1="20" y1="20" x2="16.5" y2="16.5"/>
+                </svg>
+              </span>
+              <span>Analyse</span>
+            </button>
+            <div class="ac-nav-quick">
+              <button class="ac-quick-btn" type="button" data-action="open:image" data-media="image">Bild</button>
+              <button class="ac-quick-btn" type="button" data-action="open:video" data-media="video">Video</button>
+              <button class="ac-quick-btn" type="button" data-action="open:audio" data-media="audio">Audio</button>
+            </div>
+            <button class="ac-side-item" data-link="/history" data-nav="history">
+              <span class="ac-icon">
+                <!-- clock -->
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>
+                </svg>
+              </span>
+              <span>Verlauf</span>
+            </button>
+          </div>
 
-          <button class="ac-side-item" data-action="open:image">
-            <span class="ac-icon">
-              <!-- image -->
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <rect x="3" y="3" width="18" height="18" rx="2"/>
-                <circle cx="9" cy="9" r="2"/>
-                <path d="M21 15l-3.5-3.5a2.121 2.121 0 00-3 0L6 21"/>
-              </svg>
-            </span>
-            <span data-i18n="menu.image">Bild prüfen</span>
-          </button>
+          <div class="ac-nav-section">
+            <div class="ac-nav-title">Account</div>
+            <button class="ac-side-item" data-link="/profile" data-nav="profile">
+              <span class="ac-icon">
+                <!-- user -->
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M20 21a8 8 0 10-16 0"/><circle cx="12" cy="7" r="4"/>
+                </svg>
+              </span>
+              <span>Profil &amp; Credits</span>
+            </button>
+            <button class="ac-side-item" data-link="/settings" data-nav="settings">
+              <span class="ac-icon">
+                <!-- settings -->
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="12" cy="12" r="3"/>
+                  <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 01-2.83 2.83l-.06-.06A1.65 1.65 0 0015 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 008.6 15a1.65 1.65 0 00-1.82-.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.6a1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0015.4 9a1.65 1.65 0 001.82.33l.06-.06A2 2 0 0120 12a2 2 0 01-.6 3z"/>
+                </svg>
+              </span>
+              <span>Einstellungen</span>
+            </button>
+          </div>
 
-          <button class="ac-side-item" data-action="open:audio">
-            <span class="ac-icon">
-              <!-- audio lines -->
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M2 10v4"/><path d="M6 6v12"/><path d="M10 3v18"/><path d="M14 8v8"/><path d="M18 5v14"/><path d="M22 10v4"/>
-              </svg>
-            </span>
-            <span data-i18n="menu.audio">Audio prüfen</span>
-          </button>
+          <div class="ac-nav-section" id="sideAdminSection" hidden>
+            <div class="ac-nav-title">Admin</div>
+            <button class="ac-side-item" data-link="/admin" data-nav="admin" id="sideAdmin">
+              <span class="ac-icon">
+                <!-- shield -->
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                  <path d="M9 12l2 2 4-4"/>
+                </svg>
+              </span>
+              <span>Admin Panel</span>
+            </button>
+          </div>
 
-          <button class="ac-side-item" data-action="open:history">
-            <span class="ac-icon">
-              <!-- clock (neues Icon, outline) -->
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>
-              </svg>
-            </span>
-            <span data-i18n="menu.history">Verlauf</span>
-          </button>
-
-          <hr class="ac-sep"/>
-
-          <button class="ac-side-item" data-action="open:profile">
-            <span class="ac-icon">
-              <!-- user -->
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M20 21a8 8 0 10-16 0"/><circle cx="12" cy="7" r="4"/>
-              </svg>
-            </span>
-            <span data-i18n="menu.profile">Profil</span>
-          </button>
-
-          <button class="ac-side-item" data-action="open:settings">
-            <span class="ac-icon">
-              <!-- settings (neues Icon, outline) -->
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="12" cy="12" r="3"/>
-                <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 01-2.83 2.83l-.06-.06A1.65 1.65 0 0015 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 008.6 15a1.65 1.65 0 00-1.82-.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.6a1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0015.4 9a1.65 1.65 0 001.82.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 15z"/>
-              </svg>
-            </span>
-            <span data-i18n="menu.settings">Einstellungen</span>
-          </button>
-
-          <button class="ac-side-item" data-action="open:admin" id="sideAdmin" hidden>
-            <span class="ac-icon">
-              <!-- shield -->
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-                <path d="M9 12l2 2 4-4"/>
-              </svg>
-            </span>
-            <span>Admin</span>
-          </button>
-
-          <button class="ac-side-item" data-action="open:premium">
-            <span class="ac-icon">
-              <!-- diamond -->
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M6 3h12l4 6-10 12L2 9z"/><path d="M11 3l1 6 1-6"/>
-              </svg>
-            </span>
-            <span>Premium</span>
-          </button>
-
-          <button class="ac-side-item" data-action="open:affiliate">
-            <span class="ac-icon">
-              <!-- link -->
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M10 13a5 5 0 007.07 0l2.83-2.83a5 5 0 10-7.07-7.07L10 5"/>
-                <path d="M14 11a5 5 0 01-7.07 0L4.1 8.17a5 5 0 017.07-7.07L14 3"/>
-              </svg>
-            </span>
-            <span data-i18n="menu.affiliate">Affiliate</span>
-          </button>
-
-          <button class="ac-side-item" data-action="open:rate">
-            <span class="ac-icon">
-              <!-- star -->
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <polygon points="12 2 15 8.5 22 9 17 13.8 18.5 21 12 17.8 5.5 21 7 13.8 2 9 9 8.5 12 2"/>
-              </svg>
-            </span>
-            <span data-i18n="menu.rate">App bewerten</span>
-          </button>
+          <div class="ac-nav-section">
+            <div class="ac-nav-title">Mehr</div>
+            <button class="ac-side-item" data-link="/premium" data-nav="premium">
+              <span class="ac-icon">
+                <!-- diamond -->
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M6 3h12l4 6-10 12L2 9z"/><path d="M11 3l1 6 1-6"/>
+                </svg>
+              </span>
+              <span>Premium</span>
+            </button>
+            <button class="ac-side-item" data-link="/affiliate" data-nav="affiliate">
+              <span class="ac-icon">
+                <!-- link -->
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M10 13a5 5 0 007.07 0l2.83-2.83a5 5 0 10-7.07-7.07L10 5"/>
+                  <path d="M14 11a5 5 0 01-7.07 0L4.1 8.17a5 5 0 017.07-7.07L14 3"/>
+                </svg>
+              </span>
+              <span>Affiliate</span>
+            </button>
+            <button class="ac-side-item" data-link="/rate" data-nav="rate">
+              <span class="ac-icon">
+                <!-- star -->
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <polygon points="12 2 15 8.5 22 9 17 13.8 18.5 21 12 17.8 5.5 21 7 13.8 2 9 9 8.5 12 2"/>
+                </svg>
+              </span>
+              <span>App bewerten</span>
+            </button>
+          </div>
         </nav>
       </div>
 
       <div>
         <div class="ac-legal-title" data-i18n="sidebar.legal">Rechtliches</div>
         <div class="ac-sidebar-list">
-          <button class="ac-side-item" data-action="open:legal:impressum">Impressum</button>
-          <button class="ac-side-item" data-action="open:legal:privacy">Datenschutz</button>
-          <button class="ac-side-item" data-action="open:legal:tac">AGB</button>
+          <button class="ac-side-item ac-side-plain" data-link="/legal?section=impressum">Impressum</button>
+          <button class="ac-side-item ac-side-plain" data-link="/legal?section=privacy">Datenschutz</button>
+          <button class="ac-side-item ac-side-plain" data-link="/legal?section=tac">AGB</button>
         </div>
       </div>
     </aside>
@@ -209,8 +197,8 @@
       <!-- START -->
       <section id="page-start" class="ac-page">
         <div class="ac-container">
-          <div class="ac-page-title" data-i18n="start.title">Prüfe Inhalte — AIRealCheck</div>
-          <div class="ac-subtle" data-i18n="start.subtitle">Standard: Video prüfen. Du kannst im Menü auch „Bild“ oder „Audio“ wählen.</div>
+          <div class="ac-page-title" data-i18n="start.title">KI-Inhalte erkennen</div>
+          <div class="ac-subtle" data-i18n="start.subtitle">Prüfe Bilder, Videos oder Audio auf KI-Manipulation.</div>
           <div id="emailVerifyBanner" class="ac-banner ac-hide" role="status" aria-live="polite">
             <div class="ac-banner-icon">!</div>
             <div class="ac-banner-body">
@@ -227,141 +215,133 @@
           <div class="ac-card" id="analysisTool">
             <div class="ac-card-title" data-i18n="start.chooseType">Medientyp wählen</div>
 
-            <div class="ac-select-row">
-              <button type="button" class="ac-select-btn" id="btnVideo" data-type="video">
-                <span class="ac-icon-sm">
-                  <!-- video -->
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <rect x="3" y="6" width="12" height="12" rx="2"/>
-                    <path d="M15 10l6-3v10l-6-3"/>
-                  </svg>
-                </span>
-                <span data-i18n="menu.video">Video prüfen</span>
-              </button>
+            <div class="ac-analyze-shell">
+              <div class="ac-select-row ac-media-grid">
+                <button type="button" class="ac-select-btn ac-media-card" id="btnImage" data-type="image">
+                  <div class="ac-media-left">
+                    <svg class="ac-media-ico" viewBox="0 0 24 24" fill="none" aria-hidden="true" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <rect x="3" y="3" width="18" height="18" rx="2"/>
+                      <circle cx="9" cy="9" r="2"/>
+                      <path d="M21 15l-3.5-3.5a2.121 2.121 0 00-3 0L6 21"/>
+                    </svg>
+                    <span class="ac-media-card-title">Bild prüfen</span>
+                  </div>
+                  <span class="ac-price-badge">10 Credits</span>
+                </button>
+                <button type="button" class="ac-select-btn ac-media-card" id="btnVideo" data-type="video">
+                  <div class="ac-media-left">
+                    <svg class="ac-media-ico" viewBox="0 0 24 24" fill="none" aria-hidden="true" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <rect x="3" y="6" width="12" height="12" rx="2"/>
+                      <path d="M15 10l6-3v10l-6-3"/>
+                    </svg>
+                    <span class="ac-media-card-title">Video prüfen</span>
+                  </div>
+                  <span class="ac-price-badge">25 Credits</span>
+                </button>
+                <button type="button" class="ac-select-btn ac-media-card" id="btnAudio" data-type="audio">
+                  <div class="ac-media-left">
+                    <svg class="ac-media-ico" viewBox="0 0 24 24" fill="none" aria-hidden="true" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M2 10v4"/><path d="M6 6v12"/><path d="M10 3v18"/><path d="M14 8v8"/><path d="M18 5v14"/><path d="M22 10v4"/>
+                    </svg>
+                    <span class="ac-media-card-title">Audio prüfen</span>
+                  </div>
+                  <span class="ac-price-badge">15 Credits</span>
+                </button>
+              </div>
 
-              <button type="button" class="ac-select-btn" id="btnImage" data-type="image">
-                <span class="ac-icon-sm">
-                  <!-- image -->
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <rect x="3" y="3" width="18" height="18" rx="2"/>
-                    <circle cx="9" cy="9" r="2"/>
-                    <path d="M21 15l-3.5-3.5a2.121 2.121 0 00-3 0L6 21"/>
-                  </svg>
-                </span>
-                <span data-i18n="menu.image">Bild prüfen</span>
-              </button>
+              <div class="ac-upload-toolbar">
+                <div class="ac-upload-label">Upload</div>
+                <div class="ac-seg-switch ac-seg-compact">
+                  <button id="segFile" class="ac-seg ac-active" data-i18n="start.file">Datei</button>
+                  <button id="segLink" class="ac-seg" data-i18n="start.link">Link</button>
+                </div>
+              </div>
 
-              <button type="button" class="ac-select-btn" id="btnAudio" data-type="audio">
-                <span class="ac-icon-sm">
-                  <!-- audio lines -->
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M2 10v4"/><path d="M6 6v12"/><path d="M10 3v18"/><path d="M14 8v8"/><path d="M18 5v14"/><path d="M22 10v4"/>
-                  </svg>
-                </span>
-                <span data-i18n="menu.audio">Audio prüfen</span>
-              </button>
+              <div id="fileInputs" class="ac-stack">
+                <div id="blockImage" class="ac-upload-block">
+                  <label class="ac-dropzone" data-kind="image" for="imageInput" tabindex="0" role="button">
+                    <div class="ac-dropzone-default">
+                      <div class="ac-dropzone-title">Datei hier hineinziehen oder klicken zum Auswählen</div>
+                      <div class="ac-dropzone-sub">Unterstützte Formate: JPG, PNG, WebP</div>
+                      <div class="ac-dropzone-hint">Bitte keine sehr großen Dateien.</div>
+                    </div>
+                    <div class="ac-dropzone-selected" aria-hidden="true"></div>
+                  </label>
+                  <input id="imageInput" class="ac-input ac-file-input" type="file" accept="image/*" />
+                  <div class="ac-upload-actions">
+                    <button type="button" class="ac-primary analyze-btn" data-kind="image" data-mode="file">Analyse starten</button>
+                    <div class="ac-cost-hint">Kosten: 10 Credits</div>
+                  </div>
+                </div>
+
+                <div id="blockVideo" class="ac-upload-block ac-hide">
+                  <label class="ac-dropzone" data-kind="video" for="videoInput" tabindex="0" role="button">
+                    <div class="ac-dropzone-default">
+                      <div class="ac-dropzone-title">Datei hier hineinziehen oder klicken zum Auswählen</div>
+                      <div class="ac-dropzone-sub">Unterstützte Formate: MP4, MOV, WebM</div>
+                      <div class="ac-dropzone-hint">Bitte keine sehr großen Dateien.</div>
+                    </div>
+                    <div class="ac-dropzone-selected" aria-hidden="true"></div>
+                  </label>
+                  <input id="videoInput" class="ac-input ac-file-input" type="file" accept="video/*" />
+                  <div class="ac-upload-actions">
+                    <button type="button" class="ac-primary analyze-btn" data-kind="video" data-mode="file">Analyse starten</button>
+                    <div class="ac-cost-hint">Kosten: 25 Credits</div>
+                  </div>
+                </div>
+
+                <div id="blockAudio" class="ac-upload-block ac-hide">
+                  <label class="ac-dropzone" data-kind="audio" for="audioInput" tabindex="0" role="button">
+                    <div class="ac-dropzone-default">
+                      <div class="ac-dropzone-title">Datei hier hineinziehen oder klicken zum Auswählen</div>
+                      <div class="ac-dropzone-sub">Unterstützte Formate: MP3, WAV, M4A</div>
+                      <div class="ac-dropzone-hint">Bitte keine sehr großen Dateien.</div>
+                    </div>
+                    <div class="ac-dropzone-selected" aria-hidden="true"></div>
+                  </label>
+                  <input id="audioInput" class="ac-input ac-file-input" type="file" accept="audio/*" />
+                  <div class="ac-upload-actions">
+                    <button type="button" class="ac-primary analyze-btn" data-kind="audio" data-mode="file">Analyse starten</button>
+                    <div class="ac-cost-hint">Kosten: 15 Credits</div>
+                  </div>
+                </div>
+              </div>
+
+              <div id="linkInputs" class="ac-stack ac-hide">
+                <div class="ac-link-note">Link-Analyse aktuell nur für Video verfügbar.</div>
+
+                <div id="linkVideo" class="ac-upload-block">
+                  <label class="ac-label" for="videoUrl" data-i18n="start.videoUrl">Video-Link</label>
+                  <input id="videoUrl" class="ac-input ac-link-input" type="url" placeholder="https://..." />
+                  <div class="ac-upload-actions">
+                    <button type="button" class="ac-primary analyze-btn" data-kind="video" data-mode="link">Analyse starten</button>
+                    <div class="ac-cost-hint">Kosten: 25 Credits</div>
+                  </div>
+                </div>
+
+                <div id="linkImage" class="ac-upload-block ac-hide">
+                  <label class="ac-label" for="imageUrl" data-i18n="start.imageUrl">Bild-Link</label>
+                  <input id="imageUrl" class="ac-input ac-link-input" type="url" placeholder="https://..." />
+                  <div class="ac-upload-actions">
+                    <button type="button" class="ac-primary analyze-btn" data-kind="image" data-mode="link">Analyse starten</button>
+                    <div class="ac-cost-hint">Kosten: 10 Credits</div>
+                  </div>
+                </div>
+
+                <div id="linkAudio" class="ac-upload-block ac-hide">
+                  <label class="ac-label" for="audioUrl" data-i18n="start.audioUrl">Audio-Link</label>
+                  <input id="audioUrl" class="ac-input ac-link-input" type="url" placeholder="https://..." />
+                  <div class="ac-upload-actions">
+                    <button type="button" class="ac-primary analyze-btn" data-kind="audio" data-mode="link">Analyse starten</button>
+                    <div class="ac-cost-hint">Kosten: 15 Credits</div>
+                  </div>
+                </div>
+              </div>
+
+              <div id="analysisStatus" class="ac-analyze-status" aria-live="polite" aria-atomic="true" hidden></div>
             </div>
 
-
-
-
-
-
-            <!-- Upload/Link Switch (kleiner & einheitlich) -->
-            <div class="ac-seg-switch ac-seg-compact" style="margin-top:8px">
-              <button id="segFile" class="ac-seg ac-active" data-i18n="start.file">Datei</button>
-              <button id="segLink" class="ac-seg" data-i18n="start.link">Link</button>
-
-
-              
-            </div>
-<!-- Datei-Inputs -->
-<div id="fileInputs" class="ac-stack" style="margin-top:8px">
-
-  <div id="blockVideo" class="ac-upload-field">
-    <label class="ac-label" for="videoInput" data-i18n="start.pickVideo">Video auswählen</label>
-    <input id="videoInput" class="ac-input" type="file" accept="video/*" />
-    <button
-      type="button"
-      class="ac-primary analyze-btn"
-      data-kind="video"
-      data-mode="file">
-      Analysieren (ab 25 Credits)
-    </button>
-  </div>
-
-  <div id="blockImage" class="ac-upload-field ac-hide">
-    <label class="ac-label" for="imageInput" data-i18n="start.pickImage">Bild auswählen</label>
-    <input id="imageInput" class="ac-input" type="file" accept="image/*" />
-    <button
-      type="button"
-      class="ac-primary analyze-btn"
-      data-kind="image"
-      data-mode="file">
-      Analysieren (10 Credits)
-    </button>
-  </div>
-
-  <div id="blockAudio" class="ac-upload-field ac-hide">
-    <label class="ac-label" for="audioInput" data-i18n="start.pickAudio">Audio auswählen</label>
-    <input id="audioInput" class="ac-input" type="file" accept="audio/*" />
-    <button
-      type="button"
-      class="ac-primary analyze-btn"
-      data-kind="audio"
-      data-mode="file">
-      Analysieren (15 Credits)
-    </button>
-  </div>
-
-</div>
-
-<!-- Link-Inputs -->
-<div id="linkInputs" class="ac-stack ac-hide" style="margin-top:8px">
-
-  <div id="linkVideo" class="ac-upload-field">
-    <label class="ac-label" for="videoUrl" data-i18n="start.videoUrl">Video-Link</label>
-    <input id="videoUrl" class="ac-input" type="url" />
-    <button
-      type="button"
-      class="ac-primary analyze-btn"
-      data-kind="video"
-      data-mode="link">
-      Analysieren (ab 25 Credits)
-    </button>
-  </div>
-
-  <div id="linkImage" class="ac-upload-field ac-hide">
-    <label class="ac-label" for="imageUrl" data-i18n="start.imageUrl">Bild-Link</label>
-    <input id="imageUrl" class="ac-input" type="url" />
-    <button
-      type="button"
-      class="ac-primary analyze-btn"
-      data-kind="image"
-      data-mode="link">
-      Analysieren (10 Credits)
-    </button>
-  </div>
-
-  <div id="linkAudio" class="ac-upload-field ac-hide">
-    <label class="ac-label" for="audioUrl" data-i18n="start.audioUrl">Audio-Link</label>
-    <input id="audioUrl" class="ac-input" type="url" />
-    <button
-      type="button"
-      class="ac-primary analyze-btn"
-      data-kind="audio"
-      data-mode="link">
-      Analysieren (15 Credits)
-    </button>
-  </div>
-
-</div>
-
-
-
-
-
-            <div id="analysisArea" class="ac-analysis">
+            <div id="analysisArea" class="ac-analysis is-hidden">
               <div id="resultMount"></div>
             </div>
           </div>
@@ -733,64 +713,648 @@
           <div class="ac-page-title">Einstellungen</div>
           <div class="ac-card placeholder-card">
             <div class="ac-card-title">Bald verfügbar</div>
-            <p class="ac-subtle">Hier kannst du demnaechst Benachrichtigungen, Sprache und weitere Optionen konfigurieren.</p>
+            <p class="ac-subtle">Hier kannst du demnächst Benachrichtigungen, Sprache und weitere Optionen konfigurieren.</p>
           </div>
         </div>
       </section>
 
       <!-- ADMIN -->
       <section id="page-admin" class="ac-page ac-hide">
-        <div class="ac-container">
-          <div class="ac-page-title">Admin Panel</div>
-          <div class="ac-card">
-            <div class="ac-card-title">Benutzerverwaltung</div>
-            <div class="admin-toolbar">
-              <button class="ac-ghost" id="adminRefresh">Aktualisieren</button>
-              <div id="adminStatus" class="admin-status" hidden></div>
+        <div class="admin-shell">
+          <aside class="admin-sidenav" aria-label="Admin Navigation">
+            <div class="admin-sidenav-header">
+              <div class="admin-sidenav-title">Admin</div>
+              <div class="admin-sidenav-sub">AIRealCheck</div>
             </div>
-            <div class="admin-grid">
-              <div class="admin-list" id="adminUserList"></div>
-              <div class="admin-detail" id="adminUserDetail">
-                <div class="admin-detail-head">
-                  <div>
-                    <div class="admin-detail-email" id="adminDetailEmail">Kein Nutzer ausgewaehlt</div>
-                    <div class="admin-detail-meta" id="adminDetailMeta">Bitte Nutzer auswaehlen.</div>
-                  </div>
-                  <div class="admin-detail-badges" id="adminDetailBadges"></div>
-                </div>
+            <nav class="admin-nav">
+              <button class="admin-nav-item is-active" type="button" data-admin-view="dashboard">
+                <span class="admin-nav-icon">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="3" y="3" width="7" height="7" rx="2"/><rect x="14" y="3" width="7" height="7" rx="2"/><rect x="14" y="14" width="7" height="7" rx="2"/><rect x="3" y="14" width="7" height="7" rx="2"/>
+                  </svg>
+                </span>
+                <span class="admin-nav-label">Dashboard</span>
+              </button>
+              <button class="admin-nav-item" type="button" data-admin-view="users">
+                <span class="admin-nav-icon">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="9" cy="8" r="3.5"/><path d="M2 20a7 7 0 0114 0"/><circle cx="17" cy="9" r="2.5"/><path d="M16 20a6 6 0 016-6"/>
+                  </svg>
+                </span>
+                <span class="admin-nav-label">Nutzer</span>
+              </button>
+              <button class="admin-nav-item" type="button" data-admin-view="analyses">
+                <span class="admin-nav-icon">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M4 19V5"/><path d="M10 19V9"/><path d="M16 19V13"/><path d="M22 19V7"/>
+                  </svg>
+                </span>
+                <span class="admin-nav-label">Analysen</span>
+              </button>
+              <button class="admin-nav-item" type="button" data-admin-view="credits">
+                <span class="admin-nav-icon">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="3" y="5" width="18" height="14" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="7" y1="15" x2="11" y2="15"/>
+                  </svg>
+                </span>
+                <span class="admin-nav-label">Credits</span>
+              </button>
+              <button class="admin-nav-item" type="button" data-admin-view="moderation">
+                <span class="admin-nav-icon">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 3l8 4v5c0 5-3.5 9-8 11-4.5-2-8-6-8-11V7l8-4z"/>
+                  </svg>
+                </span>
+                <span class="admin-nav-label">Moderation</span>
+              </button>
+              <button class="admin-nav-item" type="button" data-admin-view="engines">
+                <span class="admin-nav-icon">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M3 12h4l3-7 4 14 3-7h4"/>
+                  </svg>
+                </span>
+                <span class="admin-nav-label">Engines</span>
+              </button>
+              <button class="admin-nav-item" type="button" data-admin-view="logs">
+                <span class="admin-nav-icon">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M4 4h16v16H4z"/><path d="M8 8h8"/><path d="M8 12h8"/><path d="M8 16h6"/>
+                  </svg>
+                </span>
+                <span class="admin-nav-label">Logs</span>
+              </button>
+              <button class="admin-nav-item" type="button" data-admin-view="system">
+                <span class="admin-nav-icon">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="4" y1="6" x2="20" y2="6"/><circle cx="9" cy="6" r="2"/><line x1="4" y1="12" x2="20" y2="12"/><circle cx="14" cy="12" r="2"/><line x1="4" y1="18" x2="20" y2="18"/><circle cx="7" cy="18" r="2"/>
+                  </svg>
+                </span>
+                <span class="admin-nav-label">System</span>
+              </button>
+            </nav>
+            <div class="admin-sidenav-footer">
+              <div class="admin-sidenav-meta">
+                <span class="admin-pill admin-pill-muted" id="adminEnvBadge">Internal</span>
+                <span class="admin-sidenav-meta-text" id="adminIdentity">Admin</span>
+              </div>
+              <button class="ac-ghost admin-refresh admin-refresh-btn" id="adminSidebarRefresh">
+                <span class="admin-btn-icon">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 12a9 9 0 1 1-2.6-6.4"/><polyline points="21 3 21 9 15 9"/>
+                  </svg>
+                </span>
+                <span>Aktualisieren</span>
+              </button>
+            </div>
+          </aside>
 
-                <form id="adminPasswordForm" class="admin-form">
-                  <label class="admin-label" for="adminNewPassword">Neues Passwort</label>
-                  <div class="admin-inline">
-                    <input id="adminNewPassword" class="ac-input" type="password" placeholder="Mind. 8 Zeichen" disabled />
-                    <button type="submit" class="ac-secondary">Passwort setzen</button>
-                  </div>
-                </form>
-
-                <form id="adminCreditsForm" class="admin-form">
-                  <label class="admin-label" for="adminCreditsInput">Credits</label>
-                  <div class="admin-inline">
-                    <input id="adminCreditsInput" class="ac-input" type="number" disabled />
-                    <button type="submit" class="ac-secondary">Credits speichern</button>
-                  </div>
-                </form>
-
-                <form id="adminPlanForm" class="admin-form">
-                  <label class="admin-label" for="adminPlanSelect">Plan</label>
-                  <div class="admin-inline">
-                    <select id="adminPlanSelect" class="ac-input" disabled>
-                      <option value="free">Free</option>
-                      <option value="basic">Basic</option>
-                      <option value="pro">Pro</option>
-                      <option value="business">Business</option>
-                    </select>
-                    <button type="submit" class="ac-primary">Plan speichern</button>
-                  </div>
-                </form>
-
-                <div id="adminUserAlert" class="admin-alert" hidden></div>
+          <div class="admin-main">
+            <div class="admin-topbar">
+              <div class="admin-topbar-left">
+                <div class="admin-topbar-title" id="adminPageTitle">Dashboard</div>
+                <div class="admin-topbar-sub" id="adminPageSubtitle">Systemstatus und KPIs</div>
+              </div>
+              <div class="admin-topbar-actions">
+                <button class="ac-secondary admin-refresh-btn" id="adminGlobalRefresh">
+                  <span class="admin-btn-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M21 12a9 9 0 1 1-2.6-6.4"/><polyline points="21 3 21 9 15 9"/>
+                    </svg>
+                  </span>
+                  <span>Aktualisieren</span>
+                </button>
+                <div id="adminNotice" class="admin-notice" hidden></div>
               </div>
             </div>
+
+            <div class="admin-content">
+              <section id="adminViewDashboard" class="admin-view">
+                <div class="admin-kpi-grid">
+                  <div class="admin-kpi-card">
+                    <div class="admin-kpi-label">Nutzer gesamt</div>
+                    <div class="admin-kpi-value" id="adminStatTotalUsers">--</div>
+                  </div>
+                  <div class="admin-kpi-card">
+                    <div class="admin-kpi-label">Neue Nutzer heute</div>
+                    <div class="admin-kpi-value" id="adminStatNewUsers">--</div>
+                  </div>
+                  <div class="admin-kpi-card">
+                    <div class="admin-kpi-label">Analysen heute</div>
+                    <div class="admin-kpi-value" id="adminStatAnalysesToday">--</div>
+                  </div>
+                  <div class="admin-kpi-card">
+                    <div class="admin-kpi-label">Analysen gesamt</div>
+                    <div class="admin-kpi-value" id="adminStatAnalysesTotal">--</div>
+                  </div>
+                  <div class="admin-kpi-card">
+                    <div class="admin-kpi-label">Credits heute</div>
+                    <div class="admin-kpi-value" id="adminStatCreditsToday">--</div>
+                  </div>
+                  <div class="admin-kpi-card">
+                    <div class="admin-kpi-label">Credits gesamt</div>
+                    <div class="admin-kpi-value" id="adminStatCreditsTotal">--</div>
+                  </div>
+                  <div class="admin-kpi-card">
+                    <div class="admin-kpi-label">Fehler heute</div>
+                    <div class="admin-kpi-value" id="adminStatErrorsToday">--</div>
+                  </div>
+                  <div class="admin-kpi-card">
+                    <div class="admin-kpi-label">Aktive Engines</div>
+                    <div class="admin-kpi-value" id="adminStatEnginesActive">--</div>
+                  </div>
+                </div>
+
+                <div class="admin-dashboard-grid">
+                  <div class="admin-card admin-card-wide">
+                    <div class="admin-card-head">
+                      <div>
+                        <div class="admin-card-title">Letzte Analysen</div>
+                        <div class="admin-card-sub">Neueste Jobs und Resultate</div>
+                      </div>
+                    </div>
+                    <div class="admin-table-wrap">
+                      <table class="admin-table admin-table-compact">
+                        <thead>
+                          <tr>
+                            <th>ID</th>
+                            <th>Nutzer</th>
+                            <th>Datum</th>
+                            <th>Typ</th>
+                            <th>Status</th>
+                            <th>Score</th>
+                            <th>Credits</th>
+                          </tr>
+                        </thead>
+                        <tbody id="adminRecentAnalysesBody"></tbody>
+                      </table>
+                    </div>
+                    <div id="adminRecentAnalysesEmpty" class="admin-empty" hidden>Keine Analysen vorhanden.</div>
+                  </div>
+
+                  <div class="admin-card">
+                    <div class="admin-card-head">
+                      <div>
+                        <div class="admin-card-title">Aktive Engines</div>
+                        <div class="admin-card-sub">Status der Detection-Module</div>
+                      </div>
+                    </div>
+                    <div id="adminEnginesList" class="admin-engine-grid"></div>
+                  </div>
+
+                  <div class="admin-card">
+                    <div class="admin-card-head">
+                      <div>
+                        <div class="admin-card-title">Top Nutzer</div>
+                        <div class="admin-card-sub">Nach Analysen</div>
+                      </div>
+                    </div>
+                    <div id="adminTopUsersList" class="admin-list"></div>
+                  </div>
+
+                  <div class="admin-card">
+                    <div class="admin-card-head">
+                      <div>
+                        <div class="admin-card-title">Letzte Admin-Aktivitäten</div>
+                        <div class="admin-card-sub">Credits, Sperren, System</div>
+                      </div>
+                    </div>
+                    <div id="adminAdminEventsList" class="admin-list"></div>
+                  </div>
+
+                  <div class="admin-card">
+                    <div class="admin-card-head">
+                      <div>
+                        <div class="admin-card-title">Letzte Fehler</div>
+                        <div class="admin-card-sub">Fehler-Logs</div>
+                      </div>
+                    </div>
+                    <div id="adminErrorEventsList" class="admin-list"></div>
+                  </div>
+                </div>
+              </section>
+
+              <section id="adminViewUsers" class="admin-view ac-hide">
+                <div class="admin-section-head">
+                  <div>
+                    <div class="admin-section-title">Nutzer</div>
+                    <div class="admin-section-sub">Konten, Rollen und Credits</div>
+                  </div>
+                  <div class="admin-section-actions">
+                    <button class="ac-ghost admin-refresh-btn" id="adminUsersRefresh">
+                      <span class="admin-btn-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                          <path d="M21 12a9 9 0 1 1-2.6-6.4"/><polyline points="21 3 21 9 15 9"/>
+                        </svg>
+                      </span>
+                      <span>Aktualisieren</span>
+                    </button>
+                  </div>
+                </div>
+                <div class="admin-segment">
+                  <button class="admin-segment-btn is-active" type="button" data-user-segment="all">Alle</button>
+                  <button class="admin-segment-btn" type="button" data-user-segment="banned">Gesperrt</button>
+                  <button class="admin-segment-btn" type="button" data-user-segment="top">Top Nutzer</button>
+                </div>
+                <div class="admin-filters">
+                  <div class="admin-filter-row">
+                    <input id="adminUserSearch" class="ac-input admin-input" type="search" placeholder="Suche E-Mail oder ID" />
+                    <select id="adminUserRole" class="ac-input admin-input">
+                      <option value="">Rolle: Alle</option>
+                      <option value="admin">Admin</option>
+                      <option value="user">Nutzer</option>
+                    </select>
+                    <select id="adminUserStatus" class="ac-input admin-input">
+                      <option value="">Status: Alle</option>
+                      <option value="active">Aktiv</option>
+                      <option value="banned">Gesperrt</option>
+                    </select>
+                    <select id="adminUserVerified" class="ac-input admin-input">
+                      <option value="">Verifiziert: Alle</option>
+                      <option value="true">Verifiziert</option>
+                      <option value="false">Unverifiziert</option>
+                    </select>
+                    <button class="ac-secondary" id="adminUserSearchBtn">Anwenden</button>
+                    <button class="ac-ghost" id="adminUserResetBtn">Zurücksetzen</button>
+                  </div>
+                </div>
+                <div class="admin-table-wrap">
+                  <table class="admin-table admin-table-sticky">
+                    <thead>
+                      <tr>
+                        <th>ID</th>
+                        <th>E-Mail</th>
+                        <th>Rolle</th>
+                        <th>Status</th>
+                        <th>Verifiziert</th>
+                        <th>Credits</th>
+                        <th>Analysen</th>
+                        <th>Registriert</th>
+                        <th>Letzter Login</th>
+                        <th>Aktionen</th>
+                      </tr>
+                    </thead>
+                    <tbody id="adminUsersBody"></tbody>
+                  </table>
+                </div>
+                <div id="adminUsersEmpty" class="admin-empty" hidden>Keine Nutzer gefunden.</div>
+                <div class="admin-pagination">
+                  <button class="ac-ghost" id="adminUsersPrev">Zurück</button>
+                  <div id="adminUsersPage" class="admin-page-label">1</div>
+                  <button class="ac-ghost" id="adminUsersNext">Weiter</button>
+                </div>
+              </section>
+
+              <section id="adminViewAnalyses" class="admin-view ac-hide">
+                <div class="admin-section-head">
+                  <div>
+                    <div class="admin-section-title">Analysen</div>
+                    <div class="admin-section-sub">Prüfungen, Scores und Engine-Status</div>
+                  </div>
+                  <div class="admin-section-actions">
+                    <button class="ac-ghost admin-refresh-btn" id="adminAnalysesRefresh">
+                      <span class="admin-btn-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                          <path d="M21 12a9 9 0 1 1-2.6-6.4"/><polyline points="21 3 21 9 15 9"/>
+                        </svg>
+                      </span>
+                      <span>Aktualisieren</span>
+                    </button>
+                  </div>
+                </div>
+                <div class="admin-segment">
+                  <button class="admin-segment-btn is-active" type="button" data-analyses-segment="all">Alle</button>
+                  <button class="admin-segment-btn" type="button" data-analyses-segment="failed">Fehlgeschlagen</button>
+                </div>
+                <div class="admin-filters">
+                  <div class="admin-filter-row">
+                    <input id="adminAnalysesUser" class="ac-input admin-input" type="text" placeholder="Nutzer-ID" />
+                    <select id="adminAnalysesStatus" class="ac-input admin-input">
+                      <option value="">Status: Alle</option>
+                      <option value="success">Erfolgreich</option>
+                      <option value="failed">Fehlgeschlagen</option>
+                      <option value="pending">In Prüfung</option>
+                    </select>
+                    <select id="adminAnalysesType" class="ac-input admin-input">
+                      <option value="">Typ: Alle</option>
+                      <option value="image">Image</option>
+                      <option value="video">Video</option>
+                      <option value="audio">Audio</option>
+                    </select>
+                    <input id="adminAnalysesScoreMin" class="ac-input admin-input" type="number" min="0" max="100" placeholder="Score min" />
+                    <input id="adminAnalysesScoreMax" class="ac-input admin-input" type="number" min="0" max="100" placeholder="Score max" />
+                    <input id="adminAnalysesFrom" class="ac-input admin-input" type="date" />
+                    <input id="adminAnalysesTo" class="ac-input admin-input" type="date" />
+                    <input id="adminAnalysesEngine" class="ac-input admin-input" type="text" placeholder="Engine" />
+                    <button class="ac-secondary" id="adminAnalysesApply">Anwenden</button>
+                    <button class="ac-ghost" id="adminAnalysesReset">Zurücksetzen</button>
+                  </div>
+                </div>
+                <div class="admin-table-wrap">
+                  <table class="admin-table admin-table-sticky">
+                    <thead>
+                      <tr>
+                        <th>ID</th>
+                        <th>Nutzer</th>
+                        <th>Datum</th>
+                        <th>Typ</th>
+                        <th>Status</th>
+                        <th>Score</th>
+                        <th>Credits</th>
+                        <th>Engines</th>
+                        <th>Aktion</th>
+                      </tr>
+                    </thead>
+                    <tbody id="adminAnalysesBody"></tbody>
+                  </table>
+                </div>
+                <div id="adminAnalysesEmpty" class="admin-empty" hidden>Keine Analysen gefunden.</div>
+                <div class="admin-pagination">
+                  <button class="ac-ghost" id="adminAnalysesPrev">Zurück</button>
+                  <div id="adminAnalysesPage" class="admin-page-label">1</div>
+                  <button class="ac-ghost" id="adminAnalysesNext">Weiter</button>
+                </div>
+              </section>
+
+              <section id="adminViewCredits" class="admin-view ac-hide">
+                <div class="admin-section-head">
+                  <div>
+                    <div class="admin-section-title">Credits</div>
+                    <div class="admin-section-sub">Buchungen, Anpassungen und Verlauf</div>
+                  </div>
+                  <div class="admin-section-actions">
+                    <button class="ac-ghost admin-refresh-btn" id="adminCreditsRefresh">
+                      <span class="admin-btn-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                          <path d="M21 12a9 9 0 1 1-2.6-6.4"/><polyline points="21 3 21 9 15 9"/>
+                        </svg>
+                      </span>
+                      <span>Aktualisieren</span>
+                    </button>
+                  </div>
+                </div>
+                <div class="admin-kpi-grid admin-kpi-grid-compact">
+                  <div class="admin-kpi-card">
+                    <div class="admin-kpi-label">Buchungen gesamt</div>
+                    <div class="admin-kpi-value" id="adminCreditsSummaryTotal">--</div>
+                  </div>
+                  <div class="admin-kpi-card">
+                    <div class="admin-kpi-label">Buchungen heute</div>
+                    <div class="admin-kpi-value" id="adminCreditsSummaryToday">--</div>
+                  </div>
+                  <div class="admin-kpi-card">
+                    <div class="admin-kpi-label">Credits verbraucht gesamt</div>
+                    <div class="admin-kpi-value" id="adminCreditsSpentTotal">--</div>
+                  </div>
+                  <div class="admin-kpi-card">
+                    <div class="admin-kpi-label">Credits verbraucht heute</div>
+                    <div class="admin-kpi-value" id="adminCreditsSpentToday">--</div>
+                  </div>
+                  <div class="admin-kpi-card">
+                    <div class="admin-kpi-label">Admin-Anpassungen gesamt</div>
+                    <div class="admin-kpi-value" id="adminCreditsAdjustTotal">--</div>
+                  </div>
+                  <div class="admin-kpi-card">
+                    <div class="admin-kpi-label">Admin-Anpassungen heute</div>
+                    <div class="admin-kpi-value" id="adminCreditsAdjustToday">--</div>
+                  </div>
+                </div>
+                <div class="admin-filters">
+                  <div class="admin-filter-row">
+                    <input id="adminCreditsUser" class="ac-input admin-input" type="text" placeholder="Nutzer-ID oder E-Mail" />
+                    <select id="adminCreditsKind" class="ac-input admin-input">
+                      <option value="">Typ: Alle</option>
+                      <option value="admin_adjust">Admin-Anpassung</option>
+                      <option value="charge">Verbrauch</option>
+                      <option value="grant">Gutschrift</option>
+                      <option value="reset">Reset</option>
+                    </select>
+                    <input id="adminCreditsQuery" class="ac-input admin-input" type="text" placeholder="Suche Notiz oder Analyse-ID" />
+                    <input id="adminCreditsFrom" class="ac-input admin-input" type="date" />
+                    <input id="adminCreditsTo" class="ac-input admin-input" type="date" />
+                    <button class="ac-secondary" id="adminCreditsApply">Anwenden</button>
+                    <button class="ac-ghost" id="adminCreditsReset">Zurücksetzen</button>
+                  </div>
+                </div>
+                <div class="admin-table-wrap">
+                  <table class="admin-table admin-table-sticky">
+                    <thead>
+                      <tr>
+                        <th>Datum</th>
+                        <th>Nutzer</th>
+                        <th>Typ</th>
+                        <th>Betrag</th>
+                        <th>Notiz</th>
+                        <th>Analyse</th>
+                        <th>Medium</th>
+                      </tr>
+                    </thead>
+                    <tbody id="adminCreditsBody"></tbody>
+                  </table>
+                </div>
+                <div id="adminCreditsEmpty" class="admin-empty" hidden>Keine Credit-Buchungen gefunden.</div>
+                <div class="admin-pagination">
+                  <button class="ac-ghost" id="adminCreditsPrev">Zurück</button>
+                  <div id="adminCreditsPage" class="admin-page-label">1</div>
+                  <button class="ac-ghost" id="adminCreditsNext">Weiter</button>
+                </div>
+              </section>
+
+              <section id="adminViewModeration" class="admin-view ac-hide">
+                <div class="admin-section-head">
+                  <div>
+                    <div class="admin-section-title">Moderation</div>
+                    <div class="admin-section-sub">Sperren und Auffälligkeiten</div>
+                  </div>
+                  <div class="admin-section-actions">
+                    <button class="ac-ghost admin-refresh-btn" id="adminModerationRefresh">
+                      <span class="admin-btn-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                          <path d="M21 12a9 9 0 1 1-2.6-6.4"/><polyline points="21 3 21 9 15 9"/>
+                        </svg>
+                      </span>
+                      <span>Aktualisieren</span>
+                    </button>
+                  </div>
+                </div>
+                <div class="admin-dashboard-grid">
+                  <div class="admin-card admin-card-wide">
+                    <div class="admin-card-head">
+                      <div>
+                        <div class="admin-card-title">Gesperrte Nutzer</div>
+                        <div class="admin-card-sub">Aktive Sperren im System</div>
+                      </div>
+                    </div>
+                    <div class="admin-table-wrap">
+                      <table class="admin-table admin-table-compact">
+                        <thead>
+                          <tr>
+                            <th>ID</th>
+                            <th>E-Mail</th>
+                            <th>Status</th>
+                            <th>Letzter Login</th>
+                            <th>Aktion</th>
+                          </tr>
+                        </thead>
+                        <tbody id="adminModerationUsersBody"></tbody>
+                      </table>
+                    </div>
+                    <div id="adminModerationUsersEmpty" class="admin-empty" hidden>Keine gesperrten Nutzer.</div>
+                    <div class="admin-pagination">
+                      <button class="ac-ghost" id="adminModerationPrev">Zurück</button>
+                      <div id="adminModerationPage" class="admin-page-label">1</div>
+                      <button class="ac-ghost" id="adminModerationNext">Weiter</button>
+                    </div>
+                  </div>
+                  <div class="admin-card">
+                    <div class="admin-card-head">
+                      <div>
+                        <div class="admin-card-title">Moderations-Events</div>
+                        <div class="admin-card-sub">Letzte Sperren & Änderungen</div>
+                      </div>
+                    </div>
+                    <div id="adminModerationEventsList" class="admin-list"></div>
+                  </div>
+                </div>
+              </section>
+
+              <section id="adminViewEngines" class="admin-view ac-hide">
+                <div class="admin-section-head">
+                  <div>
+                    <div class="admin-section-title">Engines</div>
+                    <div class="admin-section-sub">Status, Nutzung und Gesundheit</div>
+                  </div>
+                  <div class="admin-section-actions">
+                    <button class="ac-ghost admin-refresh-btn" id="adminEnginesRefresh">
+                      <span class="admin-btn-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                          <path d="M21 12a9 9 0 1 1-2.6-6.4"/><polyline points="21 3 21 9 15 9"/>
+                        </svg>
+                      </span>
+                      <span>Aktualisieren</span>
+                    </button>
+                  </div>
+                </div>
+                <div id="adminEnginesOverview" class="admin-engine-grid admin-engine-grid-large"></div>
+                <div id="adminEnginesOverviewEmpty" class="admin-empty" hidden>Keine Engine-Daten vorhanden.</div>
+                <div id="adminEnginesOverviewMeta" class="admin-subtle"></div>
+              </section>
+
+              <section id="adminViewLogs" class="admin-view ac-hide">
+                <div class="admin-section-head">
+                  <div>
+                    <div class="admin-section-title">Logs</div>
+                    <div class="admin-section-sub">Admin-Events und Systemfehler</div>
+                  </div>
+                  <div class="admin-section-actions">
+                    <button class="ac-ghost admin-refresh-btn" id="adminLogsRefresh">
+                      <span class="admin-btn-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                          <path d="M21 12a9 9 0 1 1-2.6-6.4"/><polyline points="21 3 21 9 15 9"/>
+                        </svg>
+                      </span>
+                      <span>Aktualisieren</span>
+                    </button>
+                  </div>
+                </div>
+                <div class="admin-segment">
+                  <button class="admin-segment-btn is-active" type="button" data-logs-segment="all">Alle</button>
+                  <button class="admin-segment-btn" type="button" data-logs-segment="admin">Admin</button>
+                  <button class="admin-segment-btn" type="button" data-logs-segment="error">Fehler</button>
+                  <button class="admin-segment-btn" type="button" data-logs-segment="system">System</button>
+                </div>
+                <div class="admin-filters">
+                  <div class="admin-filter-row">
+                    <select id="adminLogsLevel" class="ac-input admin-input">
+                      <option value="">Level: Alle</option>
+                      <option value="info">Info</option>
+                      <option value="warning">Warnung</option>
+                      <option value="error">Fehler</option>
+                    </select>
+                    <input id="adminLogsEvent" class="ac-input admin-input" type="text" placeholder="Event" />
+                    <input id="adminLogsQuery" class="ac-input admin-input" type="text" placeholder="Suche" />
+                    <input id="adminLogsFrom" class="ac-input admin-input" type="date" />
+                    <input id="adminLogsTo" class="ac-input admin-input" type="date" />
+                    <button class="ac-secondary" id="adminLogsApply">Anwenden</button>
+                    <button class="ac-ghost" id="adminLogsReset">Zurücksetzen</button>
+                  </div>
+                </div>
+                <div class="admin-table-wrap">
+                  <table class="admin-table admin-table-sticky">
+                    <thead>
+                      <tr>
+                        <th>Zeit</th>
+                        <th>Level</th>
+                        <th>Event</th>
+                        <th>Meta</th>
+                        <th>Aktion</th>
+                      </tr>
+                    </thead>
+                    <tbody id="adminLogsBody"></tbody>
+                  </table>
+                </div>
+                <div id="adminLogsEmpty" class="admin-empty" hidden>Keine Logs gefunden.</div>
+                <div class="admin-pagination">
+                  <button class="ac-ghost" id="adminLogsPrev">Zurück</button>
+                  <div id="adminLogsPage" class="admin-page-label">1</div>
+                  <button class="ac-ghost" id="adminLogsNext">Weiter</button>
+                </div>
+              </section>
+
+              <section id="adminViewSystem" class="admin-view ac-hide">
+                <div class="admin-section-head">
+                  <div>
+                    <div class="admin-section-title">System</div>
+                    <div class="admin-section-sub">Konfiguration und Infrastruktur</div>
+                  </div>
+                  <div class="admin-section-actions">
+                    <button class="ac-ghost admin-refresh-btn" id="adminSystemRefresh">
+                      <span class="admin-btn-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                          <path d="M21 12a9 9 0 1 1-2.6-6.4"/><polyline points="21 3 21 9 15 9"/>
+                        </svg>
+                      </span>
+                      <span>Aktualisieren</span>
+                    </button>
+                  </div>
+                </div>
+                <div id="adminSystemBody" class="admin-system-grid"></div>
+              </section>
+            </div>
+          </div>
+        </div>
+
+        <div id="adminDrawerBackdrop" class="admin-drawer-backdrop" hidden></div>
+        <aside id="adminDrawer" class="admin-drawer" hidden aria-hidden="true" role="dialog" aria-modal="true">
+          <div class="admin-drawer-panel">
+            <div class="admin-drawer-head">
+              <div>
+                <div class="admin-drawer-title" id="adminDrawerTitle">Admin</div>
+                <div class="admin-drawer-sub" id="adminDrawerSubtitle"></div>
+              </div>
+              <button type="button" class="ac-icon-btn" id="adminDrawerClose" aria-label="Schließen">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+              </button>
+            </div>
+            <div class="admin-drawer-body" id="adminDrawerBody"></div>
+            <div class="admin-drawer-actions" id="adminDrawerActions"></div>
+          </div>
+        </aside>
+
+        <div id="adminModalBackdrop" class="admin-modal-backdrop" hidden></div>
+        <div id="adminModal" class="admin-modal" hidden role="dialog" aria-modal="true" aria-hidden="true">
+          <div class="admin-modal-card">
+            <div class="admin-modal-head">
+              <div class="admin-modal-title" id="adminModalTitle">Admin</div>
+              <button type="button" class="ac-icon-btn" id="adminModalClose" aria-label="Schließen">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+              </button>
+            </div>
+            <div class="admin-modal-body" id="adminModalBody"></div>
+            <div class="admin-modal-actions" id="adminModalActions"></div>
           </div>
         </div>
       </section>
@@ -877,7 +1441,7 @@
         <div class="ac-container">
           <div class="ac-page-title" data-i18n="rate.title">App bewerten</div>
           <div class="ac-card">
-            <p data-i18n="rate.text">SoBald verfuegbar</p>
+            <p data-i18n="rate.text">Sobald verfügbar</p>
             <button id="btnRate" class="ac-primary" data-i18n="rate.cta">Zur Bewertung</button>
           </div>
         </div>
@@ -919,12 +1483,12 @@
 
   <!-- Bottom Navigation (nur Mobile) -->
   <nav class="ac-bottom">
-    <button id="navStart" class="ac-nav-btn ac-active" aria-label="Start">
-      <!-- home (neues Icon, outline) -->
+    <button id="navStart" class="ac-nav-btn ac-active" aria-label="Analyse">
+      <!-- spark -->
       <svg class="ac-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M3 9l9-7 9 7"/><path d="M9 22V12h6v10"/>
+        <path d="M12 3l1.8 4.8L19 10l-5.2 2.2L12 17l-1.8-4.8L5 10l5.2-2.2L12 3z"/>
       </svg>
-      <span data-i18n="nav.home">Startseite</span>
+      <span>Analyse</span>
     </button>
     <button id="navHistory" class="ac-nav-btn" aria-label="Verlauf">
       <!-- clock (outline) -->
@@ -932,6 +1496,13 @@
         <circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>
       </svg>
       <span data-i18n="nav.history">Verlauf</span>
+    </button>
+    <button id="navProfile" class="ac-nav-btn" aria-label="Account">
+      <!-- user -->
+      <svg class="ac-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M20 21a8 8 0 10-16 0"/><circle cx="12" cy="7" r="4"/>
+      </svg>
+      <span>Account</span>
     </button>
   </nav>
 
@@ -943,15 +1514,15 @@
         <div class="ac-subtle" data-i18n="footer.tagline">Vertrauen zurück ins Internet.</div>
       </div>
       <div class="ac-footer-links">
-        <a href="#" data-action="open:legal:impressum">Impressum</a>
-        <a href="#" data-action="open:legal:privacy">Datenschutz</a>
-        <a href="#" data-action="open:legal:tac">AGB</a>
-        <a href="#" data-action="open:affiliate">Affiliate</a>
+        <a href="/legal?section=impressum" data-link="/legal?section=impressum">Impressum</a>
+        <a href="/legal?section=privacy" data-link="/legal?section=privacy">Datenschutz</a>
+        <a href="/legal?section=tac" data-link="/legal?section=tac">AGB</a>
+        <a href="/affiliate" data-link="/affiliate">Affiliate</a>
       </div>
     </div>
   </footer>
 
-  <script type="module" src="/main.js"></script>
+  <script type="module" src="/main.js?v=20260305_2"></script>
 </body>
 </html>
 

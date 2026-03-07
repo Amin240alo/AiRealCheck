@@ -1,4 +1,7 @@
-from flask import Blueprint, request, jsonify
+import json
+import os
+
+from flask import Blueprint, request, jsonify, g
 from sqlalchemy import desc
 
 from Backend.db import get_session
@@ -7,6 +10,17 @@ from Backend.middleware import require_verified_email, _error
 
 
 bp_analyses = Blueprint("analyses", __name__, url_prefix="/analyses")
+
+
+def _safe_json(raw):
+    if raw is None:
+        return None
+    if isinstance(raw, (dict, list)):
+        return raw
+    try:
+        return json.loads(raw)
+    except Exception:
+        return None
 
 
 @bp_analyses.get("")
@@ -63,6 +77,9 @@ def get_analysis(analysis_id: str):
             "created_at": (row.created_at.isoformat() + "Z") if row.created_at else None,
             "finished_at": (row.finished_at.isoformat() + "Z") if row.finished_at else None,
         }
+        debug_raw = os.getenv("AIREALCHECK_DEBUG_RAW", "false").lower() in {"1", "true", "yes"}
+        if debug_raw and bool(getattr(g, "current_user_is_admin", False)):
+            payload["raw_result_json"] = _safe_json(row.raw_result_json)
         return jsonify({"ok": True, "analysis": payload})
     finally:
         db.close()

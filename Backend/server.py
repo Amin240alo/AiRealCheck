@@ -12,6 +12,8 @@ import subprocess
 import time
 import uuid
 from typing import Tuple
+
+from sqlalchemy import inspect, text
 from dotenv import load_dotenv, find_dotenv
 
 _DOTENV_PATH = find_dotenv(".env", usecwd=True)
@@ -82,6 +84,7 @@ _log_env_summary()
 
 
 from Backend.ensemble import run_ensemble, build_standard_result, run_audio_ensemble
+from Backend.public_result import build_public_result_v1, is_public_result
 from Backend.engines.video_forensics_engine import run_video_forensics, log_ffmpeg_diagnostics
 from Backend.engines.video_frame_detectors_engine import run_video_frame_detectors
 from Backend.engines.reality_defender_video_engine import analyze_reality_defender_video
@@ -92,7 +95,7 @@ from Backend.video_url_fetcher import fetch_video_from_url, VideoUrlError
 from Backend.video_validation import validate_video_input
 from Backend.engines.engine_utils import make_engine_result, safe_engine_call
 
-from Backend.db import init_db, get_session
+from Backend.db import init_db, get_session, using_sqlite, engine
 
 from Backend.models import Base, User, Analysis
 from Backend.history import bp_history, record_history_entry
@@ -228,9 +231,71 @@ _load_cache()
 
 
 
+# Ensure analyses table has raw_result_json and backfill public_result_v1.
+def _ensure_analysis_schema():
+    try:
+        inspector = inspect(engine)
+        if "analyses" not in inspector.get_table_names():
+            return
+        columns = {col.get("name") for col in inspector.get_columns("analyses")}
+        if "raw_result_json" not in columns:
+            stmt = "ALTER TABLE analyses ADD COLUMN raw_result_json TEXT"
+            if not using_sqlite():
+                stmt = "ALTER TABLE analyses ADD COLUMN IF NOT EXISTS raw_result_json TEXT"
+            with engine.begin() as conn:
+                conn.execute(text(stmt))
+    except Exception as exc:
+        print(f"[schema] raw_result_json ensure failed: {type(exc).__name__}")
+        return
+
+    db = get_session()
+    try:
+        rows = db.query(Analysis).filter(Analysis.raw_result_json.is_(None)).all()
+        if not rows:
+            return
+        for row in rows:
+            raw_payload = row.result_json
+            if raw_payload is None:
+                row.raw_result_json = None
+                continue
+            public_candidate = raw_payload
+            if isinstance(raw_payload, str):
+                try:
+                    parsed = json.loads(raw_payload)
+                except Exception:
+                    parsed = None
+                if isinstance(parsed, dict):
+                    public_candidate = parsed
+            if isinstance(public_candidate, dict) and is_public_result(public_candidate):
+                continue
+            try:
+                raw_text = (
+                    raw_payload
+                    if isinstance(raw_payload, str)
+                    else json.dumps(raw_payload, ensure_ascii=False)
+                )
+            except Exception:
+                raw_text = None
+            row.raw_result_json = raw_text
+            public_payload = build_public_result_v1(
+                raw_payload,
+                analysis_id=row.id,
+                media_type=row.media_type,
+                created_at=row.created_at,
+            )
+            row.result_json = public_payload
+        db.commit()
+        print(f"[schema] backfilled public_result_v1 rows={len(rows)}")
+    except Exception as exc:
+        db.rollback()
+        print(f"[schema] backfill failed: {type(exc).__name__}")
+    finally:
+        db.close()
+
 # Initialize database tables
 
 init_db(Base)
+_ensure_analysis_schema()
 
 
 
@@ -704,6 +769,7 @@ def _finalize_analysis(
     analysis_id: str,
     status: str,
     result_json: dict = None,
+    raw_result_json=None,
     final_score_ai01=None,
     cost_credits=None,
 ):
@@ -714,6 +780,15 @@ def _finalize_analysis(
             return
         row.status = status
         row.result_json = result_json
+        if raw_result_json is not None:
+            try:
+                row.raw_result_json = (
+                    raw_result_json
+                    if isinstance(raw_result_json, str)
+                    else json.dumps(raw_result_json, ensure_ascii=False)
+                )
+            except Exception:
+                row.raw_result_json = None
         row.final_score_ai01 = final_score_ai01
         row.cost_credits = cost_credits
         row.finished_at = dt.datetime.utcnow()
@@ -850,30 +925,55 @@ def _run_analysis_path(file_path, filename, media_type="image", user_ctx=None, c
                 "analysis_id": analysis_id,
             }
             if analysis_id:
-                _finalize_analysis(
-                    analysis_id,
-                    "failed",
-                    result_json=error_payload,
-                    final_score_ai01=None,
-                    cost_credits=cost_credits,
-                )
+                _finalize_failure(error_payload)
             return False, error_payload
         return True, None
 
     def _finalize_failure(payload):
+        public_payload = build_public_result_v1(
+            payload,
+            analysis_id=analysis_id,
+            media_type=media_type,
+            created_at=created_at_iso,
+        )
         if user_ctx and analysis_id:
             _finalize_analysis(
                 analysis_id,
                 "failed",
-                result_json=payload,
+                result_json=public_payload,
+                raw_result_json=payload,
                 final_score_ai01=None,
                 cost_credits=cost_credits,
             )
-        return payload
+        return public_payload
 
-    def _finalize_success(payload, source=None):
+    def _extract_final_score_ai01(raw_payload, public_payload):
+        value = None
+        if isinstance(raw_payload, dict):
+            value = raw_payload.get("final_ai")
+            if value is None:
+                value = raw_payload.get("ai_likelihood")
+        if value is None and isinstance(public_payload, dict):
+            ai_percent = public_payload.get("summary", {}).get("ai_percent")
+            if isinstance(ai_percent, (int, float)):
+                value = float(ai_percent) / 100.0
+        try:
+            return float(value) if value is not None else None
+        except Exception:
+            return None
+
+    def _finalize_success(raw_payload, source=None, public_payload=None):
         nonlocal credit_spent, credits_left
-        final_score = payload.get("final_ai")
+        if not isinstance(raw_payload, dict):
+            raw_payload = {}
+        if public_payload is None:
+            public_payload = build_public_result_v1(
+                raw_payload,
+                analysis_id=analysis_id,
+                media_type=media_type,
+                created_at=created_at_iso,
+            )
+        final_score = _extract_final_score_ai01(raw_payload, public_payload)
         if user_ctx and charge_credit and cost_credits > 0:
             try:
                 db = get_session()
@@ -899,13 +999,7 @@ def _run_analysis_path(file_path, filename, media_type="image", user_ctx=None, c
                     "analysis_id": analysis_id,
                 }
                 if user_ctx and analysis_id:
-                    _finalize_analysis(
-                        analysis_id,
-                        "failed",
-                        result_json=error_payload,
-                        final_score_ai01=None,
-                        cost_credits=cost_credits,
-                    )
+                    _finalize_failure(error_payload)
                 return error_payload, 409
         elif user_ctx and charge_credit:
             db = get_session()
@@ -919,11 +1013,12 @@ def _run_analysis_path(file_path, filename, media_type="image", user_ctx=None, c
             _finalize_analysis(
                 analysis_id,
                 "done",
-                result_json=payload,
+                result_json=public_payload,
+                raw_result_json=raw_payload,
                 final_score_ai01=final_score,
                 cost_credits=cost_credits,
             )
-        if user_ctx and analysis_id and isinstance(payload, dict):
+        if user_ctx and analysis_id and isinstance(public_payload, dict):
             should_record = bool(cost_credits <= 0 or credit_spent)
             if should_record:
                 credits_charged = int(cost_credits or 0) if credit_spent else 0
@@ -933,7 +1028,7 @@ def _run_analysis_path(file_path, filename, media_type="image", user_ctx=None, c
                     media_type=media_type,
                     title=filename,
                     status="success",
-                    payload=payload,
+                    payload=public_payload,
                     credits_charged=credits_charged,
                     created_at=created_at,
                     file_ref=None,
@@ -947,15 +1042,16 @@ def _run_analysis_path(file_path, filename, media_type="image", user_ctx=None, c
                     user_id,
                 )
         if user_ctx:
-            usage_source = source or payload.get("primary_source")
+            usage_source = source or raw_payload.get("primary_source") or "analysis"
         else:
             usage_source = "guest"
-        payload["usage"] = {
+        response_payload = dict(public_payload) if isinstance(public_payload, dict) else {}
+        response_payload["usage"] = {
             "source": usage_source,
             "credit_spent": bool(credit_spent),
             "credits_left": credits_left if user_ctx else None,
         }
-        return payload
+        return response_payload
 
     try:
 
@@ -977,8 +1073,9 @@ def _run_analysis_path(file_path, filename, media_type="image", user_ctx=None, c
             if use_cache and (not force) and file_hash in _RESULT_CACHE:
 
                 cached = dict(_RESULT_CACHE[file_hash])
+                cached_is_public = is_public_result(cached)
 
-                if "ai_likelihood" not in cached or "engine_results" not in cached:
+                if (not cached_is_public) and ("ai_likelihood" not in cached or "engine_results" not in cached):
 
                     _RESULT_CACHE.pop(file_hash, None)
 
@@ -997,9 +1094,21 @@ def _run_analysis_path(file_path, filename, media_type="image", user_ctx=None, c
                         cached["timestamps"] = {"created_at": created_at_iso}
 
                     _attach_media_type_detected(cached, media_type_detected, detection_meta)
+                    public_cached = cached if cached_is_public else build_public_result_v1(
+                        cached,
+                        analysis_id=analysis_id,
+                        media_type=media_type,
+                        created_at=created_at_iso,
+                    )
+                    if isinstance(public_cached.get("meta"), dict):
+                        public_cached["meta"]["analysis_id"] = analysis_id
+                        public_cached["meta"]["created_at"] = created_at_iso
+                        if not public_cached["meta"].get("media_type"):
+                            public_cached["meta"]["media_type"] = media_type
                     cached = _finalize_success(
                         cached,
                         source=cached.get("primary_source") or cached.get("source"),
+                        public_payload=public_cached,
                     )
                     if isinstance(cached, tuple):
                         payload, status = cached
@@ -1325,7 +1434,8 @@ def _run_analysis_path(file_path, filename, media_type="image", user_ctx=None, c
 
 
 
-        response_payload = _finalize_success(response_payload, source=source_used)
+        raw_payload = response_payload
+        response_payload = _finalize_success(raw_payload, source=source_used)
         if isinstance(response_payload, tuple):
             payload, status = response_payload
             return jsonify(payload), status
@@ -1338,7 +1448,7 @@ def _run_analysis_path(file_path, filename, media_type="image", user_ctx=None, c
 
             if use_cache:
 
-                _RESULT_CACHE[file_hash] = response_payload
+                _RESULT_CACHE[file_hash] = raw_payload
 
                 _save_cache()
 

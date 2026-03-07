@@ -7,8 +7,11 @@ os.environ["AIREALCHECK_JWT_SECRET"] = "smoketestsecret"
 os.environ["AIREALCHECK_FREE_CREDITS"] = "50"
 os.environ["AIREALCHECK_IMAGE_FALLBACK"] = "true"
 os.environ["AIREALCHECK_CACHE"] = "false"
-os.environ.setdefault("SMTP_HOST", "localhost")
-os.environ.setdefault("SMTP_PORT", "1025")
+os.environ["AIREALCHECK_ALLOW_ADMIN"] = "true"
+os.environ["AIREALCHECK_EMAIL_DEV_CONSOLE"] = "true"
+if not (os.getenv("AIREALCHECK_EMAIL_DEV_CONSOLE") or "").strip().lower() in {"1", "true", "yes", "on"}:
+    os.environ.setdefault("SMTP_HOST", "localhost")
+    os.environ.setdefault("SMTP_PORT", "1025")
 os.environ.setdefault("SMTP_USE_TLS", "false")
 
 from . import server
@@ -50,6 +53,24 @@ if not token:
 
 hdr = {"Authorization": "Bearer " + token} if token else {}
 
+session = get_session()
+try:
+    user = session.query(User).filter(User.email == email).first()
+    if user:
+        user.role = "user"
+        user.is_banned = False
+        session.add(user)
+        session.commit()
+finally:
+    session.close()
+
+print("--- Admin stats (non-admin)")
+r = client.get("/admin/stats", headers=hdr)
+print("status", r.status_code, "body", r.json)
+if r.status_code != 403:
+    print("expected 403 for non-admin; aborting")
+    sys.exit(1)
+
 # verify user + reset credits for deterministic test run
 session = get_session()
 user_id = None
@@ -58,6 +79,8 @@ try:
     if user:
         user_id = user.id
         user.email_verified = True
+        user.role = "admin"
+        user.is_banned = False
         session.add(user)
         session.commit()
         target = int(os.getenv("AIREALCHECK_FREE_CREDITS", "50"))
@@ -69,6 +92,30 @@ finally:
     session.close()
 if not user_id:
     print("user lookup failed; aborting")
+    sys.exit(1)
+
+# ensure credits_used > 0 for admin validation tests
+session = get_session()
+try:
+    try:
+        charge_credits_on_success(
+            session,
+            user_id,
+            1,
+            "image",
+            "smoke-admin",
+            "smoke-admin",
+        )
+    except InsufficientCredits:
+        pass
+finally:
+    session.close()
+
+print("--- Admin stats (admin)")
+r = client.get("/admin/stats", headers=hdr)
+print("status", r.status_code, "body", r.json)
+if r.status_code != 200:
+    print("admin stats failed; aborting")
     sys.exit(1)
 
 print("--- Balance 1")
@@ -121,6 +168,24 @@ print("status", rr.status_code, "ok", rr.json and rr.json.get("ok"), "usage", rr
 print("--- Balance after retry")
 r = client.get("/api/credits", headers=hdr)
 print("status", r.status_code, "body", r.json)
+
+print("--- Admin credits validation")
+used = 0
+if r.is_json and r.json:
+    try:
+        used = int(r.json.get("credits_used") or 0)
+    except Exception:
+        used = 0
+target = max(0, used - 1)
+resp = client.post(
+    f"/admin/users/{user_id}/credits",
+    json={"mode": "set_total", "amount": target, "reason": "smoke_validation"},
+    headers=hdr,
+)
+print("status", resp.status_code, "body", resp.json if resp.is_json else None)
+if used > 0 and resp.status_code != 400:
+    print("expected 400 when setting credits below used; aborting")
+    sys.exit(1)
 
 print("--- Analyze failure (missing file)")
 fail = client.post("/analyze", headers=hdr, data={}, content_type="multipart/form-data")
@@ -176,3 +241,29 @@ print("concurrent_results", results)
 print("--- Balance final")
 r = client.get("/api/credits", headers=hdr)
 print("status", r.status_code, "body", r.json)
+
+print("--- Ban user (block analyze)")
+session = get_session()
+try:
+    user = session.query(User).filter(User.email == email).first()
+    if user:
+        user.is_banned = True
+        session.add(user)
+        session.commit()
+finally:
+    session.close()
+
+img_block = Image.new("RGB", (32, 32), color=(80, 100, 120))
+buf_block = io.BytesIO()
+img_block.save(buf_block, format="JPEG")
+buf_block.seek(0)
+blocked = client.post(
+    "/analyze",
+    headers=hdr,
+    data={"file": (buf_block, "blocked.jpg")},
+    content_type="multipart/form-data",
+)
+print("status", blocked.status_code, "body", blocked.json if blocked.is_json else None)
+if blocked.status_code != 403:
+    print("expected 403 for banned user; aborting")
+    sys.exit(1)

@@ -4,6 +4,7 @@ console.log("I AM THE REAL ANALYZE.JS");
 console.log("REAL FILE PATH:", import.meta?.url || document.currentScript?.src);
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => Array.from(document.querySelectorAll(sel));
+const DEBUG_PROGRESS_RENDER = window?.AIREALCHECK_DEBUG_PROGRESS === true;
 
 const idMap = { image: '#imageInput', video: '#videoInput', audio: '#audioInput' };
 const urlIdMap = { image: '#imageUrl', video: '#videoUrl', audio: '#audioUrl' };
@@ -117,6 +118,40 @@ function renderResultCard(data, expertMode = false) {
     </div>`;
 }
 
+function ensureAnalysisStatus() {
+  if (document.querySelector('#analysisStatus')) return;
+  const area = document.querySelector('#analysisArea');
+  if (!area || !area.parentNode) return;
+  const status = document.createElement('div');
+  status.id = 'analysisStatus';
+  status.className = 'ac-analyze-status';
+  status.setAttribute('aria-live', 'polite');
+  status.setAttribute('aria-atomic', 'true');
+  status.hidden = true;
+  area.parentNode.insertBefore(status, area);
+}
+
+function renderInlineLoading(
+  area,
+  { title = 'Analyse l\u00e4uft\u2026', message = 'Bitte warten' } = {},
+) {
+  if (!area) return;
+  if (DEBUG_PROGRESS_RENDER) {
+    console.log('RENDER_LOADING_NEW_PROGRESS');
+  }
+  area.innerHTML = `
+    <div class="ac-status-card is-info">
+      <div class="ac-status-title">${title}</div>
+      ${message ? `<div class="ac-status-sub">${message}</div>` : ''}
+      <div class="ac-progress" role="progressbar" aria-label="${title}" aria-busy="true">
+        <div class="ac-progress-track">
+          <div class="ac-progress-bar"></div>
+        </div>
+      </div>
+    </div>`;
+  area.classList.remove('is-hidden');
+}
+
 
 function getAnalyzeTimeoutMs() {
   const fromWindow = Number(
@@ -143,6 +178,7 @@ export function initAnalyze(auth, helpers) {
   authRef = auth;
   helpersRef = helpers;
   setApiBase(helpers?.apiBase);
+  ensureAnalysisStatus();
 
   const fileInputs = Object.values(idMap)
     .map((sel) => document.querySelector(sel))
@@ -303,15 +339,7 @@ async function analyzeFile(mediaType) {
     return;
   }
 
-  // Lade-Card
-  if (area) {
-    area.innerHTML = `
-      <div class="ac-card">
-        <b>Analyse laeuft...</b>
-        <p class="ac-subtle">Bitte warten</p>
-        <progress max="100" value="30" style="width:100%;height:10px"></progress>
-      </div>`;
-  }
+  renderInlineLoading(area);
 
   const formData = new FormData();
   formData.append('file', file);
@@ -501,14 +529,7 @@ async function analyzeLink(mediaType) {
     return;
   }
 
-  if (area) {
-    area.innerHTML = `
-      <div class="ac-card">
-        <b>Analyse laeuft...</b>
-        <p class="ac-subtle">Bitte warten</p>
-        <progress max="100" value="30" style="width:100%;height:10px"></progress>
-      </div>`;
-  }
+  renderInlineLoading(area);
 
   const controller = new AbortController();
   const timeoutHandle = setTimeout(() => controller.abort(), getAnalyzeTimeoutMs());

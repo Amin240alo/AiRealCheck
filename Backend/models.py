@@ -26,6 +26,7 @@ class User(Base):
     email_verified = Column(Boolean, default=False, nullable=False)
     password_hash = Column(String(255), nullable=False)
     role = Column(String(20), default="user", nullable=False)
+    is_banned = Column(Boolean, default=False, nullable=False, server_default=text("false"))
     is_premium = Column(Boolean, default=False, nullable=False)
     plan_type = Column(String(20), nullable=False, default="free", server_default=text("'free'"))
     subscription_active = Column(Boolean, default=False, nullable=False, server_default=text("false"))
@@ -33,7 +34,12 @@ class User(Base):
     credits_used = Column(Integer, default=0, nullable=False, server_default=text("0"))
     last_credit_reset = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-    updated_at = Column(DateTime(timezone=True), onupdate=func.now(), nullable=True)
+    updated_at = Column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
     last_login = Column(DateTime(timezone=True), nullable=True)
 
     credit_ledger = relationship("CreditLedger", back_populates="user", lazy="select")
@@ -125,6 +131,7 @@ class Analysis(Base):
     status = Column(String(20), nullable=False)
     media_type = Column(String(20), nullable=True)
     result_json = Column(JSON, nullable=True)
+    raw_result_json = Column(Text, nullable=True)
     final_score_ai01 = Column(Float, nullable=True)
     cost_credits = Column(Integer, nullable=True)
     charge_idempotency_key = Column(String(64), unique=True, nullable=True)
@@ -203,3 +210,13 @@ class RefreshToken(Base):
     ip_address = Column(String(64), nullable=True)
 
     user = relationship("User", back_populates="refresh_tokens")
+
+
+class AdminLog(Base):
+    __tablename__ = "admin_logs"
+
+    id = Column(Integer, primary_key=True)
+    ts = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    level = Column(String(20), nullable=False, server_default=text("'info'"))
+    event = Column(String(80), nullable=False)
+    meta_json = Column(JSON, nullable=True)

@@ -53,7 +53,34 @@ def _normalize_percent(value, decimals=0):
     return round(v, decimals)
 
 
+def _public_summary(payload):
+    if not isinstance(payload, dict):
+        return None
+    meta = payload.get("meta")
+    if not isinstance(meta, dict):
+        return None
+    if meta.get("schema_version") != "public_result_v1":
+        return None
+    summary = payload.get("summary")
+    return summary if isinstance(summary, dict) else None
+
+
+def _public_details(payload):
+    if not isinstance(payload, dict):
+        return None
+    meta = payload.get("meta")
+    if not isinstance(meta, dict):
+        return None
+    if meta.get("schema_version") != "public_result_v1":
+        return None
+    details = payload.get("details")
+    return details if isinstance(details, dict) else None
+
+
 def _extract_final_score(payload):
+    summary = _public_summary(payload)
+    if summary is not None:
+        return _normalize_percent(summary.get("ai_percent"), decimals=0)
     if not isinstance(payload, dict):
         return None
     raw = payload.get("ai_likelihood")
@@ -63,6 +90,11 @@ def _extract_final_score(payload):
 
 
 def _extract_verdict_label(payload):
+    summary = _public_summary(payload)
+    if summary is not None:
+        label = summary.get("label_de")
+        if isinstance(label, str) and label.strip():
+            return label.strip()
     if not isinstance(payload, dict):
         return None
     label = payload.get("label_de") or payload.get("verdict_label")
@@ -79,6 +111,27 @@ def _extract_verdict_label(payload):
 
 
 def _extract_engine_breakdown(payload):
+    details = _public_details(payload)
+    if details is not None:
+        raw = details.get("engines")
+        if not isinstance(raw, list):
+            return None
+        breakdown = {}
+        for entry in raw:
+            if not isinstance(entry, dict):
+                continue
+            engine = (entry.get("engine") or "").strip()
+            if not engine:
+                continue
+            score_value = entry.get("ai_percent")
+            if score_value is None:
+                ai01 = entry.get("ai01")
+                score_value = ai01 * 100.0 if isinstance(ai01, (int, float)) else None
+            score = _normalize_percent(score_value, decimals=0)
+            if score is None:
+                continue
+            breakdown[engine] = score
+        return breakdown or None
     if not isinstance(payload, dict):
         return None
     raw = payload.get("engine_results")
@@ -111,6 +164,9 @@ def _extract_engine_breakdown(payload):
 
 
 def _extract_result_payload(payload):
+    summary = _public_summary(payload)
+    if summary is not None:
+        return summary
     if not isinstance(payload, dict):
         return None
     keys = [

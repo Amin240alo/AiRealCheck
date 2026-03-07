@@ -1,6 +1,10 @@
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => Array.from(document.querySelectorAll(sel));
 
+console.log('UI VERSION:', '20260305_1');
+
+const DEBUG_PROGRESS_RENDER = window?.AIREALCHECK_DEBUG_PROGRESS === true;
+
 const pages = {
   start: $('#page-start'),
   history: $('#page-history'),
@@ -23,6 +27,7 @@ const pages = {
 const header = $('#mainHeader');
 const headerAuth = $('#headerAuth');
 const headerBack = $('#headerBack');
+const pageIndicator = $('#pageIndicator');
 const creditsBox = $('#creditsBox');
 const creditsLabel = $('#creditsText');
 const creditsValue = $('#creditsValue');
@@ -48,12 +53,16 @@ const sidebarOverlay = $('#overlay');
 const hamburger = $('#hamburger');
 const navStart = $('#navStart');
 const navHistory = $('#navHistory');
+const navProfile = $('#navProfile');
 const sideAdmin = $('#sideAdmin');
+const sideAdminSection = $('#sideAdminSection');
 const brandHome = $('#brandHome');
 const menuList = $('#menuList');
 const emailVerifyBanner = $('#emailVerifyBanner');
 const analysisGateNotice = $('#analysisGateNotice');
 const analysisTool = $('#analysisTool');
+let analysisStatus = $('#analysisStatus');
+let analysisArea = $('#analysisArea');
 const resendVerifyBtn = $('#resendVerifyBtn');
 const resendVerifyStatus = $('#resendVerifyStatus');
 const profileVerifyBanner = $('#profileVerifyBanner');
@@ -83,6 +92,13 @@ let activeHistoryPayload = null;
 let historyFilterValue = 'all';
 let historyFilterBound = false;
 let canCopyDetails = false;
+let analyzeUiBound = false;
+const analyzePreviewUrls = new Map();
+let activeAnalyzeButton = null;
+let reportCopyBound = false;
+const lastResultsByKind = { image: null, video: null, audio: null };
+let currentAnalyzeKind = null;
+const lastPreviewByKind = { image: null, video: null, audio: null };
 
 const RETURN_TO_KEY = 'airealcheck_return_to';
 const fmtDT = new Intl.DateTimeFormat('de-DE', { dateStyle: 'medium', timeStyle: 'short' });
@@ -101,6 +117,89 @@ const PUBLIC_ROUTES = new Set([...AUTH_ROUTES, '/legal']);
 
 function normalizePath(value) {
   return String(value || '').split('?')[0];
+}
+
+function getActiveMediaKind() {
+  if ($('#btnVideo')?.classList.contains('ac-active')) return 'video';
+  if ($('#btnAudio')?.classList.contains('ac-active')) return 'audio';
+  if ($('#btnImage')?.classList.contains('ac-active')) return 'image';
+  return null;
+}
+
+function pageLabelFor(name) {
+  const labels = {
+    start: 'Analyse',
+    history: 'Verlauf',
+    profile: 'Account',
+    settings: 'Einstellungen',
+    premium: 'Premium',
+    affiliate: 'Affiliate',
+    rate: 'Bewertung',
+    admin: 'Admin',
+    legal: 'Rechtliches',
+  };
+  return labels[name] || 'Analyse';
+}
+
+function setPageIndicator(name) {
+  if (!pageIndicator) return;
+  pageIndicator.textContent = pageLabelFor(name);
+}
+
+function setActiveNav(name) {
+  const keyMap = {
+    start: 'analysis',
+    history: 'history',
+    profile: 'profile',
+    settings: 'settings',
+    premium: 'premium',
+    affiliate: 'affiliate',
+    rate: 'rate',
+    admin: 'admin',
+  };
+  const groupMap = {
+    start: 'analysis',
+    history: 'history',
+    profile: 'account',
+    settings: 'account',
+    premium: 'account',
+    affiliate: 'account',
+    rate: 'account',
+    admin: 'admin',
+  };
+  const activeKey = keyMap[name] || 'analysis';
+  const activeGroup = groupMap[name] || 'analysis';
+  document.querySelectorAll('[data-nav]').forEach((el) => {
+    el.classList.toggle('is-active', el.dataset.nav === activeKey);
+  });
+  navStart?.classList.toggle('ac-active', activeGroup === 'analysis');
+  navHistory?.classList.toggle('ac-active', activeGroup === 'history');
+  navProfile?.classList.toggle('ac-active', activeGroup === 'account');
+}
+
+function updateQuickMediaButtons(kind = null) {
+  const active = kind || getActiveMediaKind();
+  document.querySelectorAll('.ac-quick-btn[data-media]').forEach((btn) => {
+    btn.classList.toggle('is-active', btn.dataset.media === active);
+  });
+}
+
+function activateMediaType(kind) {
+  if (!kind) return;
+  const map = {
+    image: '#btnImage',
+    video: '#btnVideo',
+    audio: '#btnAudio',
+  };
+  const btn = document.querySelector(map[kind]);
+  if (btn) btn.click();
+  updateQuickMediaButtons(kind);
+}
+
+function analysisAreaHasResult() {
+  if (!analysisArea) analysisArea = document.querySelector('#analysisArea');
+  if (!analysisArea) return false;
+  return !!analysisArea.querySelector('.ac-report-surface, .ac-result-card, .ac-result-error, .ac-card');
 }
 
 function isAuthRoute(path) {
@@ -123,20 +222,24 @@ export function showPage(name) {
   Object.values(pages).forEach((p) => p && p.classList.add('ac-hide'));
   const target = pages[name] || pages.start;
   if (target) target.classList.remove('ac-hide');
-  navStart?.classList.toggle('ac-active', name === 'start');
-  navHistory?.classList.toggle('ac-active', name === 'history');
+  setActiveNav(name);
+  setPageIndicator(name);
+  document.documentElement.classList.toggle('ac-admin-mode', name === 'admin');
+  if (name === 'start') updateQuickMediaButtons();
   if (name !== 'history') closeHistoryDrawer();
 }
 
 function updateHeaderUI(auth, path = currentRoute) {
   const loggedIn = auth?.isLoggedIn?.() === true;
   const authRoute = isAuthRoute(path);
+  document.documentElement.classList.toggle('ac-shell', loggedIn && !authRoute);
   if (header) header.classList.toggle('ac-header-simple', authRoute);
   if (headerBack) headerBack.classList.toggle('ac-hide', !authRoute);
   if (headerAuth) headerAuth.hidden = loggedIn || authRoute;
   if (hamburger) hamburger.hidden = !loggedIn || authRoute;
   if (creditsBox) creditsBox.hidden = !loggedIn || authRoute;
   if (profileTrigger) profileTrigger.hidden = !loggedIn || authRoute;
+  if (pageIndicator) pageIndicator.hidden = !loggedIn || authRoute;
   if (profileDropdown) {
     profileDropdown.hidden = !loggedIn || authRoute;
     if (!loggedIn || authRoute) closeProfileDropdown();
@@ -191,6 +294,13 @@ export function initRouter(auth) {
     '/verify-email': 'verify',
     '/forgot-password': 'forgot',
     '/reset-password': 'reset',
+    '/history': 'history',
+    '/profile': 'profile',
+    '/settings': 'settings',
+    '/premium': 'premium',
+    '/affiliate': 'affiliate',
+    '/rate': 'rate',
+    '/admin': 'admin',
     '/legal': 'legal',
   };
 
@@ -199,6 +309,10 @@ export function initRouter(auth) {
     setRouteClasses(safePath);
     if (!auth?.isLoggedIn?.() && !isPublicRoute(safePath)) {
       navigate('/login');
+      return;
+    }
+    if (safePath === '/admin' && auth?.isAdmin?.() !== true) {
+      navigate('/');
       return;
     }
     const page = routeMap[safePath] || 'start';
@@ -318,9 +432,9 @@ function formatPercent(value) {
 
 function formatConfidenceLabel(value) {
   const label = String(value || '').toLowerCase();
-  if (label === 'high') return 'Hoch';
-  if (label === 'medium') return 'Mittel';
-  if (label === 'low') return 'Niedrig';
+  if (label === 'high') return 'Sehr zuverlässige Bewertung';
+  if (label === 'medium') return 'Ausreichende Signale';
+  if (label === 'low') return 'Eingeschränkte Datengrundlage';
   return label ? label : 'Unbekannt';
 }
 
@@ -403,10 +517,26 @@ function normalizeEngineResults(engineResults) {
 
 const ENGINE_LABELS = {
   sightengine: 'Sightengine',
+  sightengine_video: 'Sightengine (Video)',
   reality_defender: 'Reality Defender',
+  reality_defender_video: 'Reality Defender (Video)',
+  reality_defender_audio: 'Reality Defender (Audio)',
   hive: 'Hive',
+  hive_video: 'Hive (Video)',
+  sensity_image: 'Sensity',
+  sensity_video: 'Sensity (Video)',
   xception: 'Xception (Local ML)',
-  audio_aasist: 'AASIST (Local ML)',
+  clip_detector: 'CLIP Detector',
+  c2pa: 'C2PA',
+  watermark: 'Watermark/Metadata',
+  forensics: 'Forensik',
+  video_forensics: 'Video-Forensik',
+  video_frame_detectors: 'Frame-Detektoren',
+  video_temporal: 'Video Temporal',
+  video_temporal_cnn: 'Video Temporal CNN',
+  audio_aasist: 'AASIST (Audio)',
+  audio_forensics: 'Audio-Forensik',
+  audio_prosody: 'Audio Prosodie',
 };
 
 const ENGINE_DESCRIPTIONS = {
@@ -442,7 +572,7 @@ function normalizeResult(data) {
   };
 }
 
-export function renderAnalysisResult(resultJson, { expertMode = false } = {}) {
+function renderAnalysisResultLegacy(resultJson, { expertMode = false } = {}) {
   const r = normalizeResult(resultJson || {});
   const mediaType = r.media_type || 'image';
   const videoForensics = r.engine_results.find((e) => e.engine === 'video_forensics');
@@ -725,7 +855,7 @@ export function renderAnalysisResult(resultJson, { expertMode = false } = {}) {
   return `
     ${ffmpegMissing ? `
       <div class="ac-card">
-        <div class="ac-result-title" style="color:#b42318">FFmpeg fehlt – Video-Frames koennen nicht extrahiert werden. Installiere FFmpeg und starte den Server neu.</div>
+        <div class="ac-result-title" style="color:#b42318">FFmpeg fehlt – Video-Frames können nicht extrahiert werden. Installiere FFmpeg und starte den Server neu.</div>
       </div>
     ` : ''}
     <div class="ac-card ac-result-card" role="status" aria-live="polite">
@@ -787,6 +917,634 @@ export function renderAnalysisResult(resultJson, { expertMode = false } = {}) {
         <div class="ac-engine-list">${forensicsHtml}</div>
       </div>
     ` : ''}
+  `;
+}
+
+function pickPublicResult(payload) {
+  if (!payload || typeof payload !== 'object') return null;
+  if (payload?.meta?.schema_version === 'public_result_v1') return payload;
+  if (payload?.result_json?.meta?.schema_version === 'public_result_v1') return payload.result_json;
+  if (payload?.analysis?.result_json?.meta?.schema_version === 'public_result_v1') return payload.analysis.result_json;
+  return null;
+}
+
+function normalizePublicResult(payload) {
+  const result = pickPublicResult(payload);
+  if (!result) return null;
+  const meta = (result.meta && typeof result.meta === 'object') ? result.meta : {};
+  const summary = (result.summary && typeof result.summary === 'object') ? result.summary : {};
+  const details = (result.details && typeof result.details === 'object') ? result.details : {};
+  const status = payload?.status || payload?.analysis?.status || null;
+  return { meta, summary, details, status };
+}
+
+function verdictLabelFromSummary(summary) {
+  const label = summary?.label_de;
+  if (label) return label;
+  const key = summary?.verdict_key;
+  if (key === 'likely_ai') return 'Überwiegend KI';
+  if (key === 'likely_real') return 'Überwiegend echt';
+  return 'Unsicher';
+}
+
+function trafficClass(value) {
+  const key = String(value || '').toLowerCase();
+  if (key === 'red') return 'is-red';
+  if (key === 'green') return 'is-green';
+  return 'is-yellow';
+}
+
+function formatPercentValue(value) {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return '--';
+  return `${Math.round(value)}%`;
+}
+
+function formatTimingMs(value) {
+  const ms = Number(value);
+  if (!Number.isFinite(ms) || ms <= 0) return '--';
+  if (ms >= 1000) return `${(ms / 1000).toFixed(1)} s`;
+  return `${Math.round(ms)} ms`;
+}
+
+function formatStatusSummary(entry, fallback) {
+  if (!entry || typeof entry !== 'object') return fallback;
+  const status = entry.status || entry.c2pa_status;
+  const summary = entry.summary || entry.c2pa_summary;
+  if (status && summary) return `${status} – ${summary}`;
+  if (summary) return summary;
+  if (status) return status;
+  return fallback;
+}
+
+function formatForensicsSummary(forensics) {
+  if (!forensics || typeof forensics !== 'object') return 'Keine Auffälligkeiten erkannt';
+  if (typeof forensics.ai_percent === 'number' && Number.isFinite(forensics.ai_percent)) {
+    return `Forensik-Score: ${Math.round(forensics.ai_percent)}%`;
+  }
+  const summaryLines = Array.isArray(forensics.summary_lines) ? forensics.summary_lines : [];
+  if (summaryLines.length) return summaryLines[0];
+  return 'Keine Auffälligkeiten erkannt';
+}
+
+function renderRing(aiPercent, traffic) {
+  const size = 160;
+  const stroke = 14;
+  const radius = (size - stroke) / 2;
+  const circumference = 2 * Math.PI * radius;
+  const percentValue = (typeof aiPercent === 'number' && Number.isFinite(aiPercent))
+    ? Math.max(0, Math.min(100, aiPercent))
+    : 0;
+  const dash = `${circumference} ${circumference}`;
+  const offset = circumference - (percentValue / 100) * circumference;
+  const labelValue = (typeof aiPercent === 'number' && Number.isFinite(aiPercent)) ? `${Math.round(aiPercent)} %` : '--';
+  const trafficKey = String(trafficClass(traffic)).replace('is-', '') || 'yellow';
+  const gradientMap = {
+    red: ['#b42318', '#d9534f'],
+    yellow: ['#b54708', '#d97706'],
+    green: ['#1f7a4d', '#34a36f'],
+  };
+  const [gradStart, gradEnd] = gradientMap[trafficKey] || gradientMap.yellow;
+  const gradId = `ac-ring-grad-${Math.random().toString(36).slice(2, 8)}`;
+  return `
+    <div class="ac-ring ${trafficClass(traffic)}">
+      <svg class="ac-ring-svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
+        <defs>
+          <linearGradient id="${gradId}" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stop-color="${gradStart}" />
+            <stop offset="100%" stop-color="${gradEnd}" />
+          </linearGradient>
+        </defs>
+        <circle class="ac-ring-track" cx="${size / 2}" cy="${size / 2}" r="${radius}" stroke-width="${stroke}" />
+        <circle class="ac-ring-progress" cx="${size / 2}" cy="${size / 2}" r="${radius}" stroke-width="${stroke}"
+          stroke-dasharray="${dash}" stroke-dashoffset="${offset}" stroke="url(#${gradId})" />
+      </svg>
+      <div class="ac-ring-label">
+        <div class="ac-ring-value">${labelValue}</div>
+        <div class="ac-ring-unit">KI</div>
+      </div>
+    </div>
+  `;
+}
+
+function renderMediaPreview(kind) {
+  if (!kind) return '';
+  const info = lastPreviewByKind[kind];
+  if (!info) return '';
+  if (info.mode === 'link') {
+    const label = info.link ? truncateText(info.link, 46) : 'Link geprüft';
+    return `
+      <div class="ac-report-media-card ac-report-media-link">
+        <div class="ac-report-media-inner">
+          <div class="ac-preview-label">Link geprüft</div>
+          ${info.link ? `<div class="ac-preview-note">${escapeHtml(label)}</div>` : ''}
+        </div>
+      </div>
+    `;
+  }
+  if (!info.url) return '';
+  if (kind === 'image' || info.type.startsWith('image/')) {
+    return `
+      <div class="ac-report-media-card">
+        <div class="ac-report-media-inner">
+          <img class="ac-report-media-asset" src="${info.url}" alt="Vorschau" />
+        </div>
+      </div>
+    `;
+  }
+  if (kind === 'video' || info.type.startsWith('video/')) {
+    return `
+      <div class="ac-report-media-card">
+        <div class="ac-report-media-inner">
+          <video class="ac-report-media-asset" src="${info.url}" controls preload="metadata"></video>
+        </div>
+      </div>
+    `;
+  }
+  if (kind === 'audio' || info.type.startsWith('audio/')) {
+    return `
+      <div class="ac-report-media-card ac-report-media-audio">
+        <div class="ac-report-media-inner">
+          <audio class="ac-report-audio-player" controls src="${info.url}"></audio>
+        </div>
+      </div>
+    `;
+  }
+  return '';
+}
+
+function renderEngineTable(engines, expertMode) {
+  if (!Array.isArray(engines) || !engines.length) {
+    return '<div class="ac-empty">Keine Detektoren verfügbar.</div>';
+  }
+  const header = `
+    <div class="ac-engine-row engine-row-head">
+      <div>Engine</div>
+      <div>Status</div>
+      <div>KI%</div>
+      <div>Konf.</div>
+      <div>Laufzeit</div>
+    </div>
+  `;
+  const rows = engines.map((engine) => {
+    const name = ENGINE_LABELS[engine.engine] || engine.engine || 'engine';
+    const desc = ENGINE_DESCRIPTIONS[engine.engine];
+    const statusRaw = String(engine.status || '').toLowerCase();
+    let statusLabel = 'Verfügbar';
+    let statusClass = 'ac-badge-ok';
+    if (engine.available === false) {
+      statusLabel = 'Nicht verfügbar';
+      statusClass = 'ac-badge-off';
+    } else if (statusRaw && statusRaw !== 'ok') {
+      statusLabel = 'Gestört';
+      statusClass = 'ac-badge-warn';
+    }
+    let aiPercent = engine.ai_percent;
+    if (typeof aiPercent !== 'number' && typeof engine.ai01 === 'number') {
+      aiPercent = engine.ai01 * 100;
+    }
+    let confPercent = engine.confidence01;
+    if (typeof confPercent === 'number') {
+      confPercent = confPercent * 100;
+    } else {
+      confPercent = null;
+    }
+    const note = expertMode ? (engine.warning || engine.notes || '') : '';
+    return `
+      <div class="ac-engine-row">
+        <div class="ac-engine-cell ac-engine-name" title="${escapeHtml(desc || '')}">
+          <div class="ac-engine-title">${escapeHtml(name)}</div>
+          ${note ? `<div class="ac-engine-note">${escapeHtml(note)}</div>` : ''}
+        </div>
+        <div class="ac-engine-cell"><span class="ac-badge ${statusClass}">${statusLabel}</span></div>
+        <div class="ac-engine-cell">${formatPercentValue(aiPercent)}</div>
+        <div class="ac-engine-cell">${formatPercentValue(confPercent)}</div>
+        <div class="ac-engine-cell">${formatTimingMs(engine.timing_ms)}</div>
+      </div>
+    `;
+  }).join('');
+  return `<div class="ac-engine-table">${header}${rows}</div>`;
+}
+
+function renderProvenance(details) {
+  const provenance = details?.provenance || {};
+  const status = provenance.c2pa_status;
+  const summary = provenance.c2pa_summary;
+  if (!status && !summary) {
+    return '<div class="ac-empty">Keine Content Credentials gefunden.</div>';
+  }
+  return `
+    <div class="ac-info-block">
+      <div class="ac-info-title">Status</div>
+      <div class="ac-info-value">${escapeHtml(status || 'unbekannt')}</div>
+      ${summary ? `<div class="ac-info-note">${escapeHtml(summary)}</div>` : ''}
+    </div>
+  `;
+}
+
+function renderWatermarks(details) {
+  const watermarks = details?.watermarks || {};
+  const status = watermarks.status;
+  const summary = watermarks.summary;
+  if (!status && !summary) {
+    return '<div class="ac-empty">Keine Watermark-Hinweise erkannt.</div>';
+  }
+  return `
+    <div class="ac-info-block">
+      <div class="ac-info-title">Status</div>
+      <div class="ac-info-value">${escapeHtml(status || 'unbekannt')}</div>
+      ${summary ? `<div class="ac-info-note">${escapeHtml(summary)}</div>` : ''}
+    </div>
+  `;
+}
+
+function renderTechnical(summary, details, engines, expertMode, { includeWarnings = true } = {}) {
+  const lines = [];
+  if (typeof summary?.confidence01 === 'number') {
+    lines.push(`Konfidenz (0-1): ${summary.confidence01.toFixed(2)}`);
+  }
+  if (typeof details?.decision_threshold === 'number') {
+    lines.push(`Entscheidungsschwelle: ${Math.round(details.decision_threshold * 100)}%`);
+  }
+  if (expertMode && Array.isArray(engines)) {
+    engines.forEach((engine) => {
+      const note = engine?.warning || engine?.notes;
+      if (note) {
+        const name = ENGINE_LABELS[engine.engine] || engine.engine || 'engine';
+        lines.push(`${name}: ${note}`);
+      }
+    });
+  }
+  const warnings = includeWarnings && Array.isArray(summary?.warnings_user) ? summary.warnings_user : [];
+  const warningsHtml = warnings.length
+    ? `<div class="ac-info-list">${warnings.map((w) => `<div class="ac-info-line">${escapeHtml(w)}</div>`).join('')}</div>`
+    : '';
+  const linesHtml = lines.length
+    ? `<ul class="ac-compact-list">${lines.map((line) => `<li>${escapeHtml(line)}</li>`).join('')}</ul>`
+    : '';
+  if (!warningsHtml && !linesHtml) {
+    return '<div class="ac-empty">Keine technischen Hinweise gespeichert.</div>';
+  }
+  return `${warningsHtml}${linesHtml}`;
+}
+
+export function renderAnalysisResult(resultJson, { expertMode = false, variant = 'default' } = {}) {
+  const r = normalizePublicResult(resultJson || {});
+  if (!r) {
+    return renderAnalysisResultLegacy(resultJson, { expertMode });
+  }
+  const summary = r.summary || {};
+  const details = r.details || {};
+  const engines = Array.isArray(details.engines) ? details.engines : [];
+  const aiPercent = (typeof summary.ai_percent === 'number') ? Math.round(summary.ai_percent) : null;
+  const realPercent = (typeof summary.real_percent === 'number') ? Math.round(summary.real_percent) : null;
+  const isFailed = r.status === 'failed' || aiPercent === null;
+  const layout = String(variant || 'default');
+  const useDrawerLayout = layout === 'drawer';
+
+  if (isFailed) {
+    return `
+      <div class="ac-card ac-result-error">
+        <div class="ac-result-error-title">Analyse fehlgeschlagen</div>
+        <div class="ac-subtle">Bitte Datei prüfen und erneut versuchen.</div>
+      </div>
+    `;
+  }
+
+  const verdictKey = summary?.verdict_key || 'uncertain';
+  const verdictCopy = {
+    likely_real: {
+      title: 'Sehr wahrscheinlich echt',
+      subline: 'Keine relevanten Hinweise auf KI-Manipulation erkannt.',
+    },
+    likely_ai: {
+      title: 'Sehr wahrscheinlich KI-generiert',
+      subline: 'Starke Hinweise auf synthetische Erzeugung erkannt.',
+    },
+    uncertain: {
+      title: 'Ergebnis nicht eindeutig',
+      subline: 'Gemischte Signale erkannt. Weitere Prüfung empfohlen.',
+    },
+  };
+  const verdictText = verdictCopy[verdictKey] || verdictCopy.uncertain;
+
+  const analysisId = r.meta?.analysis_id || '—';
+  const analysisDate = formatDateTime(r.meta?.created_at);
+  const analysisType = formatMediaLabel(r.meta?.media_type);
+  const canCopyId = !!(
+    analysisId
+    && analysisId !== '—'
+    && typeof navigator !== 'undefined'
+    && navigator?.clipboard
+    && typeof navigator.clipboard.writeText === 'function'
+  );
+  const canShareId = !!(
+    analysisId
+    && analysisId !== '—'
+    && typeof navigator !== 'undefined'
+    && (typeof navigator.share === 'function' || typeof navigator.clipboard?.writeText === 'function')
+  );
+  const safeAnalysisId = escapeHtml(analysisId);
+  const copyIdButton = `
+    <button type="button" class="ac-report-copy" data-copy-id="${safeAnalysisId}" ${canCopyId ? '' : 'hidden disabled'}>
+      Kopieren
+    </button>
+  `;
+  const shareIdButton = `
+    <button type="button" class="ac-report-share" data-share-id="${safeAnalysisId}" ${canShareId ? '' : 'hidden disabled'}>
+      Teilen
+    </button>
+  `;
+
+  const confidenceLabel = formatConfidenceLabel(summary.confidence_label);
+  const activeModelEngines = engines.filter(
+    (engine) => engine && engine.available === true && String(engine.status || '').toLowerCase() === 'ok'
+  );
+  const activeModelCount = activeModelEngines.length;
+  const activeModelText = activeModelCount === 1
+    ? '1 unabhängiges Modell'
+    : (activeModelCount > 1 ? `${activeModelCount} unabhängige Modelle` : 'Mehrere Modelle');
+  const modelText = (activeModelCount === 1)
+    ? 'Bewertung basiert auf 1 unabhängigen Modell.'
+    : (activeModelCount > 1
+        ? `Bewertung basiert auf ${activeModelCount} unabhängigen Modellen.`
+        : 'Bewertung basiert auf mehreren unabhängigen Modellen.');
+  const realDisplay = (typeof realPercent === 'number')
+    ? realPercent
+    : (aiPercent !== null ? Math.max(0, 100 - aiPercent) : null);
+  const realText = (typeof realDisplay === 'number')
+    ? `${realDisplay} % Wahrscheinlichkeit für authentischen Inhalt`
+    : 'Authentizitäts-Wahrscheinlichkeit nicht verfügbar.';
+  const aiDisplayText = (typeof aiPercent === 'number') ? `${aiPercent} %` : '--';
+  const realDisplayText = (typeof realDisplay === 'number') ? `${realDisplay} %` : '--';
+
+  const totalMs = activeModelEngines.reduce((sum, engine) => {
+    const ms = Number(engine?.timing_ms);
+    return Number.isFinite(ms) ? sum + ms : sum;
+  }, 0);
+  const totalSeconds = totalMs > 0 ? (totalMs / 1000) : null;
+  const totalSecondsLabel = totalSeconds
+    ? `${totalSeconds.toFixed(1).replace('.', ',')} Sekunden`
+    : null;
+  const summaryReason = Array.isArray(summary?.reasons_user) ? summary.reasons_user[0] : '';
+  const consensusLine = summary?.conflict === true
+    ? 'Modelle sind sich uneinig.'
+    : (summary?.conflict === false ? 'Modelle überwiegend konsistent.' : '');
+  const trafficTone = summary?.traffic_light || (verdictKey === 'likely_real'
+    ? 'green'
+    : (verdictKey === 'likely_ai' ? 'red' : 'yellow'));
+  const statusClass = trafficClass(trafficTone);
+  const statusChipLabel = trafficTone === 'green' ? 'Echt' : (trafficTone === 'red' ? 'KI' : 'Unsicher');
+  const previewHtml = renderMediaPreview(r.meta?.media_type);
+  const detailRows = [
+    { label: 'Detektionsmodelle', value: activeModelText },
+    { label: 'Analysezeit', value: totalSecondsLabel || '—' },
+    { label: 'Modell-Übereinstimmung', value: summary.conflict ? 'Gering' : 'Normal' },
+  ];
+  const authenticityRows = [
+    { label: 'Wasserzeichen', value: formatStatusSummary(details?.watermarks, 'Keine Hinweise') },
+    { label: 'Content Credentials', value: formatStatusSummary(details?.provenance, 'Keine gefunden') },
+    { label: 'Forensik', value: formatForensicsSummary(details?.forensics) },
+  ];
+
+  const detailRowsHtml = detailRows.map((row) => `
+    <div class="ac-report-summary-row">
+      <span>${escapeHtml(row.label)}</span>
+      <span>${escapeHtml(row.value)}</span>
+    </div>
+  `).join('');
+  const authenticityRowsHtml = authenticityRows.map((row) => `
+    <div class="ac-report-summary-row">
+      <span>${escapeHtml(row.label)}</span>
+      <span>${escapeHtml(row.value)}</span>
+    </div>
+  `).join('');
+  const summaryBlocks = `
+    <div class="ac-report-summary-block">
+      <div class="ac-report-summary-subtitle">Analyse-Details</div>
+      <div class="ac-report-summary-grid">
+        ${detailRowsHtml}
+      </div>
+    </div>
+    <div class="ac-report-summary-block">
+      <div class="ac-report-summary-subtitle">Authentizitätsprüfung</div>
+      <div class="ac-report-summary-grid">
+        ${authenticityRowsHtml}
+      </div>
+    </div>
+    ${expertMode ? `
+      <div class="ac-report-summary-meta">
+        <div>Systemstatus: Stabil</div>
+      </div>
+    ` : ''}
+  `;
+  const summaryContent = `
+    <div class="ac-report-summary">
+      <div class="ac-report-summary-title">Analyse-Zusammenfassung</div>
+      ${summaryBlocks}
+    </div>
+  `;
+
+  const summaryCard = `
+    <div class="ac-card ac-report-card" role="status" aria-live="polite">
+      <div class="ac-report-statusbar ${statusClass}"></div>
+      <div class="ac-report-header">
+        <div class="ac-report-header-left">
+          <div class="ac-report-header-top">
+            <div class="ac-report-label">Analysebericht</div>
+            <span class="ac-report-chip ${statusClass}">${statusChipLabel}</span>
+          </div>
+          <div class="ac-report-title">${escapeHtml(verdictText.title)}</div>
+          <div class="ac-report-subline">${escapeHtml(verdictText.subline)}</div>
+          ${summaryReason ? `<div class="ac-report-reason">${escapeHtml(summaryReason)}</div>` : ''}
+          ${consensusLine ? `<div class="ac-report-consensus">${escapeHtml(consensusLine)}</div>` : ''}
+        </div>
+        <div class="ac-report-meta">
+          <div class="ac-report-meta-item">
+            <div class="ac-report-meta-label">Analyse-ID</div>
+            <div class="ac-report-meta-value">
+              <div class="ac-report-meta-row">
+                <span class="ac-report-id" title="${safeAnalysisId}">${safeAnalysisId}</span>
+                <div class="ac-report-actions">
+                  ${copyIdButton}
+                  ${shareIdButton}
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="ac-report-meta-item">
+            <div class="ac-report-meta-label">Datum</div>
+            <div class="ac-report-meta-value">${escapeHtml(analysisDate)}</div>
+          </div>
+          <div class="ac-report-meta-item">
+            <div class="ac-report-meta-label">Medientyp</div>
+            <div class="ac-report-meta-value">${escapeHtml(analysisType)}</div>
+          </div>
+        </div>
+      </div>
+      <div class="ac-report-body">
+        <div class="ac-report-score">
+          ${previewHtml || ''}
+          ${renderRing(aiPercent, summary.traffic_light)}
+          <div class="ac-report-metric">${escapeHtml(realText)}</div>
+          <div class="ac-report-metric">${escapeHtml(modelText)}</div>
+          <div class="ac-report-confidence">Konfidenz: ${escapeHtml(confidenceLabel)}</div>
+        </div>
+        ${summaryContent}
+      </div>
+    </div>
+  `;
+
+  const warnings = Array.isArray(summary?.warnings_user) ? summary.warnings_user : [];
+  const warningsHtml = warnings.length
+    ? `<div class="ac-info-list">${warnings.map((w) => `<div class="ac-info-line">${escapeHtml(w)}</div>`).join('')}</div>`
+    : '<div class="ac-empty">Keine Warnungen gespeichert.</div>';
+  const explanationLines = [verdictText.subline, summaryReason, consensusLine].filter((line) => line && String(line).trim());
+  const explanationHtml = explanationLines.length
+    ? explanationLines.map((line) => `<div class="ac-report-explain-line">${escapeHtml(line)}</div>`).join('')
+    : '<div class="ac-empty">Keine zusätzliche Erklärung verfügbar.</div>';
+  const metaRows = [
+    { label: 'Analyse-ID', value: analysisId },
+    { label: 'Datum', value: analysisDate },
+    { label: 'Medientyp', value: analysisType },
+  ];
+  const metaRowsHtml = metaRows.map((row) => `
+    <div class="ac-report-summary-row">
+      <span>${escapeHtml(row.label)}</span>
+      <span>${escapeHtml(row.value || '--')}</span>
+    </div>
+  `).join('');
+  const technicalDetails = renderTechnical(summary, details, engines, expertMode, { includeWarnings: false });
+
+  if (useDrawerLayout) {
+    const resultCardDrawer = `
+      <div class="ac-card ac-report-card ac-report-result-card" role="status" aria-live="polite">
+        <div class="ac-report-statusbar ${statusClass}"></div>
+        <div class="ac-report-header ac-report-header-drawer">
+          <div class="ac-report-header-top">
+            <div class="ac-report-label">Ergebnis</div>
+            <span class="ac-report-chip ${statusClass}">${statusChipLabel}</span>
+          </div>
+          <div class="ac-report-title">${escapeHtml(verdictText.title)}</div>
+        </div>
+        <div class="ac-report-meta-grid">
+          ${metaRowsHtml}
+        </div>
+      </div>
+    `;
+    const scoreCardDrawer = `
+      <div class="ac-card ac-report-card ac-report-score-card">
+        <div class="ac-report-score ac-report-score-stack">
+          ${renderRing(aiPercent, summary.traffic_light)}
+          <div class="ac-report-kpis">
+            <div class="ac-report-kpi">
+              <div class="ac-report-kpi-label">KI-Wahrscheinlichkeit</div>
+              <div class="ac-report-kpi-value">${escapeHtml(aiDisplayText)}</div>
+            </div>
+            <div class="ac-report-kpi">
+              <div class="ac-report-kpi-label">Echte Wahrscheinlichkeit</div>
+              <div class="ac-report-kpi-value">${escapeHtml(realDisplayText)}</div>
+            </div>
+            <div class="ac-report-kpi">
+              <div class="ac-report-kpi-label">Konfidenz</div>
+              <div class="ac-report-kpi-value">${escapeHtml(confidenceLabel)}</div>
+            </div>
+          </div>
+          ${modelText ? `<div class="ac-report-score-note">${escapeHtml(modelText)}</div>` : ''}
+        </div>
+      </div>
+    `;
+    const explanationCardDrawer = `
+      <div class="ac-card ac-report-card ac-report-explain-card">
+        <div class="ac-report-section-title">Erklärung</div>
+        <div class="ac-report-explain-body">
+          ${explanationHtml}
+        </div>
+      </div>
+    `;
+    const modelCardDrawer = `
+      <div class="ac-card ac-report-card ac-report-model-card">
+        <div class="ac-report-section-title">Model Analysis</div>
+        <div class="ac-report-intro">Die folgenden Modelle wurden zur Bewertung verwendet.</div>
+        ${renderEngineTable(engines, expertMode)}
+      </div>
+    `;
+    const technicalCardDrawer = `
+      <div class="ac-card ac-report-card ac-report-technical-card">
+        <div class="ac-report-section-title">Technical Signals</div>
+        <div class="ac-report-technical-body">
+          ${summaryBlocks}
+          <div class="ac-report-summary-block">
+            <div class="ac-report-summary-subtitle">Technische Details</div>
+            ${technicalDetails}
+          </div>
+        </div>
+      </div>
+    `;
+    const warningsCardDrawer = `
+      <div class="ac-card ac-report-card ac-report-warnings-card">
+        <div class="ac-report-section-title">Warnings</div>
+        ${warningsHtml}
+      </div>
+    `;
+    return `
+      <div class="ac-report-surface ac-animate-in ac-report-drawer">
+        ${resultCardDrawer}
+        ${scoreCardDrawer}
+        ${explanationCardDrawer}
+        ${modelCardDrawer}
+        ${technicalCardDrawer}
+        ${warningsCardDrawer}
+      </div>
+    `;
+  }
+
+  const detectorsSection = `
+    <details class="ac-accordion" open>
+      <summary>Modellanalyse</summary>
+      <div class="ac-accordion-body">
+        <div class="ac-report-intro">Die folgenden Modelle wurden zur Bewertung verwendet.</div>
+        ${renderEngineTable(engines, expertMode)}
+      </div>
+    </details>
+  `;
+
+  const provenanceSection = `
+    <details class="ac-accordion">
+      <summary>Content Credentials</summary>
+      <div class="ac-accordion-body">
+        ${renderProvenance(details)}
+      </div>
+    </details>
+  `;
+
+  const watermarkSection = `
+    <details class="ac-accordion">
+      <summary>Metadaten &amp; Wasserzeichen</summary>
+      <div class="ac-accordion-body">
+        ${renderWatermarks(details)}
+      </div>
+    </details>
+  `;
+
+  const technicalSection = `
+    <details class="ac-accordion">
+      <summary>Technische Details</summary>
+      <div class="ac-accordion-body">
+        ${renderTechnical(summary, details, engines, expertMode)}
+      </div>
+    </details>
+  `;
+
+  return `
+    <div class="ac-report-surface ac-animate-in">
+      ${summaryCard}
+      <div class="ac-report-accordion">
+        ${detectorsSection}
+        ${provenanceSection}
+        ${watermarkSection}
+        ${technicalSection}
+      </div>
+    </div>
   `;
 }
 
@@ -885,6 +1643,593 @@ export function updateAnalyzeButtons(auth, isAnalyzing = currentAnalyzing) {
     } else {
       btn.classList.remove('has-tooltip');
       btn.removeAttribute('data-tooltip');
+    }
+  });
+}
+
+function formatBytes(value) {
+  const bytes = Number(value);
+  if (!Number.isFinite(bytes) || bytes <= 0) return '--';
+  if (bytes < 1024) return `${Math.round(bytes)} B`;
+  const units = ['KB', 'MB', 'GB'];
+  let size = bytes / 1024;
+  let unitIndex = 0;
+  while (size >= 1024 && unitIndex < units.length - 1) {
+    size /= 1024;
+    unitIndex += 1;
+  }
+  const precision = size >= 10 ? 1 : 2;
+  return `${size.toFixed(precision).replace('.', ',')} ${units[unitIndex]}`;
+}
+
+function truncateFileName(name, maxLength = 34) {
+  const safe = String(name || '').trim();
+  if (!safe) return '';
+  if (safe.length <= maxLength) return safe;
+  const lastDot = safe.lastIndexOf('.');
+  const ext = lastDot > 0 ? safe.slice(lastDot) : '';
+  const baseMax = Math.max(10, maxLength - ext.length - 1);
+  const base = safe.slice(0, baseMax);
+  return `${base}…${ext}`;
+}
+
+function truncateText(value, maxLength = 42) {
+  const safe = String(value || '').trim();
+  if (!safe) return '';
+  if (safe.length <= maxLength) return safe;
+  return `${safe.slice(0, Math.max(8, maxLength - 1))}…`;
+}
+
+function setLastPreviewForKind(kind, mode, linkValue) {
+  if (!kind) return;
+  const existing = lastPreviewByKind[kind];
+  if (existing?.url) {
+    try {
+      URL.revokeObjectURL(existing.url);
+    } catch (err) {
+      // ignore revoke errors
+    }
+  }
+  if (mode === 'link') {
+    const trimmed = String(linkValue || '').trim();
+    lastPreviewByKind[kind] = { mode: 'link', link: trimmed || '' };
+    return;
+  }
+  const input = document.querySelector(`#${kind}Input`);
+  const file = input?.files?.[0];
+  if (!file) {
+    lastPreviewByKind[kind] = null;
+    return;
+  }
+  const url = URL.createObjectURL(file);
+  lastPreviewByKind[kind] = {
+    mode: 'file',
+    url,
+    type: file.type || '',
+    name: file.name || '',
+  };
+}
+
+function setAnalyzeButtonLoading(button, loading) {
+  if (!button) return;
+  let labelNode = button.querySelector('.ac-btn-label');
+  const spinnerNode = button.querySelector('.ac-btn-spinner');
+  const currentLabel = labelNode ? labelNode.textContent : button.textContent.trim();
+  if (!button.dataset.label && currentLabel) {
+    button.dataset.label = currentLabel;
+  }
+  if (!labelNode || !spinnerNode) {
+    const label = button.dataset.label || currentLabel || 'Analyse starten';
+    button.dataset.label = label;
+    button.innerHTML = `
+      <span class="ac-btn-label">${escapeHtml(label)}</span>
+      <span class="ac-btn-spinner" aria-hidden="true"></span>
+    `;
+    labelNode = button.querySelector('.ac-btn-label');
+  }
+  if (loading) {
+    button.classList.add('is-loading');
+    if (labelNode) labelNode.textContent = 'Analyse läuft…';
+  } else {
+    button.classList.remove('is-loading');
+    if (labelNode) labelNode.textContent = button.dataset.label || 'Analyse starten';
+  }
+}
+
+function renderAnalyzeSteps(current = 'analysis') {
+  const steps = ['upload', 'analysis', 'report'];
+  const labels = {
+    upload: 'Upload',
+    analysis: 'Analyse',
+    report: 'Bericht',
+  };
+  const currentIndex = steps.indexOf(current);
+  return `
+    <div class="ac-status-steps" role="list">
+      ${steps.map((step, idx) => {
+        const stateClass = idx < currentIndex ? 'is-done' : (idx === currentIndex ? 'is-active' : '');
+        return `
+          <span class="ac-status-step ${stateClass}">${labels[step]}</span>
+          ${idx < steps.length - 1 ? '<span class="ac-status-sep">→</span>' : ''}
+        `;
+      }).join('')}
+    </div>
+  `;
+}
+
+function setAnalyzeStatus(state, { title, message, tone = 'info', progress = false } = {}) {
+  if (state !== 'loading' && activeAnalyzeButton) {
+    setAnalyzeButtonLoading(activeAnalyzeButton, false);
+    activeAnalyzeButton = null;
+  }
+  if (!analysisStatus) analysisStatus = document.querySelector('#analysisStatus');
+  if (!analysisArea) analysisArea = document.querySelector('#analysisArea');
+  if (!analysisStatus) return;
+  if (analysisTool) analysisTool.dataset.state = state || '';
+  if (state === 'loading' && progress) {
+    analysisStatus.innerHTML = '';
+    analysisStatus.hidden = true;
+    if (analysisArea) analysisArea.classList.remove('is-hidden');
+    return;
+  }
+  if (state === 'success') {
+    analysisStatus.innerHTML = '';
+    analysisStatus.hidden = true;
+    if (analysisArea) analysisArea.classList.remove('is-hidden');
+    return;
+  }
+  if (state === 'idle') {
+    analysisStatus.innerHTML = '';
+    analysisStatus.hidden = true;
+    if (analysisArea) analysisArea.classList.add('is-hidden');
+    return;
+  }
+  analysisStatus.hidden = false;
+  const toneClass = tone ? `is-${tone}` : '';
+  const stepsHtml = '';
+  const subline = message || (state === 'loading' ? 'Bitte warten' : '');
+  analysisStatus.innerHTML = `
+    <div class="ac-status-card ${toneClass}">
+      <div class="ac-status-title">${escapeHtml(title || 'Status')}</div>
+      ${subline ? `<div class="ac-status-sub">${escapeHtml(subline)}</div>` : ''}
+      ${stepsHtml}
+      ${progress ? `
+        <div class="ac-progress" role="progressbar" aria-label="Analyse läuft" aria-busy="true">
+          <div class="ac-progress-track">
+            <div class="ac-progress-bar"></div>
+          </div>
+        </div>
+      ` : ''}
+    </div>
+  `;
+  if (analysisArea) analysisArea.classList.add('is-hidden');
+}
+
+function deriveAnalyzeStatus(rawText) {
+  const t = String(rawText || '').toLowerCase()
+    .replace(/ae/g, 'ä')
+    .replace(/oe/g, 'ö')
+    .replace(/ue/g, 'ü');
+  if (!t) return { state: 'idle' };
+  if (t.includes('analyse läuft')) {
+    return {
+      state: 'loading',
+      title: 'Analyse läuft…',
+      message: 'Bitte warten',
+      tone: 'info',
+      progress: true,
+    };
+  }
+  if (t.includes('login erforderlich') || t.includes('gastmodus ist deaktiviert')) {
+    return {
+      state: 'blocked',
+      title: 'Login erforderlich',
+      message: 'Bitte einloggen oder registrieren, um die Analyse zu starten.',
+      tone: 'warning',
+    };
+  }
+  if (t.includes('e-mail nicht')) {
+    return {
+      state: 'blocked',
+      title: 'E-Mail nicht bestätigt',
+      message: 'Bitte E-Mail bestätigen – ohne Verifikation sind Analysen gesperrt.',
+      tone: 'warning',
+    };
+  }
+  if (t.includes('nicht genug credits')) {
+    return {
+      state: 'blocked',
+      title: 'Nicht genug Credits',
+      message: 'Bitte upgraden oder bis zum nächsten Reset warten.',
+      tone: 'warning',
+    };
+  }
+  if (t.includes('datei auswählen')) {
+    return {
+      state: 'info',
+      title: 'Datei auswählen',
+      message: 'Bitte zuerst eine Datei auswählen.',
+      tone: 'info',
+    };
+  }
+  if (t.includes('link eingeben')) {
+    return {
+      state: 'info',
+      title: 'Link eingeben',
+      message: 'Bitte einen gültigen Link eingeben.',
+      tone: 'info',
+    };
+  }
+  if (t.includes('nur http/https')) {
+    return {
+      state: 'info',
+      title: 'Ungültiger Link',
+      message: 'Bitte einen gültigen http- oder https-Link verwenden.',
+      tone: 'info',
+    };
+  }
+  if (t.includes('link-analyse') || (t.includes('link') && t.includes('nur') && t.includes('video'))) {
+    return {
+      state: 'info',
+      title: 'Link-Analyse nur für Video',
+      message: 'Link-Analysen sind aktuell nur für Video verfügbar.',
+      tone: 'info',
+    };
+  }
+  if (t.includes('zu viele versuche')) {
+    return {
+      state: 'error',
+      title: 'Zu viele Versuche',
+      message: 'Bitte kurz warten und erneut versuchen.',
+      tone: 'error',
+    };
+  }
+  if (t.includes('zeitüberschreitung') || t.includes('verbindung')) {
+    return {
+      state: 'error',
+      title: 'Verbindung fehlgeschlagen',
+      message: 'Bitte erneut versuchen.',
+      tone: 'error',
+    };
+  }
+  if (t.includes('fehler') || t.includes('fehlgeschlagen')) {
+    return {
+      state: 'error',
+      title: 'Analyse fehlgeschlagen',
+      message: 'Bitte erneut versuchen.',
+      tone: 'error',
+    };
+  }
+  return {
+    state: 'info',
+    title: 'Hinweis',
+    message: 'Bitte Eingabe prüfen und erneut versuchen.',
+    tone: 'info',
+  };
+}
+
+function updateFilePreview(kind) {
+  const input = document.querySelector(`#${kind}Input`);
+  const preview = document.querySelector(`.ac-file-preview[data-kind="${kind}"]`);
+  const dropzone = document.querySelector(`.ac-dropzone[data-kind="${kind}"]`);
+  if (!dropzone || !input) return;
+  const selected = dropzone.querySelector('.ac-dropzone-selected');
+  const file = input.files && input.files[0] ? input.files[0] : null;
+  const existingUrl = analyzePreviewUrls.get(kind);
+  if (existingUrl) {
+    URL.revokeObjectURL(existingUrl);
+    analyzePreviewUrls.delete(kind);
+  }
+  if (preview) {
+    preview.innerHTML = '';
+    preview.classList.add('is-empty');
+  }
+  if (!selected) return;
+  if (!file) {
+    dropzone.classList.remove('has-file');
+    selected.innerHTML = '';
+    selected.setAttribute('aria-hidden', 'true');
+    return;
+  }
+
+  dropzone.classList.add('has-file');
+  selected.setAttribute('aria-hidden', 'false');
+  const name = file.name || 'Datei';
+  const sizeLabel = formatBytes(file.size);
+  const displayName = truncateFileName(name);
+  const isImage = file.type.startsWith('image/') || kind === 'image';
+  const isAudio = file.type.startsWith('audio/') || kind === 'audio';
+  const isVideo = file.type.startsWith('video/') || kind === 'video';
+  let mediaHtml = `<div class="ac-file-icon" aria-hidden="true">${mediaIconSvg(kind)}</div>`;
+
+  if (isImage || isAudio || isVideo) {
+    const url = URL.createObjectURL(file);
+    analyzePreviewUrls.set(kind, url);
+    if (isImage) {
+      mediaHtml = `<img class="ac-file-thumb" src="${url}" alt="Vorschau" />`;
+    } else if (isAudio) {
+      mediaHtml = `<audio class="ac-file-player" controls src="${url}"></audio>`;
+    } else if (isVideo) {
+      mediaHtml = `<video class="ac-file-player" controls src="${url}"></video>`;
+    }
+  }
+
+  const safeName = escapeHtml(name);
+  selected.innerHTML = `
+    <div class="ac-dropzone-media">${mediaHtml}</div>
+    <div class="ac-dropzone-meta">
+      <div class="ac-dropzone-label">Datei ausgewählt</div>
+      <div class="ac-dropzone-name" title="${safeName}">${escapeHtml(displayName || 'Datei')}</div>
+      <div class="ac-dropzone-info">
+        <span>${escapeHtml(sizeLabel)}</span>
+        <span class="ac-dropzone-hint">Zum Austauschen klicken</span>
+      </div>
+    </div>
+    <button type="button" class="ac-dropzone-remove" aria-label="Datei entfernen">×</button>
+  `;
+}
+
+function setupAnalyzeToolUI() {
+  if (analyzeUiBound) return;
+  analyzeUiBound = true;
+  if (!analysisTool) return;
+
+  const fileInputs = {
+    image: $('#imageInput'),
+    video: $('#videoInput'),
+    audio: $('#audioInput'),
+  };
+
+  const clearSelectedFile = (kind, input) => {
+    if (!input) return;
+    input.value = '';
+    updateFilePreview(kind);
+    setAnalyzeStatus('idle');
+  };
+  const clearAnalysisView = () => {
+    if (analysisArea) {
+      analysisArea.innerHTML = '<div id="resultMount"></div>';
+      analysisArea.classList.add('is-hidden');
+      delete analysisArea.dataset.scrollPending;
+    }
+    setAnalyzeStatus('idle');
+  };
+  const restoreAnalysisView = (kind) => {
+    const stored = kind ? lastResultsByKind[kind] : null;
+    if (!analysisArea || !stored) {
+      clearAnalysisView();
+      return false;
+    }
+    setAnalyzeStatus('idle');
+    analysisArea.innerHTML = stored;
+    analysisArea.classList.remove('is-hidden');
+    return true;
+  };
+
+  $$('.ac-media-card[data-type]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      if (btn.classList.contains('ac-active')) return;
+      const oldKind = getActiveMediaKind();
+      if (oldKind && analysisAreaHasResult()) {
+        lastResultsByKind[oldKind] = analysisArea.innerHTML;
+      }
+      clearAnalysisView();
+      window.setTimeout(() => {
+        const newKind = getActiveMediaKind();
+        restoreAnalysisView(newKind);
+        updateQuickMediaButtons(newKind);
+      }, 0);
+    });
+  });
+
+
+  $$('.ac-dropzone').forEach((zone) => {
+    const kind = zone.dataset.kind;
+    const input = kind ? fileInputs[kind] : null;
+    if (!input) return;
+    const activate = () => input.click();
+    zone.addEventListener('click', (event) => {
+      const removeBtn = event.target?.closest?.('.ac-dropzone-remove');
+      if (removeBtn) {
+        event.preventDefault();
+        event.stopPropagation();
+        clearSelectedFile(kind, input);
+        return;
+      }
+      if (event.target?.closest?.('audio, video')) {
+        return;
+      }
+      event.preventDefault();
+      activate();
+    });
+    zone.addEventListener('keydown', (event) => {
+      if (event.target?.closest?.('.ac-dropzone-remove')) return;
+      if (event.target?.closest?.('audio, video')) return;
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        activate();
+      }
+    });
+    ['dragenter', 'dragover'].forEach((evt) => {
+      zone.addEventListener(evt, (event) => {
+        event.preventDefault();
+        zone.classList.add('is-dragover');
+      });
+    });
+    ['dragleave', 'dragend'].forEach((evt) => {
+      zone.addEventListener(evt, (event) => {
+        event.preventDefault();
+        zone.classList.remove('is-dragover');
+      });
+    });
+    zone.addEventListener('drop', (event) => {
+      event.preventDefault();
+      zone.classList.remove('is-dragover');
+      const file = event.dataTransfer?.files?.[0];
+      if (!file) return;
+      const dt = new DataTransfer();
+      dt.items.add(file);
+      input.files = dt.files;
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+  });
+
+  Object.entries(fileInputs).forEach(([kind, input]) => {
+    if (!input) return;
+    input.addEventListener('change', () => {
+      updateFilePreview(kind);
+      if (analysisArea?.classList.contains('is-hidden')) {
+        setAnalyzeStatus('idle');
+      }
+    });
+  });
+
+  Object.keys(fileInputs).forEach((kind) => updateFilePreview(kind));
+
+  $$('.analyze-btn.ac-primary[data-kind]').forEach((btn) => {
+    if (!btn.querySelector('.ac-btn-spinner')) {
+      const label = btn.textContent.trim() || 'Analyse starten';
+      btn.dataset.label = label;
+      btn.innerHTML = `
+        <span class="ac-btn-label">${escapeHtml(label)}</span>
+        <span class="ac-btn-spinner" aria-hidden="true"></span>
+      `;
+    }
+    btn.addEventListener('click', () => {
+      if (btn.disabled) return;
+      const nextKind = btn.dataset.kind || getActiveMediaKind();
+      const nextMode = btn.dataset.mode || 'file';
+      if (nextKind) {
+        currentAnalyzeKind = nextKind;
+        lastResultsByKind[nextKind] = null;
+        if (nextMode === 'link') {
+          const linkInput = document.querySelector(`#${nextKind}Url`);
+          setLastPreviewForKind(nextKind, 'link', linkInput?.value);
+        } else {
+          setLastPreviewForKind(nextKind, 'file');
+        }
+      }
+      activeAnalyzeButton = btn;
+      setAnalyzeButtonLoading(btn, true);
+      setAnalyzeStatus('loading', {
+        title: 'Analyse läuft…',
+        message: 'Bitte warten',
+        tone: 'info',
+        progress: true,
+      });
+      if (analysisArea) analysisArea.dataset.scrollPending = 'true';
+    }, true);
+  });
+
+    if (analysisArea) {
+      const observer = new MutationObserver(() => {
+        const hasResult = !!analysisArea.querySelector('.ac-report-surface, .ac-result-card, .ac-result-error, .ac-card');
+        if (hasResult) {
+          const kindForResult = currentAnalyzeKind || getActiveMediaKind();
+          if (kindForResult) {
+            lastResultsByKind[kindForResult] = analysisArea.innerHTML;
+          }
+          currentAnalyzeKind = null;
+          const activeKind = getActiveMediaKind();
+          if (!kindForResult || kindForResult === activeKind) {
+            setAnalyzeStatus('success');
+          if (analysisArea.dataset.scrollPending === 'true') {
+            delete analysisArea.dataset.scrollPending;
+            analysisArea.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }
+        } else {
+          setAnalyzeStatus('idle');
+        }
+        return;
+      }
+      const text = analysisArea.textContent || '';
+      if (!text.trim()) {
+        setAnalyzeStatus('idle');
+        return;
+      }
+      const status = deriveAnalyzeStatus(text);
+      setAnalyzeStatus(status.state, status);
+    });
+    observer.observe(analysisArea, { childList: true, subtree: true });
+  }
+}
+
+function bindReportCopy() {
+  if (reportCopyBound) return;
+  reportCopyBound = true;
+  const writeClipboard = async (text) => {
+    if (navigator?.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+    try {
+      const textarea = document.createElement('textarea');
+      textarea.value = text;
+      textarea.style.position = 'fixed';
+      textarea.style.opacity = '0';
+      document.body.appendChild(textarea);
+      textarea.focus();
+      textarea.select();
+      const ok = document.execCommand('copy');
+      document.body.removeChild(textarea);
+      return ok;
+    } catch (err) {
+      return false;
+    }
+  };
+
+  const applyButtonFeedback = (button, label, defaultLabel) => {
+    const original = button.dataset.label || button.textContent.trim();
+    button.dataset.label = original;
+    button.textContent = label;
+    button.classList.add('is-copied');
+    window.setTimeout(() => {
+      button.textContent = button.dataset.label || defaultLabel;
+      button.classList.remove('is-copied');
+    }, 1200);
+  };
+
+  document.addEventListener('click', async (event) => {
+    const shareBtn = event.target?.closest?.('.ac-report-share');
+    if (shareBtn && !shareBtn.disabled) {
+      const id = shareBtn.dataset.shareId;
+      if (!id) return;
+      const baseUrl = (window.location.href || '').split('#')[0];
+      const shareUrl = `${baseUrl}#analysis=${encodeURIComponent(id)}`;
+      if (typeof navigator?.share === 'function') {
+        try {
+          await navigator.share({
+            title: 'AIRealCheck Analyse',
+            text: 'Analysebericht',
+            url: shareUrl,
+          });
+          return;
+        } catch (err) {
+          // fall back to clipboard
+        }
+      }
+      try {
+        const copied = await writeClipboard(shareUrl);
+        if (copied) {
+          applyButtonFeedback(shareBtn, 'Link kopiert', 'Teilen');
+        }
+      } catch (err) {
+        // ignore clipboard errors
+      }
+      return;
+    }
+
+    const btn = event.target?.closest?.('.ac-report-copy');
+    if (!btn || btn.disabled) return;
+    const id = btn.dataset.copyId;
+    if (!id) return;
+    try {
+      const copied = await writeClipboard(id);
+      if (copied) {
+        applyButtonFeedback(btn, 'Kopiert', 'Kopieren');
+      }
+    } catch (err) {
+      // ignore clipboard errors
     }
   });
 }
@@ -1206,147 +2551,14 @@ function bindHistoryFilters(auth) {
   });
 }
 
-function renderEngineBreakdown(breakdown) {
-  if (!breakdown || typeof breakdown !== 'object') {
-    return '<div class="drawer-empty">Keine Engine-Details gespeichert.</div>';
-  }
-  const entries = Object.entries(breakdown);
-  if (!entries.length) {
-    return '<div class="drawer-empty">Keine Engine-Details gespeichert.</div>';
-  }
-  const scoreBucket = (score) => {
-    if (typeof score !== 'number') return '';
-    if (score >= 70) return 'is-danger';
-    if (score >= 31) return 'is-warning';
-    return 'is-success';
-  };
+function renderHistoryDetailSkeleton() {
   return `
-    <div class="ac-history-engine-list">
-      ${entries.map(([name, info]) => {
-        const scoreValue = (typeof info?.score === 'number') ? Math.round(info.score) : null;
-        const scoreText = scoreValue !== null ? `${scoreValue}% KI` : '—';
-        const confText = (typeof info?.confidence === 'number')
-          ? `${formatPercent(info.confidence)} Konfidenz`
-          : null;
-        const metaText = [scoreText, confText].filter(Boolean).join(' · ');
-        const width = scoreValue !== null ? Math.max(0, Math.min(100, scoreValue)) : 0;
-        const fillClass = scoreBucket(scoreValue);
-        return `
-          <div class="engine-row">
-            <div class="engine-row-head">
-              <span class="engine-row-label">${escapeHtml(name)}</span>
-              <span class="engine-row-meta">${escapeHtml(metaText || '—')}</span>
-            </div>
-            <div class="engine-row-bar">
-              <span class="engine-row-fill ${fillClass}" style="width:${width}%"></span>
-            </div>
-          </div>
-        `;
-      }).join('')}
+    <div class="ac-history-skeleton">
+      <div class="ac-history-skeleton-line"></div>
+      <div class="ac-history-skeleton-line"></div>
+      <div class="ac-history-skeleton-line"></div>
     </div>
   `;
-}
-
-function buildHistoryCopyText(payload) {
-  if (!payload) return '';
-  const title = payload?.title || payload?.verdict_label || 'Analyse';
-  const createdAt = formatDateTime(payload?.created_at);
-  const mediaType = formatMediaLabel(payload?.media_type);
-  const verdict = payload?.verdict_label || 'Ergebnis';
-  const scoreValue = (typeof payload?.final_score === 'number') ? Math.round(payload.final_score) : null;
-  const scoreText = scoreValue !== null ? `${scoreValue}% KI` : '—';
-  const credits = (typeof payload?.credits_charged === 'number') ? `${payload.credits_charged} Credits` : '—';
-  const statusInfo = historyStatusInfo(payload?.status);
-  const result = payload?.result_payload || {};
-  const confidenceLabel = result?.confidence_label ? formatConfidenceLabel(result.confidence_label) : 'Unbekannt';
-  const reasons = Array.isArray(result?.reasons_user)
-    ? result.reasons_user
-    : (Array.isArray(result?.reasons) ? result.reasons : []);
-  const warnings = Array.isArray(result?.warnings_user) ? result.warnings_user : [];
-  const lines = [
-    `Titel: ${title}`,
-    `Datum: ${createdAt}`,
-    `Typ: ${mediaType}`,
-    `Ergebnis: ${verdict}`,
-    `KI-Score: ${scoreText}`,
-    `Konfidenz: ${confidenceLabel}`,
-    `Status: ${statusInfo.label}`,
-    `Credits: ${credits}`,
-  ];
-
-  if (reasons.length) {
-    lines.push('Hinweise:');
-    reasons.forEach((reason) => lines.push(`- ${reason}`));
-  }
-  if (warnings.length) {
-    lines.push('Warnungen:');
-    warnings.forEach((warning) => lines.push(`- ${warning}`));
-  }
-
-  const breakdown = payload?.engine_breakdown;
-  if (breakdown && typeof breakdown === 'object') {
-    const entries = Object.entries(breakdown);
-    if (entries.length) {
-      lines.push('Engine-Breakdown:');
-      entries.forEach(([name, info]) => {
-        const engineScore = (typeof info?.score === 'number') ? Math.round(info.score) : null;
-        const engineScoreText = engineScore !== null ? `${engineScore}% KI` : '—';
-        const confText = (typeof info?.confidence === 'number')
-          ? `${formatPercent(info.confidence)} Konfidenz`
-          : null;
-        const metaText = [engineScoreText, confText].filter(Boolean).join(' · ');
-        lines.push(`- ${name}: ${metaText || '—'}`);
-      });
-    }
-  }
-
-  return lines.join('\n');
-}
-
-async function copyHistoryDetail() {
-  if (!activeHistoryPayload || !historyDetailCopy || !canCopyDetails) return;
-  const text = buildHistoryCopyText(activeHistoryPayload);
-  if (!text) return;
-  let copied = false;
-  if (navigator?.clipboard?.writeText) {
-    try {
-      await navigator.clipboard.writeText(text);
-      copied = true;
-    } catch (err) {
-      copied = false;
-    }
-  }
-  if (!copied) {
-    try {
-      const textarea = document.createElement('textarea');
-      textarea.value = text;
-      textarea.style.position = 'fixed';
-      textarea.style.opacity = '0';
-      document.body.appendChild(textarea);
-      textarea.focus();
-      textarea.select();
-      copied = document.execCommand('copy');
-      document.body.removeChild(textarea);
-    } catch (err) {
-      copied = false;
-    }
-  }
-  if (copied) {
-    historyDetailCopy.textContent = 'Kopiert';
-    historyDetailCopy.classList.add('is-copied');
-    setTimeout(() => {
-      if (!historyDetailCopy || !activeHistoryPayload) return;
-      historyDetailCopy.textContent = 'Details kopieren';
-      historyDetailCopy.classList.remove('is-copied');
-    }, 1800);
-  } else {
-    historyDetailCopy.textContent = 'Kopieren fehlgeschlagen';
-    historyDetailCopy.classList.remove('is-copied');
-    setTimeout(() => {
-      if (!historyDetailCopy) return;
-      historyDetailCopy.textContent = 'Details kopieren';
-    }, 2000);
-  }
 }
 
 function openHistoryDrawer() {
@@ -1380,93 +2592,6 @@ function setActiveHistoryItem(historyId) {
     el.classList.toggle('is-selected', isSelected);
     el.classList.toggle('is-active', isSelected);
   });
-}
-
-function renderHistoryDetail(payload) {
-  const title = payload?.title || payload?.verdict_label || 'Analyse';
-  const createdAt = formatDateTime(payload?.created_at);
-  const mediaType = formatMediaLabel(payload?.media_type);
-  if (historyDetailTitle) historyDetailTitle.textContent = title;
-  if (historyDetailMeta) historyDetailMeta.textContent = `${mediaType} • ${createdAt}`;
-
-  const verdict = payload?.verdict_label || 'Ergebnis';
-  const scoreValue = (typeof payload?.final_score === 'number') ? Math.round(payload.final_score) : null;
-  const score = (scoreValue !== null) ? `${scoreValue}% KI` : '—';
-  const credits = (typeof payload?.credits_charged === 'number') ? `${payload.credits_charged} Credits` : '—';
-  const statusInfo = historyStatusInfo(payload?.status);
-  const result = payload?.result_payload || {};
-  const confidenceLabel = result?.confidence_label ? formatConfidenceLabel(result.confidence_label) : 'Unbekannt';
-  const reasons = Array.isArray(result?.reasons_user)
-    ? result.reasons_user
-    : (Array.isArray(result?.reasons) ? result.reasons : []);
-  const warnings = Array.isArray(result?.warnings_user) ? result.warnings_user : [];
-
-  activeHistoryPayload = payload || null;
-  if (historyDetailBadge) {
-    const badgeText = scoreValue !== null ? `${verdict} · ${scoreValue}% KI` : verdict;
-    historyDetailBadge.innerHTML = badgeText
-      ? `<span class="drawer-chip">${escapeHtml(badgeText)}</span>`
-      : '';
-  }
-  if (historyDetailCopy) {
-    historyDetailCopy.disabled = !canCopyDetails || !activeHistoryPayload;
-    historyDetailCopy.textContent = canCopyDetails ? 'Details kopieren' : 'Kopieren nicht verfügbar';
-    historyDetailCopy.classList.remove('is-copied');
-  }
-
-  const reasonsHtml = reasons.length
-    ? reasons.map((r) => `<div class="ac-history-meta">${escapeHtml(r)}</div>`).join('')
-    : '<div class="drawer-empty">Keine Hinweise gespeichert.</div>';
-  const warningsHtml = warnings.length
-    ? warnings.map((w) => `<div class="ac-history-meta">${escapeHtml(w)}</div>`).join('')
-    : '<div class="drawer-empty">Keine Warnungen gespeichert.</div>';
-
-  const timelineHtml = `
-    <div class="ac-history-panel-card drawer-card">
-      <div class="ac-history-card-title">Analyse Timeline</div>
-      <div class="analysis-timeline">
-        <div class="timeline-item"><span class="timeline-dot"></span><span class="timeline-text">Upload</span></div>
-        <div class="timeline-item"><span class="timeline-dot"></span><span class="timeline-text">Analyse gestartet</span></div>
-        <div class="timeline-item"><span class="timeline-dot"></span><span class="timeline-text">Engines ausgeführt</span></div>
-        <div class="timeline-item"><span class="timeline-dot"></span><span class="timeline-text">Ergebnis berechnet</span></div>
-      </div>
-    </div>
-  `;
-
-  const detailHtml = `
-    <div class="ac-history-panel-card drawer-card">
-      <div class="ac-history-card-title">Zusammenfassung</div>
-      <div class="ac-history-kv"><span>Ergebnis</span><span>${escapeHtml(verdict)}</span></div>
-      <div class="ac-history-kv"><span>KI-Score</span><span>${escapeHtml(score)}</span></div>
-      <div class="ac-history-kv"><span>Status</span><span>${escapeHtml(statusInfo.label)}</span></div>
-      <div class="ac-history-kv"><span>Credits</span><span>${escapeHtml(credits)}</span></div>
-      <div class="ac-history-kv"><span>Konfidenz</span><span>${escapeHtml(confidenceLabel)}</span></div>
-    </div>
-    ${timelineHtml}
-    <div class="ac-history-panel-card drawer-card">
-      <div class="ac-history-card-title">Hinweise</div>
-      ${reasonsHtml}
-    </div>
-    <div class="ac-history-panel-card drawer-card">
-      <div class="ac-history-card-title">Engine-Breakdown</div>
-      ${renderEngineBreakdown(payload?.engine_breakdown)}
-    </div>
-    <div class="ac-history-panel-card drawer-card">
-      <div class="ac-history-card-title">Warnungen</div>
-      ${warningsHtml}
-    </div>
-  `;
-  if (historyDetailBody) historyDetailBody.innerHTML = detailHtml;
-}
-
-function renderHistoryDetailSkeleton() {
-  return `
-    <div class="ac-history-skeleton">
-      <div class="ac-history-skeleton-line"></div>
-      <div class="ac-history-skeleton-line"></div>
-      <div class="ac-history-skeleton-line"></div>
-    </div>
-  `;
 }
 
 async function openHistoryDetail(auth, historyId) {
@@ -1564,6 +2689,7 @@ export async function renderHistory(auth, { force = false, skipFetch = false } =
 function updateAdminVisibility(auth) {
   const isAdmin = auth?.isAdmin?.() === true;
   if (sideAdmin) sideAdmin.hidden = !isAdmin;
+  if (sideAdminSection) sideAdminSection.hidden = !isAdmin;
   if (profileAdminBtn) profileAdminBtn.hidden = !isAdmin;
 }
 
@@ -1597,8 +2723,15 @@ export function initUI(auth, extras = {}) {
   navHistory?.addEventListener('click', (e) => {
     e.preventDefault();
     if (!auth.requireSession()) return;
-    renderHistory(auth);
-    showPage('history');
+    if (navigate) navigate('/history');
+    else showPage('history');
+  });
+
+  navProfile?.addEventListener('click', (e) => {
+    e.preventDefault();
+    if (!auth.requireSession()) return;
+    if (navigate) navigate('/profile');
+    else showPage('profile');
   });
 
   brandHome?.addEventListener('click', (e) => {
@@ -1619,29 +2752,50 @@ export function initUI(auth, extras = {}) {
   });
 
   menuList?.addEventListener('click', (e) => {
-    const el = e.target.closest('[data-action]');
-    if (!el) return;
-    const [type, page, sub] = (el.dataset.action || '').split(':');
-    if (type !== 'open') return;
-    if (['video', 'image', 'audio'].includes(page)) {
-      if (navigate) navigate('/');
-      else showPage('start');
-    } else if (page === 'history') {
-      if (!auth.requireSession()) return;
-      renderHistory(auth);
-      showPage('history');
-    } else if (page === 'legal') {
-      showPage('legal');
-      showLegal(sub || 'impressum');
-    } else if (page === 'profile') {
-      showProfilePage(auth, true);
-    } else if (page === 'settings') {
-      showPage('settings');
-    } else if (page === 'admin') {
-      if (typeof onOpenAdmin === 'function') onOpenAdmin();
-      else showPage('admin');
-    } else {
-      showPage(page);
+    const actionEl = e.target.closest('[data-action]');
+    const linkEl = e.target.closest('[data-link]');
+    if (!actionEl && !linkEl) return;
+    e.stopPropagation();
+    if (actionEl) {
+      const [type, page, sub] = (actionEl.dataset.action || '').split(':');
+      if (type !== 'open') return;
+      if (['video', 'image', 'audio'].includes(page)) {
+        if (navigate) navigate('/');
+        else showPage('start');
+        setTimeout(() => activateMediaType(page), 0);
+      } else if (page === 'history') {
+        if (!auth.requireSession()) return;
+        if (navigate) navigate('/history');
+        else showPage('history');
+      } else if (page === 'legal') {
+        const target = `/legal?section=${sub || 'impressum'}`;
+        if (navigate) navigate(target);
+        else {
+          showPage('legal');
+          showLegal(sub || 'impressum');
+        }
+      } else if (page === 'profile') {
+        if (navigate) navigate('/profile');
+        else showProfilePage(auth, true);
+      } else if (page === 'settings') {
+        if (navigate) navigate('/settings');
+        else showPage('settings');
+      } else if (page === 'admin') {
+        if (navigate) navigate('/admin');
+        else if (typeof onOpenAdmin === 'function') onOpenAdmin();
+        else showPage('admin');
+      } else if (page) {
+        if (navigate) navigate(`/${page}`);
+        else showPage(page);
+      }
+    }
+    if (linkEl) {
+      const target = linkEl.getAttribute('data-link') || linkEl.getAttribute('href');
+      if (target && !target.startsWith('http')) {
+        e.preventDefault();
+        if (navigate) navigate(target);
+        else showPage(normalizePath(target).replace('/', '') || 'start');
+      }
     }
     sidebar?.classList.remove('open');
     sidebarOverlay?.classList.remove('show');
@@ -1649,8 +2803,8 @@ export function initUI(auth, extras = {}) {
 
   profileHistoryBtn?.addEventListener('click', () => {
     if (!auth.requireSession()) return;
-    renderHistory(auth);
-    showPage('history');
+    if (navigate) navigate('/history');
+    else showPage('history');
   });
 
   profileLogoutBtn?.addEventListener('click', () => auth.logout());
@@ -1669,11 +2823,14 @@ export function initUI(auth, extras = {}) {
     const action = e.target.closest('button')?.dataset.menu;
     if (!action) return;
     if (action === 'profile' || action === 'credits') {
-      showProfilePage(auth);
+      if (navigate) navigate('/profile');
+      else showProfilePage(auth);
     } else if (action === 'settings') {
-      showPage('settings');
+      if (navigate) navigate('/settings');
+      else showPage('settings');
     } else if (action === 'admin') {
-      if (typeof onOpenAdmin === 'function') onOpenAdmin();
+      if (navigate) navigate('/admin');
+      else if (typeof onOpenAdmin === 'function') onOpenAdmin();
       else showPage('admin');
     } else if (action === 'logout') {
       auth.logout();
@@ -1732,12 +2889,28 @@ export function initUI(auth, extras = {}) {
   updateAdminVisibility(auth);
   updateHeaderUI(auth, currentRoute);
   bindResendVerify(auth);
+  setupAnalyzeToolUI();
+  bindReportCopy();
   if (router?.subscribe) {
     router.subscribe((path) => {
       currentRoute = path;
       updateAnalysisVisibility(auth);
       if (enforceAuthGuard(auth, path, navigateFn)) return;
       updateHeaderUI(auth, path);
+      const safePath = normalizePath(path);
+      if (safePath === '/history') {
+        renderHistory(auth);
+      } else if (safePath === '/profile') {
+        updateProfileView(auth);
+      } else if (safePath === '/admin') {
+        if (auth?.isAdmin?.() !== true) {
+          if (navigateFn) navigateFn('/');
+          return;
+        }
+        if (typeof onOpenAdmin === 'function') onOpenAdmin();
+      } else if (safePath === '/') {
+        updateQuickMediaButtons();
+      }
     });
   }
 }
@@ -1770,5 +2943,268 @@ function setupExpertModeToggle() {
     }
   });
   expertToggleBound = true;
+}
+
+function normalizeHistorySummary(payload) {
+  const result = payload?.result_payload || {};
+  if (result && typeof result === 'object' && result.summary && typeof result.summary === 'object') {
+    return result.summary;
+  }
+  return (result && typeof result === 'object') ? result : {};
+}
+
+function normalizeHistoryPercent(value) {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return null;
+  if (num >= 0 && num <= 1) return Math.round(num * 100);
+  return Math.round(num);
+}
+
+function normalizeHistoryEngines(breakdown) {
+  if (!breakdown || typeof breakdown !== 'object') return [];
+  return Object.entries(breakdown).map(([engine, info]) => {
+    let score = null;
+    let confidence = null;
+    let status = null;
+    let available = null;
+    if (typeof info === 'number') {
+      score = info;
+    } else if (info && typeof info === 'object') {
+      if (typeof info.score === 'number') score = info.score;
+      else if (typeof info.ai_percent === 'number') score = info.ai_percent;
+      else if (typeof info.ai === 'number') score = info.ai;
+      if (typeof info.confidence === 'number') confidence = info.confidence;
+      if (typeof info.status === 'string' && info.status) status = info.status;
+      if (typeof info.available === 'boolean') available = info.available;
+    }
+    const entry = { engine };
+    if (typeof score === 'number') entry.ai_percent = score;
+    if (typeof confidence === 'number') entry.confidence01 = confidence > 1 ? (confidence / 100) : confidence;
+    if (typeof status === 'string') entry.status = status;
+    if (typeof available === 'boolean') entry.available = available;
+    return entry;
+  });
+}
+
+function normalizeHistoryConfidence(summary) {
+  if (!summary || typeof summary !== 'object') return;
+  const hasLabel = typeof summary.confidence_label === 'string' && summary.confidence_label.trim();
+  let confidence01 = summary.confidence01;
+  if (!Number.isFinite(confidence01)) {
+    const raw = summary.confidence;
+    if (Number.isFinite(raw)) {
+      confidence01 = raw > 1 ? (raw / 100) : raw;
+    }
+  }
+  if (Number.isFinite(confidence01) && !Number.isFinite(summary.confidence01)) {
+    summary.confidence01 = confidence01;
+  }
+  if (!hasLabel && Number.isFinite(confidence01)) {
+    if (confidence01 >= 0.7) summary.confidence_label = 'high';
+    else if (confidence01 >= 0.4) summary.confidence_label = 'medium';
+    else summary.confidence_label = 'low';
+  }
+}
+
+function inferHistoryVerdictKey(summary, payload, aiPercent) {
+  const candidate = summary?.verdict_key || summary?.verdict;
+  if (candidate === 'likely_ai' || candidate === 'likely_real' || candidate === 'uncertain') {
+    return candidate;
+  }
+  const label = String(summary?.label_de || payload?.verdict_label || '').toLowerCase();
+  if (label.includes('ki') && !label.includes('echt')) return 'likely_ai';
+  if (label.includes('echt')) return 'likely_real';
+  if (typeof aiPercent === 'number') {
+    if (aiPercent >= 70) return 'likely_ai';
+    if (aiPercent <= 30) return 'likely_real';
+  }
+  return 'uncertain';
+}
+
+function inferHistoryTrafficLight(verdictKey) {
+  if (verdictKey === 'likely_ai') return 'red';
+  if (verdictKey === 'likely_real') return 'green';
+  return 'yellow';
+}
+
+function buildHistoryResultPayload(payload) {
+  const summary = Object.assign({}, normalizeHistorySummary(payload));
+  const aiPercent = (typeof summary.ai_percent === 'number')
+    ? Math.round(summary.ai_percent)
+    : normalizeHistoryPercent(
+        summary.ai_likelihood ?? summary.final_ai ?? summary.ai ?? payload?.final_score
+      );
+  if (typeof summary.ai_percent !== 'number' && aiPercent !== null) {
+    summary.ai_percent = aiPercent;
+  }
+  if (typeof summary.real_percent !== 'number' && typeof summary.ai_percent === 'number') {
+    summary.real_percent = Math.max(0, 100 - summary.ai_percent);
+  }
+  if (!Array.isArray(summary.reasons_user)) {
+    summary.reasons_user = Array.isArray(summary.reasons) ? summary.reasons : [];
+  }
+  if (!Array.isArray(summary.warnings_user)) {
+    summary.warnings_user = [];
+  }
+  if (!summary.label_de && payload?.verdict_label) {
+    summary.label_de = payload.verdict_label;
+  }
+  summary.verdict_key = inferHistoryVerdictKey(summary, payload, summary.ai_percent);
+  if (!summary.traffic_light) {
+    summary.traffic_light = inferHistoryTrafficLight(summary.verdict_key);
+  }
+  if (typeof summary.conflict !== 'boolean') {
+    summary.conflict = false;
+  }
+  normalizeHistoryConfidence(summary);
+
+  const details = {
+    engines: normalizeHistoryEngines(payload?.engine_breakdown),
+  };
+
+  return {
+    meta: {
+      schema_version: 'public_result_v1',
+      analysis_id: payload?.id || payload?.analysis_id || null,
+      media_type: payload?.media_type || null,
+      created_at: payload?.created_at || null,
+    },
+    summary,
+    details,
+    status: payload?.status || null,
+  };
+}
+
+
+function renderHistoryDetail(payload) {
+  const title = payload?.title || payload?.verdict_label || 'Analyse';
+  const createdAt = formatDateTime(payload?.created_at);
+  const mediaType = formatMediaLabel(payload?.media_type);
+  if (historyDetailTitle) historyDetailTitle.textContent = title;
+  if (historyDetailMeta) historyDetailMeta.textContent = `${mediaType} - ${createdAt}`;
+
+  activeHistoryPayload = payload || null;
+  if (historyDetailBadge) {
+    historyDetailBadge.innerHTML = '';
+  }
+  if (historyDetailCopy) {
+    historyDetailCopy.disabled = !canCopyDetails || !activeHistoryPayload;
+    historyDetailCopy.textContent = canCopyDetails ? 'Details kopieren' : 'Kopieren nicht verfügbar';
+    historyDetailCopy.classList.remove('is-copied');
+  }
+
+  const expertMode = (() => {
+    try {
+      return localStorage.getItem('ac_expert_mode') === '1';
+    } catch (e) {
+      return false;
+    }
+  })();
+  const resultPayload = buildHistoryResultPayload(payload);
+  if (historyDetailBody) historyDetailBody.innerHTML = renderAnalysisResult(resultPayload, { expertMode, variant: 'drawer' });
+}
+
+function buildHistoryCopyText(payload) {
+  if (!payload) return '';
+  const title = payload?.title || payload?.verdict_label || 'Analyse';
+  const createdAt = formatDateTime(payload?.created_at);
+  const mediaType = formatMediaLabel(payload?.media_type);
+  const verdict = payload?.verdict_label || 'Ergebnis';
+  const scoreValue = (typeof payload?.final_score === 'number') ? Math.round(payload.final_score) : null;
+  const scoreText = scoreValue !== null ? `${scoreValue}% KI` : '--';
+  const credits = (typeof payload?.credits_charged === 'number') ? `${payload.credits_charged} Credits` : '--';
+  const statusInfo = historyStatusInfo(payload?.status);
+  const summary = normalizeHistorySummary(payload);
+  const confidenceLabel = summary?.confidence_label ? formatConfidenceLabel(summary.confidence_label) : 'Unbekannt';
+  const reasons = Array.isArray(summary?.reasons_user)
+    ? summary.reasons_user
+    : (Array.isArray(summary?.reasons) ? summary.reasons : []);
+  const warnings = Array.isArray(summary?.warnings_user) ? summary.warnings_user : [];
+  const lines = [
+    `Titel: ${title}`,
+    `Datum: ${createdAt}`,
+    `Typ: ${mediaType}`,
+    `Ergebnis: ${verdict}`,
+    `KI-Score: ${scoreText}`,
+    `Konfidenz: ${confidenceLabel}`,
+    `Status: ${statusInfo.label}`,
+    `Credits: ${credits}`,
+  ];
+
+  if (reasons.length) {
+    lines.push('Hinweise:');
+    reasons.forEach((reason) => lines.push(`- ${reason}`));
+  }
+  if (warnings.length) {
+    lines.push('Warnungen:');
+    warnings.forEach((warning) => lines.push(`- ${warning}`));
+  }
+
+  const breakdown = payload?.engine_breakdown;
+  if (breakdown && typeof breakdown === 'object') {
+    const entries = Object.entries(breakdown);
+    if (entries.length) {
+      lines.push('Engine-Breakdown:');
+      entries.forEach(([name, info]) => {
+        const rawScore = (typeof info === 'number')
+          ? info
+          : ((typeof info?.score === 'number') ? info.score : null);
+        const engineScore = (typeof rawScore === 'number') ? Math.round(rawScore) : null;
+        const engineScoreText = engineScore !== null ? `${engineScore}% KI` : '--';
+        const confText = (typeof info?.confidence === 'number')
+          ? `${formatPercent(info.confidence)} Konfidenz`
+          : null;
+        const metaText = [engineScoreText, confText].filter(Boolean).join(' · ');
+        lines.push(`- ${name}: ${metaText || '--'}`);
+      });
+    }
+  }
+
+  return lines.join('\n');
+}
+
+function copyHistoryDetail() {
+  if (!historyDetailCopy || historyDetailCopy.disabled) return;
+  if (!canCopyDetails || !activeHistoryPayload) return;
+  const text = buildHistoryCopyText(activeHistoryPayload);
+  if (!text) return;
+
+  const applyFeedback = (label) => {
+    const original = historyDetailCopy.dataset.label || historyDetailCopy.textContent.trim();
+    historyDetailCopy.dataset.label = original;
+    historyDetailCopy.textContent = label;
+    historyDetailCopy.classList.add('is-copied');
+    window.setTimeout(() => {
+      historyDetailCopy.textContent = historyDetailCopy.dataset.label || original;
+      historyDetailCopy.classList.remove('is-copied');
+    }, 1200);
+  };
+
+  const copyFallback = () => {
+    try {
+      const textarea = document.createElement('textarea');
+      textarea.value = text;
+      textarea.style.position = 'fixed';
+      textarea.style.opacity = '0';
+      document.body.appendChild(textarea);
+      textarea.focus();
+      textarea.select();
+      const ok = document.execCommand('copy');
+      document.body.removeChild(textarea);
+      return ok;
+    } catch (err) {
+      return false;
+    }
+  };
+
+  if (navigator?.clipboard?.writeText) {
+    navigator.clipboard.writeText(text)
+      .then(() => applyFeedback('Details kopiert'))
+      .catch(() => {
+        if (copyFallback()) applyFeedback('Details kopiert');
+      });
+    return;
+  }
+  if (copyFallback()) applyFeedback('Details kopiert');
 }
 
