@@ -20,7 +20,7 @@
       }
     })();
   </script>
-  <link rel="stylesheet" href="/style.css?v=20260305_2" />
+  <link rel="stylesheet" href="/style.css?v=20260307_2" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 </head>
@@ -32,45 +32,59 @@
   <!-- Header -->
   <header class="ac-header" id="mainHeader">
     <div class="ac-header-left">
-      <button id="hamburger" class="ac-icon-btn" aria-label="Menü">
-        <!-- menu (outline, currentColor) -->
+      <button id="headerBack" class="ac-ghost ac-header-back" type="button" data-link="/" aria-label="Zur&uuml;ck" hidden>
+        Zur&uuml;ck
+      </button>
+      <!-- Hamburger-Button (nur Mobile) -->
+      <button id="hamburger" class="ac-icon-btn ac-hamburger" aria-label="Menü">
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/>
         </svg>
       </button>
-      <button class="ac-brand-btn" id="brandHome" aria-label="Start">
+      <!-- Brand-Logo im Header (nur auf Auth-Seiten via CSS sichtbar; Sidebar zeigt es sonst) -->
+      <button class="ac-brand-btn ac-header-brand" id="headerBrand" data-link="/" aria-label="Start">
         <img class="ac-brand-logo" src="/Assets/Logos/airealcheck-secondary.png" alt="AIRealCheck" />
       </button>
+      <!-- Breadcrumb: zeigt aktuellen Seitennamen -->
+      <div id="pageIndicator" class="ac-breadcrumb" hidden>Analyse</div>
     </div>
+
     <div class="ac-header-center">
-      <div id="pageIndicator" class="ac-page-indicator" hidden>Analyse</div>
+      <div class="ac-admin-context" id="adminContext" hidden>
+        <span class="ac-admin-pill">Admin</span>
+        <button type="button" class="ac-ghost" data-link="/">Zur&uuml;ck zur App</button>
+      </div>
     </div>
 
     <div class="ac-header-right">
       <div class="ac-header-auth" id="headerAuth" hidden>
+        <button type="button" class="ac-ghost" data-link="/login">Anmelden</button>
         <button type="button" class="ac-primary" data-link="/register">Konto erstellen</button>
       </div>
-      <div class="ac-credits credits-badge" id="creditsBox" hidden title="Credits remaining this month">
-        <span class="credits-icon" aria-hidden="true">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="12" cy="12" r="9" />
-            <circle cx="12" cy="12" r="4.5" opacity="0.6" />
-            <path d="M9 8.5c1.2-.9 2.6-1.4 4-1.4" opacity="0.6" />
-          </svg>
-        </span>
-        <span id="creditsText" class="credits-text">
-          <span id="creditsValue" class="credits-value">—</span>
-          <span class="credits-unit">Credits</span>
-        </span>
+      <!-- User-Pill: Avatar + Credits nebeneinander -->
+      <div class="ac-user-pill" id="userPill" hidden>
+        <div class="ac-credits credits-badge" id="creditsBox" hidden title="Verbleibende Credits dieses Monats">
+          <span class="credits-icon" aria-hidden="true">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="9" />
+              <circle cx="12" cy="12" r="4.5" opacity="0.6" />
+              <path d="M9 8.5c1.2-.9 2.6-1.4 4-1.4" opacity="0.6" />
+            </svg>
+          </span>
+          <span id="creditsText" class="credits-text">
+            <span id="creditsValue" class="credits-value">—</span>
+            <span class="credits-unit">Credits</span>
+          </span>
+        </div>
+        <button id="profileTrigger" class="profile-trigger" type="button" data-link="/login" aria-haspopup="true" aria-expanded="false">
+          <span id="profileAvatar" class="profile-avatar">•</span>
+        </button>
       </div>
-      <button id="profileTrigger" class="profile-trigger" type="button" data-link="/login" aria-haspopup="true" aria-expanded="false" hidden>
-        <span id="profileAvatar" class="profile-avatar">•</span>
-      </button>
       <div id="profileDropdown" class="profile-dropdown" aria-hidden="true" hidden>
         <button type="button" data-menu="profile">Profil</button>
         <button type="button" data-menu="credits">Credits &amp; Übersicht</button>
         <button type="button" data-menu="settings">Einstellungen</button>
-        <button type="button" data-menu="admin" id="profileAdmin" hidden>Admin Panel</button>
+        <button type="button" data-menu="admin" id="profileAdmin" hidden>Admin</button>
         <button type="button" data-menu="logout" class="profile-danger">Abmelden</button>
       </div>
     </div>
@@ -81,115 +95,64 @@
 
     <!-- Sidebar -->
     <aside class="ac-sidebar" id="sidebar" aria-hidden="true">
-      <div>
-        <div class="ac-sidebar-title" data-i18n="sidebar.nav">Navigation</div>
-                <nav id="menuList" class="ac-sidebar-list">
-          <div class="ac-nav-section">
-            <div class="ac-nav-title">Workspace</div>
-            <button class="ac-side-item ac-side-primary" data-link="/" data-nav="analysis">
-              <span class="ac-icon">
-                <!-- search -->
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <circle cx="11" cy="11" r="7"/><line x1="20" y1="20" x2="16.5" y2="16.5"/>
-                </svg>
-              </span>
-              <span>Analyse</span>
-            </button>
-            <div class="ac-nav-quick">
-              <button class="ac-quick-btn" type="button" data-action="open:image" data-media="image">Bild</button>
-              <button class="ac-quick-btn" type="button" data-action="open:video" data-media="video">Video</button>
-              <button class="ac-quick-btn" type="button" data-action="open:audio" data-media="audio">Audio</button>
-            </div>
-            <button class="ac-side-item" data-link="/history" data-nav="history">
-              <span class="ac-icon">
-                <!-- clock -->
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>
-                </svg>
-              </span>
-              <span>Verlauf</span>
-            </button>
-          </div>
 
-          <div class="ac-nav-section">
-            <div class="ac-nav-title">Account</div>
-            <button class="ac-side-item" data-link="/profile" data-nav="profile">
-              <span class="ac-icon">
-                <!-- user -->
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M20 21a8 8 0 10-16 0"/><circle cx="12" cy="7" r="4"/>
-                </svg>
-              </span>
-              <span>Profil &amp; Credits</span>
-            </button>
-            <button class="ac-side-item" data-link="/settings" data-nav="settings">
-              <span class="ac-icon">
-                <!-- settings -->
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <circle cx="12" cy="12" r="3"/>
-                  <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 01-2.83 2.83l-.06-.06A1.65 1.65 0 0015 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 008.6 15a1.65 1.65 0 00-1.82-.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.6a1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0015.4 9a1.65 1.65 0 001.82.33l.06-.06A2 2 0 0120 12a2 2 0 01-.6 3z"/>
-                </svg>
-              </span>
-              <span>Einstellungen</span>
-            </button>
-          </div>
-
-          <div class="ac-nav-section" id="sideAdminSection" hidden>
-            <div class="ac-nav-title">Admin</div>
-            <button class="ac-side-item" data-link="/admin" data-nav="admin" id="sideAdmin">
-              <span class="ac-icon">
-                <!-- shield -->
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-                  <path d="M9 12l2 2 4-4"/>
-                </svg>
-              </span>
-              <span>Admin Panel</span>
-            </button>
-          </div>
-
-          <div class="ac-nav-section">
-            <div class="ac-nav-title">Mehr</div>
-            <button class="ac-side-item" data-link="/premium" data-nav="premium">
-              <span class="ac-icon">
-                <!-- diamond -->
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M6 3h12l4 6-10 12L2 9z"/><path d="M11 3l1 6 1-6"/>
-                </svg>
-              </span>
-              <span>Premium</span>
-            </button>
-            <button class="ac-side-item" data-link="/affiliate" data-nav="affiliate">
-              <span class="ac-icon">
-                <!-- link -->
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M10 13a5 5 0 007.07 0l2.83-2.83a5 5 0 10-7.07-7.07L10 5"/>
-                  <path d="M14 11a5 5 0 01-7.07 0L4.1 8.17a5 5 0 017.07-7.07L14 3"/>
-                </svg>
-              </span>
-              <span>Affiliate</span>
-            </button>
-            <button class="ac-side-item" data-link="/rate" data-nav="rate">
-              <span class="ac-icon">
-                <!-- star -->
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <polygon points="12 2 15 8.5 22 9 17 13.8 18.5 21 12 17.8 5.5 21 7 13.8 2 9 9 8.5 12 2"/>
-                </svg>
-              </span>
-              <span>App bewerten</span>
-            </button>
-          </div>
-        </nav>
+      <!-- Logo-Bereich -->
+      <div class="ac-sidebar-header">
+        <button class="ac-sidebar-brand" id="brandHome" data-link="/" aria-label="Start">
+          <img class="ac-sidebar-brandmark" src="/Assets/Logos/airealcheck-brandmark.png" alt="" aria-hidden="true" />
+          <img class="ac-sidebar-wordmark" src="/Assets/Logos/airealcheck-wordmark.png" alt="AIRealCheck" />
+        </button>
+        <!-- Collapse-Toggle-Button (nur Desktop) -->
+        <button class="ac-sidebar-toggle" id="sidebarToggle" type="button" aria-label="Sidebar einklappen">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="15 18 9 12 15 6"/>
+          </svg>
+        </button>
       </div>
 
-      <div>
-        <div class="ac-legal-title" data-i18n="sidebar.legal">Rechtliches</div>
-        <div class="ac-sidebar-list">
-          <button class="ac-side-item ac-side-plain" data-link="/legal?section=impressum">Impressum</button>
-          <button class="ac-side-item ac-side-plain" data-link="/legal?section=privacy">Datenschutz</button>
-          <button class="ac-side-item ac-side-plain" data-link="/legal?section=tac">AGB</button>
+      <!-- Navigation (wird per JS befüllt) -->
+      <div class="ac-sidebar-body">
+        <nav id="sidebarNav" class="ac-sidebar-nav"></nav>
+
+        <!-- Upgrade-CTA (nur wenn eingeklappt: nur Icon) -->
+        <div class="ac-sidebar-upgrade" id="sidebarUpgrade" hidden>
+          <button type="button" class="ac-upgrade-btn" data-link="/premium">
+            <span class="ac-upgrade-icon" aria-hidden="true">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polygon points="12 2 15 8.5 22 9 17 13.8 18.5 21 12 17.8 5.5 21 7 13.8 2 9 9 8.5 12 2"/>
+              </svg>
+            </span>
+            <span class="ac-upgrade-text">Upgrade auf Premium</span>
+          </button>
         </div>
       </div>
+
+      <!-- Credits-Card (nur ausgeklappt, nur eingeloggt) -->
+      <div class="ac-sidebar-credits-card" id="sidebarCreditsCard" hidden>
+        <div class="ac-credits-card-top">
+          <span class="ac-credits-card-plan" id="sidebarCreditsPlan">Free</span>
+          <div class="ac-credits-card-number">
+            <span class="ac-credits-card-value" id="sidebarCreditsValue">—</span>
+            <span class="ac-credits-card-unit">Credits</span>
+          </div>
+        </div>
+        <div class="ac-credits-bar-track">
+          <div class="ac-credits-bar-fill" id="sidebarCreditsBar" style="width:0%"></div>
+        </div>
+        <div class="ac-credits-card-bottom">
+          <span>Reset:</span><span id="sidebarCreditsReset">—</span>
+        </div>
+      </div>
+
+      <!-- Footer-Links (nur ausgeklappt) -->
+      <div class="ac-sidebar-footer-links">
+        <a href="/legal?section=impressum" data-link="/legal?section=impressum">Impressum</a>
+        <span aria-hidden="true">·</span>
+        <a href="/legal?section=privacy" data-link="/legal?section=privacy">Datenschutz</a>
+        <span aria-hidden="true">·</span>
+        <a href="/legal?section=tac" data-link="/legal?section=tac">AGB</a>
+      </div>
+
     </aside>
 
     <!-- MAIN -->
@@ -381,13 +344,6 @@
       </section>
 
       <!-- DETAILS -->
-      <section id="page-details" class="ac-page ac-hide">
-        <div class="ac-container">
-          <div class="ac-page-title" data-i18n="details.title">Details zur Analyse</div>
-          <div id="detailsCard" class="ac-card"></div>
-        </div>
-      </section>
-
       <!-- AUTH: LOGIN -->
       <section id="page-login" class="ac-page ac-hide">
         <div class="ac-container">
@@ -700,7 +656,7 @@
               </div>
             </div>
             <div class="profile-actions">
-              <button class="ac-secondary" id="profileHistory">Verlauf öffnen</button>
+              <button class="ac-secondary" id="profileHistory" data-link="/history">Verlauf öffnen</button>
               <button class="ac-primary" id="profileLogout">Ausloggen</button>
             </div>
           </div>
@@ -1482,47 +1438,10 @@
   </aside>
 
   <!-- Bottom Navigation (nur Mobile) -->
-  <nav class="ac-bottom">
-    <button id="navStart" class="ac-nav-btn ac-active" aria-label="Analyse">
-      <!-- spark -->
-      <svg class="ac-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M12 3l1.8 4.8L19 10l-5.2 2.2L12 17l-1.8-4.8L5 10l5.2-2.2L12 3z"/>
-      </svg>
-      <span>Analyse</span>
-    </button>
-    <button id="navHistory" class="ac-nav-btn" aria-label="Verlauf">
-      <!-- clock (outline) -->
-      <svg class="ac-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>
-      </svg>
-      <span data-i18n="nav.history">Verlauf</span>
-    </button>
-    <button id="navProfile" class="ac-nav-btn" aria-label="Account">
-      <!-- user -->
-      <svg class="ac-nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M20 21a8 8 0 10-16 0"/><circle cx="12" cy="7" r="4"/>
-      </svg>
-      <span>Account</span>
-    </button>
-  </nav>
+  <nav class="ac-bottom" id="bottomNav"></nav>
 
-  <!-- Footer (nur Desktop) -->
-  <footer class="ac-footer">
-    <div class="ac-container ac-footer-inner">
-      <div class="ac-footer-left">
-        <div class="ac-brand-sm">AIRealCheck</div>
-        <div class="ac-subtle" data-i18n="footer.tagline">Vertrauen zurück ins Internet.</div>
-      </div>
-      <div class="ac-footer-links">
-        <a href="/legal?section=impressum" data-link="/legal?section=impressum">Impressum</a>
-        <a href="/legal?section=privacy" data-link="/legal?section=privacy">Datenschutz</a>
-        <a href="/legal?section=tac" data-link="/legal?section=tac">AGB</a>
-        <a href="/affiliate" data-link="/affiliate">Affiliate</a>
-      </div>
-    </div>
-  </footer>
 
-  <script type="module" src="/main.js?v=20260305_2"></script>
+  <script type="module" src="/main.js?v=20260307_1"></script>
 </body>
 </html>
 

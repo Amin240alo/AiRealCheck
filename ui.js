@@ -1,14 +1,14 @@
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => Array.from(document.querySelectorAll(sel));
 
-console.log('UI VERSION:', '20260305_1');
+console.log('UI VERSION:', '20260307_2');
 
 const DEBUG_PROGRESS_RENDER = window?.AIREALCHECK_DEBUG_PROGRESS === true;
 
 const pages = {
   start: $('#page-start'),
+  dashboard: $('#page-dashboard'),
   history: $('#page-history'),
-  details: $('#page-details'),
   login: $('#page-login'),
   authCallback: $('#page-auth-callback'),
   register: $('#page-register'),
@@ -17,6 +17,8 @@ const pages = {
   reset: $('#page-reset'),
   profile: $('#page-profile'),
   settings: $('#page-settings'),
+  support: $('#page-support'),
+  feedback: $('#page-feedback'),
   premium: $('#page-premium'),
   affiliate: $('#page-affiliate'),
   rate: $('#page-rate'),
@@ -27,6 +29,7 @@ const pages = {
 const header = $('#mainHeader');
 const headerAuth = $('#headerAuth');
 const headerBack = $('#headerBack');
+const adminContext = $('#adminContext');
 const pageIndicator = $('#pageIndicator');
 const creditsBox = $('#creditsBox');
 const creditsLabel = $('#creditsText');
@@ -44,20 +47,14 @@ const profileVerified = $('#profileVerified');
 const profileCreated = $('#profileCreated');
 const profileBadge = $('#profileBadge');
 const profileDropdown = $('#profileDropdown');
-const profileHistoryBtn = $('#profileHistory');
 const profileLogoutBtn = $('#profileLogout');
 const profileTrigger = $('#profileTrigger');
 const profileAdminBtn = $('#profileAdmin');
 const sidebar = $('#sidebar');
 const sidebarOverlay = $('#overlay');
 const hamburger = $('#hamburger');
-const navStart = $('#navStart');
-const navHistory = $('#navHistory');
-const navProfile = $('#navProfile');
-const sideAdmin = $('#sideAdmin');
-const sideAdminSection = $('#sideAdminSection');
-const brandHome = $('#brandHome');
-const menuList = $('#menuList');
+const sidebarNav = $('#sidebarNav');
+const bottomNav = $('#bottomNav');
 const emailVerifyBanner = $('#emailVerifyBanner');
 const analysisGateNotice = $('#analysisGateNotice');
 const analysisTool = $('#analysisTool');
@@ -104,19 +101,247 @@ const RETURN_TO_KEY = 'airealcheck_return_to';
 const fmtDT = new Intl.DateTimeFormat('de-DE', { dateStyle: 'medium', timeStyle: 'short' });
 const fmtDate = new Intl.DateTimeFormat('de-DE', { dateStyle: 'medium' });
 
-const AUTH_ROUTES = new Set([
-  '/login',
-  '/auth/callback',
-  '/register',
-  '/verify-email',
-  '/forgot-password',
-  '/reset-password',
-]);
+const ICONS = {
+  spark: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.8 4.8L19 10l-5.2 2.2L12 17l-1.8-4.8L5 10l5.2-2.2L12 3z"/></svg>',
+  clock: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>',
+  user: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 21a8 8 0 10-16 0"/><circle cx="12" cy="7" r="4"/></svg>',
+  settings: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 01-2.83 2.83l-.06-.06A1.65 1.65 0 0015 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 008.6 15a1.65 1.65 0 00-1.82-.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.6a1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0015.4 9a1.65 1.65 0 001.82.33l.06-.06A2 2 0 0120 12a2 2 0 01-.6 3z"/></svg>',
+  diamond: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3h12l4 6-10 12L2 9z"/><path d="M11 3l1 6 1-6"/></svg>',
+  link: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 007.07 0l2.83-2.83a5 5 0 10-7.07-7.07L10 5"/><path d="M14 11a5 5 0 01-7.07 0L4.1 8.17a5 5 0 017.07-7.07L14 3"/></svg>',
+  star: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="12 2 15 8.5 22 9 17 13.8 18.5 21 12 17.8 5.5 21 7 13.8 2 9 9 8.5 12 2"/></svg>',
+  shield: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></svg>',
+  // Neue Icons für die überarbeitete Navigation
+  grid: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg>',
+  search: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><polyline points="9 11 11 13 15 9"/></svg>',
+  help: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>',
+  chat: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>',
+  code: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>',
+};
 
-const PUBLIC_ROUTES = new Set([...AUTH_ROUTES, '/legal']);
+const ROUTES = [
+  // --- Arbeitsbereich ---
+  {
+    key: 'dashboard',
+    path: '/dashboard',
+    page: 'dashboard',
+    label: 'Dashboard',
+    icon: 'grid',
+    access: 'public',
+    nav: { sidebar: true, bottom: false, section: 'workspace' },
+  },
+  {
+    key: 'start',
+    path: '/',
+    page: 'start',
+    label: 'Analyse',
+    icon: 'search',
+    access: 'public',
+    nav: { sidebar: true, bottom: true, section: 'workspace', primary: true },
+  },
+  {
+    key: 'history',
+    path: '/history',
+    page: 'history',
+    label: 'Verlauf',
+    icon: 'clock',
+    access: 'auth',
+    nav: { sidebar: true, bottom: true, section: 'workspace' },
+  },
+  // --- Konto ---
+  {
+    key: 'profile',
+    path: '/profile',
+    page: 'profile',
+    label: 'Profil',
+    icon: 'user',
+    access: 'auth',
+    nav: { sidebar: true, bottom: true, section: 'account' },
+  },
+  {
+    key: 'settings',
+    path: '/settings',
+    page: 'settings',
+    label: 'Einstellungen',
+    icon: 'settings',
+    access: 'auth',
+    nav: { sidebar: true, bottom: false, section: 'account' },
+  },
+  // --- Tools & Support ---
+  {
+    key: 'support',
+    path: '/support',
+    page: 'support',
+    label: 'Support & Hilfe',
+    icon: 'help',
+    access: 'public',
+    nav: { sidebar: true, bottom: false, section: 'support' },
+  },
+  {
+    key: 'feedback',
+    path: '/feedback',
+    page: 'feedback',
+    label: 'Feedback',
+    icon: 'chat',
+    access: 'public',
+    nav: { sidebar: true, bottom: false, section: 'support' },
+  },
+  {
+    key: 'api',
+    path: '/api',
+    page: 'start',
+    label: 'API-Zugang',
+    icon: 'code',
+    access: 'public',
+    nav: { sidebar: true, bottom: false, section: 'support', disabled: true, badge: 'Bald' },
+  },
+  // --- Nicht in Nav (aber weiterhin erreichbar) ---
+  {
+    key: 'premium',
+    path: '/premium',
+    page: 'premium',
+    label: 'Upgrade',
+    icon: 'diamond',
+    access: 'public',
+  },
+  {
+    key: 'affiliate',
+    path: '/affiliate',
+    page: 'affiliate',
+    label: 'Affiliate',
+    icon: 'link',
+    access: 'auth',
+  },
+  {
+    key: 'rate',
+    path: '/rate',
+    page: 'rate',
+    label: 'App bewerten',
+    icon: 'star',
+    access: 'public',
+  },
+  {
+    key: 'legal',
+    path: '/legal',
+    page: 'legal',
+    label: 'Rechtliches',
+    access: 'public',
+  },
+  {
+    key: 'admin',
+    path: '/admin',
+    page: 'admin',
+    label: 'Admin',
+    icon: 'shield',
+    access: 'admin',
+    nav: { sidebar: true, bottom: false, section: 'admin' },
+  },
+  {
+    key: 'login',
+    path: '/login',
+    page: 'login',
+    label: 'Anmelden',
+    access: 'public',
+    authPage: true,
+  },
+  {
+    key: 'authCallback',
+    path: '/auth/callback',
+    page: 'authCallback',
+    label: 'Anmeldung',
+    access: 'public',
+    authPage: true,
+  },
+  {
+    key: 'register',
+    path: '/register',
+    page: 'register',
+    label: 'Registrieren',
+    access: 'public',
+    authPage: true,
+  },
+  {
+    key: 'verify',
+    path: '/verify-email',
+    page: 'verify',
+    label: 'E-Mail bestätigen',
+    access: 'public',
+    authPage: true,
+  },
+  {
+    key: 'forgot',
+    path: '/forgot-password',
+    page: 'forgot',
+    label: 'Passwort vergessen',
+    access: 'public',
+    authPage: true,
+  },
+  {
+    key: 'reset',
+    path: '/reset-password',
+    page: 'reset',
+    label: 'Passwort zurücksetzen',
+    access: 'public',
+    authPage: true,
+  },
+];
+
+const NAV_SECTIONS = [
+  { key: 'workspace', title: 'Arbeitsbereich' },
+  { key: 'account', title: 'Konto' },
+  { key: 'support', title: 'Tools & Support' },
+  { key: 'admin', title: 'Admin', adminOnly: true },
+];
+
+const QUICK_ACTIONS = [
+  { key: 'image', label: 'Bild', action: 'open:image', media: 'image' },
+  { key: 'video', label: 'Video', action: 'open:video', media: 'video' },
+  { key: 'audio', label: 'Audio', action: 'open:audio', media: 'audio' },
+];
+
+const LEGAL_LINKS = [
+  { key: 'impressum', label: 'Impressum' },
+  { key: 'privacy', label: 'Datenschutz' },
+  { key: 'tac', label: 'AGB' },
+];
+
+const ROUTE_BY_PATH = new Map(ROUTES.map((route) => [route.path, route]));
+const ROUTE_BY_PAGE = new Map(ROUTES.map((route) => [route.page, route]));
+const AUTH_ROUTE_PATHS = new Set(ROUTES.filter((route) => route.authPage).map((route) => route.path));
 
 function normalizePath(value) {
   return String(value || '').split('?')[0];
+}
+
+function renderIcon(name, className = '') {
+  const svg = ICONS[name] || '';
+  if (!svg) return '';
+  if (!className) return svg;
+  return svg.replace('<svg ', `<svg class="${className}" `);
+}
+
+function resolveRoute(pathname) {
+  const safePath = normalizePath(pathname);
+  return ROUTE_BY_PATH.get(safePath) || ROUTE_BY_PATH.get('/') || ROUTES[0];
+}
+
+function routeForPage(pageName) {
+  return ROUTE_BY_PAGE.get(pageName) || ROUTE_BY_PATH.get('/') || ROUTES[0];
+}
+
+function canAccessRoute(route, { loggedIn, isAdmin }) {
+  if (!route) return false;
+  if (route.access === 'admin') return !!isAdmin;
+  if (route.access === 'auth') return !!loggedIn;
+  return true;
+}
+
+function getLegalSection() {
+  try {
+    const params = new URLSearchParams(window.location.search || '');
+    return (params.get('section') || params.get('tab') || 'impressum').toLowerCase();
+  } catch (err) {
+    return 'impressum';
+  }
 }
 
 function getActiveMediaKind() {
@@ -126,55 +351,128 @@ function getActiveMediaKind() {
   return null;
 }
 
-function pageLabelFor(name) {
-  const labels = {
-    start: 'Analyse',
-    history: 'Verlauf',
-    profile: 'Account',
-    settings: 'Einstellungen',
-    premium: 'Premium',
-    affiliate: 'Affiliate',
-    rate: 'Bewertung',
-    admin: 'Admin',
-    legal: 'Rechtliches',
-  };
-  return labels[name] || 'Analyse';
-}
-
-function setPageIndicator(name) {
+function setPageIndicator(route) {
   if (!pageIndicator) return;
-  pageIndicator.textContent = pageLabelFor(name);
+  pageIndicator.textContent = route?.label || 'Analyse';
 }
 
-function setActiveNav(name) {
-  const keyMap = {
-    start: 'analysis',
-    history: 'history',
-    profile: 'profile',
-    settings: 'settings',
-    premium: 'premium',
-    affiliate: 'affiliate',
-    rate: 'rate',
-    admin: 'admin',
-  };
-  const groupMap = {
-    start: 'analysis',
-    history: 'history',
-    profile: 'account',
-    settings: 'account',
-    premium: 'account',
-    affiliate: 'account',
-    rate: 'account',
-    admin: 'admin',
-  };
-  const activeKey = keyMap[name] || 'analysis';
-  const activeGroup = groupMap[name] || 'analysis';
-  document.querySelectorAll('[data-nav]').forEach((el) => {
-    el.classList.toggle('is-active', el.dataset.nav === activeKey);
+function setActiveNav(routeKey) {
+  const activeKey = routeKey || 'start';
+  const legalSection = activeKey === 'legal' ? getLegalSection() : null;
+  document.querySelectorAll('[data-nav-key]').forEach((el) => {
+    let isActive = el.dataset.navKey === activeKey;
+    if (activeKey === 'legal' && el.dataset.legalSection) {
+      isActive = el.dataset.legalSection === legalSection;
+    }
+    if (el.classList.contains('ac-nav-btn')) {
+      el.classList.toggle('ac-active', isActive);
+    } else {
+      el.classList.toggle('is-active', isActive);
+    }
+    if (isActive) el.setAttribute('aria-current', 'page');
+    else el.removeAttribute('aria-current');
   });
-  navStart?.classList.toggle('ac-active', activeGroup === 'analysis');
-  navHistory?.classList.toggle('ac-active', activeGroup === 'history');
-  navProfile?.classList.toggle('ac-active', activeGroup === 'account');
+}
+
+function hasGuestSidebarItems() {
+  return ROUTES.some((route) => route?.nav?.sidebar && canAccessRoute(route, { loggedIn: false, isAdmin: false }));
+}
+
+function renderSidebarItem(route) {
+  const classes = ['ac-side-item'];
+  if (route?.nav?.disabled) classes.push('ac-side-disabled');
+  const iconHtml = route?.icon ? `<span class="ac-icon">${renderIcon(route.icon)}</span>` : '<span class="ac-icon"></span>';
+  const badgeHtml = route?.nav?.badge ? `<span class="ac-side-badge">${escapeHtml(route.nav.badge)}</span>` : '';
+  const tooltip = escapeHtml(route.label);
+  const linkAttr = route?.nav?.disabled ? '' : `data-link="${route.path}"`;
+  return `
+    <button type="button" class="${classes.join(' ')}" ${linkAttr} data-nav-key="${route.key}" data-tooltip="${tooltip}">
+      ${iconHtml}
+      <span class="ac-side-label">${escapeHtml(route.label)}</span>
+      ${badgeHtml}
+    </button>
+  `;
+}
+
+function renderQuickActions() {
+  const actions = QUICK_ACTIONS.map((action) => (
+    `<button class="ac-quick-btn" type="button" data-action="${action.action}" data-media="${action.media}">${action.label}</button>`
+  )).join('');
+  if (!actions) return '';
+  return `<div class="ac-nav-quick">${actions}</div>`;
+}
+
+function buildSidebarNav(auth) {
+  if (!sidebarNav) return;
+  const loggedIn = auth?.isLoggedIn?.() === true;
+  const isAdmin = auth?.isAdmin?.() === true;
+  const context = { loggedIn, isAdmin };
+  let html = '';
+  NAV_SECTIONS.forEach((section) => {
+    if (section.adminOnly && !isAdmin) return;
+    // Disabled-Elemente werden immer angezeigt (unabhängig von canAccessRoute)
+    const items = ROUTES.filter(
+      (route) => route?.nav?.sidebar && route.nav.section === section.key
+        && (route.nav.disabled || canAccessRoute(route, context))
+    );
+    if (!items.length) return;
+    html += `<div class="ac-nav-section">`;
+    if (section.title) html += `<div class="ac-nav-title">${section.title}</div>`;
+    items.forEach((route) => {
+      html += renderSidebarItem(route);
+      if (section.key === 'workspace' && route.key === 'start') {
+        html += renderQuickActions();
+      }
+    });
+    html += `</div>`;
+  });
+  sidebarNav.innerHTML = html;
+
+  // Upgrade-CTA anzeigen wenn eingeloggt
+  const upgradeEl = document.getElementById('sidebarUpgrade');
+  if (upgradeEl) upgradeEl.hidden = !loggedIn;
+
+  updateQuickMediaButtons();
+}
+
+function buildBottomNav(auth) {
+  if (!bottomNav) return;
+  const loggedIn = auth?.isLoggedIn?.() === true;
+  const isAdmin = auth?.isAdmin?.() === true;
+  const context = { loggedIn, isAdmin };
+  const items = ROUTES.filter((route) => route?.nav?.bottom && canAccessRoute(route, context));
+  bottomNav.hidden = !loggedIn || !items.length;
+  if (!loggedIn || !items.length) {
+    bottomNav.innerHTML = '';
+    return;
+  }
+  bottomNav.innerHTML = items.map((route) => {
+    const label = route.nav?.shortLabel || route.label;
+    return `
+      <button type="button" class="ac-nav-btn" data-link="${route.path}" data-nav-key="${route.key}" aria-label="${label}">
+        ${renderIcon(route.icon, 'ac-nav-ic')}
+        <span>${label}</span>
+      </button>
+    `;
+  }).join('');
+}
+
+function handleNavAction(action, navigateFn) {
+  const [type, target] = String(action || '').split(':');
+  if (type !== 'open') return;
+  if (['video', 'image', 'audio'].includes(target)) {
+    if (navigateFn) navigateFn('/');
+    else showPage('start', routeForPage('start'));
+    setTimeout(() => activateMediaType(target), 0);
+  }
+}
+
+function refreshNavigation(auth) {
+  buildSidebarNav(auth);
+  buildBottomNav(auth);
+  const activeRoute = resolveRoute(currentRoute);
+  setActiveNav(activeRoute?.key);
+  setPageIndicator(activeRoute);
 }
 
 function updateQuickMediaButtons(kind = null) {
@@ -203,47 +501,99 @@ function analysisAreaHasResult() {
 }
 
 function isAuthRoute(path) {
-  return AUTH_ROUTES.has(normalizePath(path));
+  return AUTH_ROUTE_PATHS.has(normalizePath(path));
 }
 
 function isPublicRoute(path) {
-  return PUBLIC_ROUTES.has(normalizePath(path));
+  const route = resolveRoute(path);
+  return route?.access === 'public' || route?.authPage === true;
 }
 
 function setRouteClasses(path) {
   const safePath = normalizePath(path);
   const root = document.documentElement;
+  const authRoute = isAuthRoute(safePath);
+  root.classList.toggle('ac-route-auth', authRoute);
   root.classList.toggle('ac-route-login', safePath === '/login');
   root.classList.toggle('ac-route-register', safePath === '/register');
   root.classList.toggle('ac-route-reset', safePath === '/reset-password');
+  root.classList.toggle('ac-route-forgot', safePath === '/forgot-password');
+  root.classList.toggle('ac-route-verify', safePath === '/verify-email');
+  root.classList.toggle('ac-route-auth-callback', safePath === '/auth/callback');
 }
 
-export function showPage(name) {
+export function showPage(name, route = null) {
   Object.values(pages).forEach((p) => p && p.classList.add('ac-hide'));
   const target = pages[name] || pages.start;
   if (target) target.classList.remove('ac-hide');
-  setActiveNav(name);
-  setPageIndicator(name);
-  document.documentElement.classList.toggle('ac-admin-mode', name === 'admin');
-  if (name === 'start') updateQuickMediaButtons();
-  if (name !== 'history') closeHistoryDrawer();
+  const resolved = route || routeForPage(name);
+  setActiveNav(resolved?.key);
+  setPageIndicator(resolved);
+  document.documentElement.classList.toggle('ac-admin-mode', resolved?.key === 'admin');
+  if (resolved?.key === 'start') updateQuickMediaButtons();
+  if (resolved?.key !== 'history') closeHistoryDrawer();
 }
 
 function updateHeaderUI(auth, path = currentRoute) {
   const loggedIn = auth?.isLoggedIn?.() === true;
+  const isAdmin = auth?.isAdmin?.() === true;
+  const route = resolveRoute(path);
   const authRoute = isAuthRoute(path);
+  const adminRoute = route?.key === 'admin';
+  const canShowSidebar = !authRoute && (loggedIn || hasGuestSidebarItems());
+
   document.documentElement.classList.toggle('ac-shell', loggedIn && !authRoute);
+  document.documentElement.classList.toggle('ac-guest', !loggedIn);
+
   if (header) header.classList.toggle('ac-header-simple', authRoute);
-  if (headerBack) headerBack.classList.toggle('ac-hide', !authRoute);
+
+  // Zurück-Button nur auf Auth-Seiten
+  if (headerBack) {
+    headerBack.hidden = !authRoute;
+    if (authRoute) {
+      let backTarget = '/';
+      try {
+        const saved = sessionStorage.getItem(RETURN_TO_KEY);
+        if (saved && !isAuthRoute(normalizePath(saved))) backTarget = saved;
+      } catch (err) {
+        // Speicher-Fehler ignorieren
+      }
+      headerBack.dataset.link = backTarget;
+    }
+  }
+
+  // Hamburger-Button (für Mobile-Drawer)
+  if (hamburger) hamburger.hidden = !canShowSidebar;
+
+  // Auth-Buttons (Gäste)
   if (headerAuth) headerAuth.hidden = loggedIn || authRoute;
-  if (hamburger) hamburger.hidden = !loggedIn || authRoute;
+
+  // User-Pill: Credits + Avatar (eingeloggte Nutzer, keine Auth-Seite)
+  const userPillEl = document.getElementById('userPill');
+  if (userPillEl) userPillEl.hidden = !loggedIn || authRoute;
+
+  // Credits-Badge innerhalb der Pill
   if (creditsBox) creditsBox.hidden = !loggedIn || authRoute;
-  if (profileTrigger) profileTrigger.hidden = !loggedIn || authRoute;
-  if (pageIndicator) pageIndicator.hidden = !loggedIn || authRoute;
+
+  // Avatar-Button
+  if (profileTrigger) {
+    profileTrigger.hidden = !loggedIn || authRoute;
+    if (loggedIn && !authRoute) profileTrigger.removeAttribute('data-link');
+    else profileTrigger.setAttribute('data-link', '/login');
+  }
+
+  // Breadcrumb (Seitenname links) — nur auf normalen Seiten
+  if (pageIndicator) pageIndicator.hidden = authRoute;
+
+  // Admin-Kontext in der Mitte
+  if (adminContext) adminContext.hidden = !adminRoute;
+
+  // Profil-Dropdown
   if (profileDropdown) {
     profileDropdown.hidden = !loggedIn || authRoute;
     if (!loggedIn || authRoute) closeProfileDropdown();
   }
+
   if (!loggedIn) {
     sidebar?.classList.remove('open');
     sidebarOverlay?.classList.remove('show');
@@ -252,17 +602,18 @@ function updateHeaderUI(auth, path = currentRoute) {
 
 function updateAnalysisVisibility(auth) {
   const loggedIn = auth?.isLoggedIn?.() === true;
-  if (analysisTool) analysisTool.classList.toggle('ac-hide', !loggedIn);
-  if (!loggedIn && analysisGateNotice) {
-    analysisGateNotice.classList.add('ac-hide');
-    analysisGateNotice.innerHTML = '';
-  }
+  const guestAllowed = auth?.canUseGuest?.() === true;
+  const canAnalyze = loggedIn || guestAllowed;
+  if (analysisTool) analysisTool.classList.toggle('ac-hide', !canAnalyze);
 }
 
 function enforceAuthGuard(auth, path = currentRoute, navigate) {
+  const route = resolveRoute(path);
   const loggedIn = auth?.isLoggedIn?.() === true;
+  const isAdmin = auth?.isAdmin?.() === true;
   const safePath = normalizePath(path);
-  if (!loggedIn && !isPublicRoute(safePath)) {
+  const needsAuth = route?.access === 'auth' || route?.access === 'admin';
+  if (needsAuth && !loggedIn) {
     try {
       const returnTarget = `${window.location.pathname}${window.location.search}`;
       if (returnTarget && !isAuthRoute(normalizePath(returnTarget))) {
@@ -271,6 +622,7 @@ function enforceAuthGuard(auth, path = currentRoute, navigate) {
     } catch (err) {
       // ignore storage errors
     }
+    auth?.setNotice?.('Bitte zuerst einloggen.', 'info');
     const target = '/login';
     currentRoute = target;
     if (typeof navigate === 'function' && safePath !== target) {
@@ -282,48 +634,31 @@ function enforceAuthGuard(auth, path = currentRoute, navigate) {
       return true;
     }
   }
+  if (route?.access === 'admin' && loggedIn && !isAdmin) {
+    if (typeof navigate === 'function') navigate('/');
+    else window.location.replace('/');
+    return true;
+  }
   return false;
 }
 
 export function initRouter(auth) {
   const listeners = new Set();
-  const routeMap = {
-    '/login': 'login',
-    '/auth/callback': 'authCallback',
-    '/register': 'register',
-    '/verify-email': 'verify',
-    '/forgot-password': 'forgot',
-    '/reset-password': 'reset',
-    '/history': 'history',
-    '/profile': 'profile',
-    '/settings': 'settings',
-    '/premium': 'premium',
-    '/affiliate': 'affiliate',
-    '/rate': 'rate',
-    '/admin': 'admin',
-    '/legal': 'legal',
-  };
 
   function render(pathname = window.location.pathname) {
     const safePath = normalizePath(pathname);
+    const route = resolveRoute(safePath);
     setRouteClasses(safePath);
-    if (!auth?.isLoggedIn?.() && !isPublicRoute(safePath)) {
-      navigate('/login');
+    if (enforceAuthGuard(auth, safePath, navigate)) {
       return;
     }
-    if (safePath === '/admin' && auth?.isAdmin?.() !== true) {
-      navigate('/');
-      return;
-    }
-    const page = routeMap[safePath] || 'start';
-    showPage(page);
-    if (safePath === '/legal') {
-      const params = new URLSearchParams(window.location.search || '');
-      showLegal(params.get('section') || params.get('tab') || 'impressum');
+    showPage(route.page, route);
+    if (route.key === 'legal') {
+      showLegal(getLegalSection());
     }
     listeners.forEach((cb) => {
       try {
-        cb(safePath);
+        cb(safePath, route);
       } catch (err) {
         console.error('router listener error', err);
       }
@@ -348,6 +683,8 @@ export function initRouter(auth) {
 
   window.addEventListener('popstate', () => render());
   document.addEventListener('click', (e) => {
+    if (e.defaultPrevented) return;
+    if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
     const link = e.target.closest('[data-link]');
     if (!link) return;
     const target = link.getAttribute('data-link') || link.getAttribute('href');
@@ -1596,6 +1933,42 @@ export function updateCreditsUI(auth) {
   } else if (creditsBox) {
     creditsBox.dataset.credits = '';
   }
+
+  // --- Sidebar-Credits-Card aktualisieren ---
+  const cardEl = document.getElementById('sidebarCreditsCard');
+  const cardValueEl = document.getElementById('sidebarCreditsValue');
+  const cardPlanEl = document.getElementById('sidebarCreditsPlan');
+  const cardBarEl = document.getElementById('sidebarCreditsBar');
+  const cardResetEl = document.getElementById('sidebarCreditsReset');
+
+  if (!cardEl) return;
+
+  const loggedIn = auth?.isLoggedIn?.() === true;
+  cardEl.hidden = !loggedIn;
+
+  if (!loggedIn) return;
+
+  if (cardValueEl) cardValueEl.textContent = (typeof available === 'number') ? String(available) : '—';
+
+  const planRaw = auth.balance?.plan_type || auth.user?.plan_type || 'free';
+  const planLabel = planRaw ? `${planRaw.charAt(0).toUpperCase()}${planRaw.slice(1)}` : 'Free';
+  if (cardPlanEl) cardPlanEl.textContent = planLabel;
+
+  const resetAt = auth.balance?.last_credit_reset || auth.user?.last_credit_reset || null;
+  if (cardResetEl) cardResetEl.textContent = resetAt ? formatDate(resetAt) : '—';
+
+  // Fortschrittsbalken
+  if (cardBarEl) {
+    const total = typeof auth.user?.credits_total === 'number' ? auth.user.credits_total : 100;
+    const used = typeof auth.user?.credits_used === 'number' ? auth.user.credits_used : (total - (available ?? total));
+    const pct = total > 0 ? Math.min(100, Math.max(0, Math.round((used / total) * 100))) : 0;
+    cardBarEl.style.width = `${pct}%`;
+    cardBarEl.classList.remove('is-low', 'is-critical');
+    if (typeof available === 'number') {
+      if (available < 5) cardBarEl.classList.add('is-critical');
+      else if (available < 20) cardBarEl.classList.add('is-low');
+    }
+  }
 }
 
 export function updateAnalyzeButtons(auth, isAnalyzing = currentAnalyzing) {
@@ -2255,13 +2628,39 @@ function updateVerifyBanner(auth) {
 function updateAnalysisGateNotice(auth) {
   if (!analysisGateNotice) return;
   const isLoggedIn = auth?.isLoggedIn?.() === true;
-  if (!isLoggedIn) {
+  const guestAllowed = auth?.canUseGuest?.() === true;
+  if (isLoggedIn) {
     analysisGateNotice.classList.add('ac-hide');
     analysisGateNotice.innerHTML = '';
     return;
   }
-  analysisGateNotice.classList.add('ac-hide');
-  analysisGateNotice.innerHTML = '';
+  if (guestAllowed) {
+    analysisGateNotice.classList.remove('ac-hide');
+    analysisGateNotice.innerHTML = `
+      <div class="ac-banner-icon">i</div>
+      <div class="ac-banner-body">
+        <div class="ac-banner-title">Gastmodus aktiv</div>
+        <div class="ac-banner-text">Analysen werden nicht gespeichert. Melde dich an, um Verlauf und Credits zu nutzen.</div>
+        <div class="ac-banner-actions">
+          <button type="button" class="ac-ghost ac-banner-btn" data-link="/login">Anmelden</button>
+          <button type="button" class="ac-primary ac-banner-btn" data-link="/register">Konto erstellen</button>
+        </div>
+      </div>
+    `;
+    return;
+  }
+  analysisGateNotice.classList.remove('ac-hide');
+  analysisGateNotice.innerHTML = `
+    <div class="ac-banner-icon">!</div>
+    <div class="ac-banner-body">
+      <div class="ac-banner-title">Analyse nur mit Konto</div>
+      <div class="ac-banner-text">Der Gastmodus ist deaktiviert. Bitte melde dich an oder registriere dich.</div>
+      <div class="ac-banner-actions">
+        <button type="button" class="ac-ghost ac-banner-btn" data-link="/login">Anmelden</button>
+        <button type="button" class="ac-primary ac-banner-btn" data-link="/register">Konto erstellen</button>
+      </div>
+    </div>
+  `;
 }
 
 function setResendStatus(message, tone = 'info') {
@@ -2688,8 +3087,6 @@ export async function renderHistory(auth, { force = false, skipFetch = false } =
 
 function updateAdminVisibility(auth) {
   const isAdmin = auth?.isAdmin?.() === true;
-  if (sideAdmin) sideAdmin.hidden = !isAdmin;
-  if (sideAdminSection) sideAdminSection.hidden = !isAdmin;
   if (profileAdminBtn) profileAdminBtn.hidden = !isAdmin;
 }
 
@@ -2710,35 +3107,9 @@ export function initUI(auth, extras = {}) {
     : (typeof auth?.navigate === 'function' ? auth.navigate.bind(auth) : null);
   currentRoute = normalizePath(window.location.pathname || currentRoute);
   setRouteClasses(currentRoute);
-  const shouldRedirect = enforceAuthGuard(auth, currentRoute, navigateFn);
+  enforceAuthGuard(auth, currentRoute, navigateFn);
   updateHeaderUI(auth, currentRoute);
   updateAnalysisVisibility(auth);
-  if (shouldRedirect) return;
-  navStart?.addEventListener('click', (e) => {
-    e.preventDefault();
-    if (navigate) navigate('/');
-    else showPage('start');
-  });
-
-  navHistory?.addEventListener('click', (e) => {
-    e.preventDefault();
-    if (!auth.requireSession()) return;
-    if (navigate) navigate('/history');
-    else showPage('history');
-  });
-
-  navProfile?.addEventListener('click', (e) => {
-    e.preventDefault();
-    if (!auth.requireSession()) return;
-    if (navigate) navigate('/profile');
-    else showPage('profile');
-  });
-
-  brandHome?.addEventListener('click', (e) => {
-    e.preventDefault();
-    if (navigate) navigate('/');
-    else showPage('start');
-  });
 
   hamburger?.addEventListener('click', (e) => {
     e.preventDefault();
@@ -2746,71 +3117,75 @@ export function initUI(auth, extras = {}) {
     sidebarOverlay?.classList.toggle('show', !!open);
   });
 
-  sidebarOverlay?.addEventListener('click', () => {
+  const closeSidebar = () => {
     sidebar?.classList.remove('open');
     sidebarOverlay?.classList.remove('show');
-  });
+  };
 
-  menuList?.addEventListener('click', (e) => {
-    const actionEl = e.target.closest('[data-action]');
-    const linkEl = e.target.closest('[data-link]');
-    if (!actionEl && !linkEl) return;
-    e.stopPropagation();
+  const handleSidebarClick = (event) => {
+    const actionEl = event.target.closest('[data-action]');
     if (actionEl) {
-      const [type, page, sub] = (actionEl.dataset.action || '').split(':');
-      if (type !== 'open') return;
-      if (['video', 'image', 'audio'].includes(page)) {
-        if (navigate) navigate('/');
-        else showPage('start');
-        setTimeout(() => activateMediaType(page), 0);
-      } else if (page === 'history') {
-        if (!auth.requireSession()) return;
-        if (navigate) navigate('/history');
-        else showPage('history');
-      } else if (page === 'legal') {
-        const target = `/legal?section=${sub || 'impressum'}`;
-        if (navigate) navigate(target);
-        else {
-          showPage('legal');
-          showLegal(sub || 'impressum');
-        }
-      } else if (page === 'profile') {
-        if (navigate) navigate('/profile');
-        else showProfilePage(auth, true);
-      } else if (page === 'settings') {
-        if (navigate) navigate('/settings');
-        else showPage('settings');
-      } else if (page === 'admin') {
-        if (navigate) navigate('/admin');
-        else if (typeof onOpenAdmin === 'function') onOpenAdmin();
-        else showPage('admin');
-      } else if (page) {
-        if (navigate) navigate(`/${page}`);
-        else showPage(page);
-      }
+      handleNavAction(actionEl.dataset.action, navigateFn);
+      closeSidebar();
+      return;
     }
-    if (linkEl) {
-      const target = linkEl.getAttribute('data-link') || linkEl.getAttribute('href');
-      if (target && !target.startsWith('http')) {
-        e.preventDefault();
-        if (navigate) navigate(target);
-        else showPage(normalizePath(target).replace('/', '') || 'start');
-      }
-    }
-    sidebar?.classList.remove('open');
-    sidebarOverlay?.classList.remove('show');
+    const linkEl = event.target.closest('[data-link]');
+    if (linkEl) closeSidebar();
+  };
+
+  sidebarOverlay?.addEventListener('click', () => closeSidebar());
+  sidebarNav?.addEventListener('click', handleSidebarClick);
+  // Klicks auf Upgrade-CTA und Footer-Links in der Sidebar schließen auf Mobile den Drawer
+  document.getElementById('sidebarUpgrade')?.addEventListener('click', () => closeSidebar());
+  bottomNav?.addEventListener('click', () => {
+    if (sidebar?.classList.contains('open')) closeSidebar();
   });
 
-  profileHistoryBtn?.addEventListener('click', () => {
-    if (!auth.requireSession()) return;
-    if (navigate) navigate('/history');
-    else showPage('history');
+  // --- Sidebar-Collapse-Logik (nur Desktop, ac-shell Modus) ---
+  const SIDEBAR_COLLAPSED_KEY = 'ac_sidebar_collapsed';
+  const sidebarToggleBtn = document.getElementById('sidebarToggle');
+
+  const applySidebarCollapse = (collapsed) => {
+    if (!sidebar) return;
+    sidebar.classList.toggle('collapsed', collapsed);
+    document.documentElement.classList.toggle('sidebar-collapsed', collapsed);
+    if (sidebarToggleBtn) {
+      sidebarToggleBtn.setAttribute('aria-label', collapsed ? 'Sidebar ausklappen' : 'Sidebar einklappen');
+    }
+  };
+
+  // Initialzustand aus localStorage lesen (auf kleinen Schirmen standardmäßig eingeklappt)
+  const isMobileBreakpoint = () => window.matchMedia('(max-width: 900px)').matches;
+  const savedCollapse = localStorage.getItem(SIDEBAR_COLLAPSED_KEY);
+  const startCollapsed = savedCollapse !== null ? savedCollapse === 'true' : isMobileBreakpoint();
+  applySidebarCollapse(startCollapsed);
+
+  sidebarToggleBtn?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const nowCollapsed = !sidebar?.classList.contains('collapsed');
+    applySidebarCollapse(nowCollapsed);
+    try { localStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(nowCollapsed)); } catch (_) {}
+  });
+
+  // Responsiveness: Beim Verkleinern des Fensters unter 900px automatisch einklappen
+  const mq = window.matchMedia('(max-width: 900px)');
+  mq.addEventListener('change', (evt) => {
+    if (evt.matches) {
+      // Mobile: Drawer-Modus — collapsed-Klasse entfernen (hat keine Wirkung im Mobile-Modus)
+      sidebar?.classList.remove('collapsed');
+      document.documentElement.classList.remove('sidebar-collapsed');
+    } else {
+      // Zurück zu Desktop: gespeicherten Zustand wiederherstellen
+      const saved = localStorage.getItem(SIDEBAR_COLLAPSED_KEY);
+      applySidebarCollapse(saved === 'true');
+    }
   });
 
   profileLogoutBtn?.addEventListener('click', () => auth.logout());
 
   profileTrigger?.addEventListener('click', (e) => {
     e.preventDefault();
+    e.stopPropagation();
     if (!auth.isLoggedIn()) {
       auth.setNotice?.('Bitte zuerst einloggen.', 'info');
       auth.navigate?.('/login');
@@ -2869,7 +3244,7 @@ export function initUI(auth, extras = {}) {
 
   auth.subscribe(() => {
     updateAnalysisVisibility(auth);
-    if (enforceAuthGuard(auth, currentRoute, navigateFn)) return;
+    enforceAuthGuard(auth, currentRoute, navigateFn);
     updateCreditsUI(auth);
     updateProfileView(auth);
     updateAnalyzeButtons(auth);
@@ -2877,6 +3252,7 @@ export function initUI(auth, extras = {}) {
     updateAnalysisGateNotice(auth);
     updateAdminVisibility(auth);
     updateHeaderUI(auth, currentRoute);
+    refreshNavigation(auth);
   });
 
   setupExpertModeToggle();
@@ -2888,27 +3264,27 @@ export function initUI(auth, extras = {}) {
   updateAnalysisVisibility(auth);
   updateAdminVisibility(auth);
   updateHeaderUI(auth, currentRoute);
+  refreshNavigation(auth);
   bindResendVerify(auth);
   setupAnalyzeToolUI();
   bindReportCopy();
   if (router?.subscribe) {
-    router.subscribe((path) => {
+    router.subscribe((path, route) => {
       currentRoute = path;
+      const activeRoute = route || resolveRoute(path);
       updateAnalysisVisibility(auth);
-      if (enforceAuthGuard(auth, path, navigateFn)) return;
       updateHeaderUI(auth, path);
-      const safePath = normalizePath(path);
-      if (safePath === '/history') {
+      if (activeRoute?.key === 'history') {
         renderHistory(auth);
-      } else if (safePath === '/profile') {
+      } else if (activeRoute?.key === 'profile') {
         updateProfileView(auth);
-      } else if (safePath === '/admin') {
+      } else if (activeRoute?.key === 'admin') {
         if (auth?.isAdmin?.() !== true) {
           if (navigateFn) navigateFn('/');
           return;
         }
         if (typeof onOpenAdmin === 'function') onOpenAdmin();
-      } else if (safePath === '/') {
+      } else if (activeRoute?.key === 'start') {
         updateQuickMediaButtons();
       }
     });
