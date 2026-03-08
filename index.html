@@ -20,7 +20,7 @@
       }
     })();
   </script>
-  <link rel="stylesheet" href="/style.css?v=20260307_2" />
+  <link rel="stylesheet" href="/style.css?v=20260307_4" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 </head>
@@ -49,17 +49,36 @@
       <div id="pageIndicator" class="ac-breadcrumb" hidden>Analyse</div>
     </div>
 
-    <div class="ac-header-center">
-      <div class="ac-admin-context" id="adminContext" hidden>
-        <span class="ac-admin-pill">Admin</span>
-        <button type="button" class="ac-ghost" data-link="/">Zur&uuml;ck zur App</button>
+  <div class="ac-header-center">
+    <nav class="ac-landing-nav" id="landingNav" aria-label="Landing Navigation">
+      <div class="ac-landing-nav-links">
+        <a href="#landing-product">Produkt</a>
+        <a href="#landing-solution">Features</a>
+        <a href="#landing-how">So funktioniert es</a>
+        <a href="#landing-faq">FAQ</a>
+        <a href="#landing-cta">Kostenlos starten</a>
       </div>
+      <details class="ac-landing-nav-mobile">
+        <summary>Men&uuml;</summary>
+        <div class="ac-landing-nav-panel">
+          <a href="#landing-product">Produkt</a>
+          <a href="#landing-solution">Features</a>
+          <a href="#landing-how">So funktioniert es</a>
+          <a href="#landing-faq">FAQ</a>
+          <a href="#landing-cta">Kostenlos starten</a>
+        </div>
+      </details>
+    </nav>
+    <div class="ac-admin-context" id="adminContext" hidden>
+      <span class="ac-admin-pill">Admin</span>
+      <button type="button" class="ac-ghost" data-link="/">Zur&uuml;ck zur App</button>
     </div>
+  </div>
 
     <div class="ac-header-right">
       <div class="ac-header-auth" id="headerAuth" hidden>
-        <button type="button" class="ac-ghost" data-link="/login">Anmelden</button>
-        <button type="button" class="ac-primary" data-link="/register">Konto erstellen</button>
+        <button id="headerLoginBtn" type="button" class="ac-ghost" data-link="/login" data-label-default="Anmelden" data-label-landing="Login">Anmelden</button>
+        <button id="headerRegisterBtn" type="button" class="ac-primary" data-link="/register" data-label-default="Konto erstellen" data-label-landing="Kostenlos starten">Konto erstellen</button>
       </div>
       <!-- User-Pill: Avatar + Credits nebeneinander -->
       <div class="ac-user-pill" id="userPill" hidden>
@@ -159,7 +178,573 @@
     <main class="ac-main" id="main">
       <!-- START -->
       <section id="page-start" class="ac-page">
-        <div class="ac-container">
+        <div id="landingPage" class="ac-landing">
+          <section class="ac-landing-hero" id="landing-hero">
+            <div class="ac-landing-container">
+              <div class="ac-landing-hero-shell">
+                <div class="ac-landing-hero-copy">
+                  <div class="ac-landing-eyebrow">AIRealCheck</div>
+                  <h1 class="ac-landing-title">Erkenne KI-generierte Inhalte in Sekunden</h1>
+                  <p class="ac-landing-lead">
+                    AIRealCheck analysiert Bilder, Videos und Audio mit mehreren KI-Detektoren gleichzeitig und liefert klare, nachvollziehbare Ergebnisse.
+                  </p>
+                  <div class="ac-landing-actions">
+                    <button type="button" class="ac-primary" data-link="/register">Kostenlos starten</button>
+                    <button type="button" class="ac-ghost" data-link="/login">Login</button>
+                  </div>
+                  <div class="ac-landing-trust">
+                    <div class="ac-landing-trust-pill">
+                      <span class="ac-landing-trust-icon" aria-hidden="true">&#9670;</span>
+                      <span>100 kostenlose Credits f&uuml;r neue Nutzer</span>
+                    </div>
+                    <div class="ac-landing-trust-row">
+                      <span class="ac-landing-trust-chip">Mehrere Engines</span>
+                      <span class="ac-landing-trust-chip">Transparente Details</span>
+                      <span class="ac-landing-trust-chip">Sofort-Analyse</span>
+                    </div>
+                  </div>
+                </div>
+                <div class="ac-landing-hero-visual" aria-hidden="true">
+                  <div class="ac-landing-mockup">
+                    <div class="ac-landing-mockup-header">
+                      <div>
+                        <div class="ac-landing-mockup-title">Analyse-&Uuml;bersicht</div>
+                        <div class="ac-landing-mockup-sub">Letzte Pr&uuml;fung: Video</div>
+                      </div>
+                      <span class="ac-landing-pill ac-landing-pill-success">Analyse abgeschlossen</span>
+                    </div>
+                    <div class="ac-landing-mockup-tabs">
+                      <span class="ac-landing-tab">Bild</span>
+                      <span class="ac-landing-tab is-active">Video</span>
+                      <span class="ac-landing-tab">Audio</span>
+                    </div>
+                    <div class="ac-landing-mockup-body">
+                      <div class="ac-landing-mockup-score">
+                        <div class="ac-landing-score-value">87%</div>
+                        <div class="ac-landing-score-label">wahrscheinlich KI-generiert</div>
+                        <div class="ac-landing-score-bar"><span></span></div>
+                        <div class="ac-landing-score-meta">
+                          <span>Konfidenz</span>
+                          <strong>Hoch</strong>
+                        </div>
+                      </div>
+                      <div class="ac-landing-mockup-grid">
+                        <div class="ac-landing-mockup-card">
+                          <div class="ac-landing-mockup-card-title">Engines aktiv</div>
+                          <div class="ac-landing-engine-list">
+                            <div class="ac-landing-engine-row"><span>Vision Engine</span><span>92%</span></div>
+                            <div class="ac-landing-engine-row"><span>Video Forensics</span><span>81%</span></div>
+                            <div class="ac-landing-engine-row"><span>Metadata Check</span><span>63%</span></div>
+                          </div>
+                        </div>
+                        <div class="ac-landing-mockup-card">
+                          <div class="ac-landing-mockup-card-title">Highlights</div>
+                          <ul class="ac-landing-mockup-list">
+                            <li>Inkonsistente Frame-Texturen</li>
+                            <li>Unplausible Lichtreflexe</li>
+                            <li>Stimmenmuster weichen ab</li>
+                          </ul>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="ac-landing-float-card ac-float-1">
+                    <div class="ac-landing-float-title">87% wahrscheinlich KI-generiert</div>
+                    <div class="ac-landing-float-sub">KI-Ergebnis</div>
+                  </div>
+                  <div class="ac-landing-float-card ac-float-2">
+                    <div class="ac-landing-float-title">4 Engines aktiv</div>
+                    <div class="ac-landing-float-sub">Ensemble-Check</div>
+                  </div>
+                  <div class="ac-landing-float-card ac-float-3">
+                    <div class="ac-landing-float-title">Credits verf&uuml;gbar</div>
+                    <div class="ac-landing-float-sub">100 / Monat</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section class="ac-landing-section" id="landing-product">
+            <div class="ac-landing-container">
+              <div class="ac-landing-split">
+                <div class="ac-landing-product-copy">
+                  <div class="ac-landing-section-head">
+                    <h2>Produkt-Preview: Ergebnisstruktur in Klartext</h2>
+                    <p>
+                      AIRealCheck fasst mehrere Detektoren zu einem transparenten Ergebnis zusammen. Du siehst sofort Risiko,
+                      Konfidenz und die wichtigsten Signale.
+                    </p>
+                  </div>
+                  <div class="ac-landing-product-points">
+                    <div class="ac-landing-product-point">
+                      <span class="ac-landing-product-dot" aria-hidden="true"></span>
+                      <div>
+                        <strong>Ensemble-Score</strong>
+                        <span>Mehrere KI-Engines in einem klaren Ergebnis.</span>
+                      </div>
+                    </div>
+                    <div class="ac-landing-product-point">
+                      <span class="ac-landing-product-dot" aria-hidden="true"></span>
+                      <div>
+                        <strong>Detailanalyse</strong>
+                        <span>Konkrete Hinweise statt reiner Prozentzahl.</span>
+                      </div>
+                    </div>
+                    <div class="ac-landing-product-point">
+                      <span class="ac-landing-product-dot" aria-hidden="true"></span>
+                      <div>
+                        <strong>Verlauf &amp; Credits</strong>
+                        <span>Jede Analyse ist nachvollziehbar dokumentiert.</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="ac-landing-actions">
+                    <button type="button" class="ac-primary" data-link="/register">Kostenlos starten</button>
+                    <button type="button" class="ac-ghost" data-link="/login">Login</button>
+                  </div>
+                </div>
+                <div class="ac-landing-product-visual" aria-hidden="true">
+                  <div class="ac-landing-product-card ac-landing-product-main">
+                    <div class="ac-landing-product-card-header">
+                      <div>
+                        <div class="ac-landing-product-card-title">Analyse-Ergebnis</div>
+                        <div class="ac-landing-product-card-sub">newsroom_clip.mp4</div>
+                      </div>
+                      <span class="ac-landing-pill">Video</span>
+                    </div>
+                    <div class="ac-landing-product-score">
+                      <div class="ac-landing-product-score-value">87%</div>
+                      <div class="ac-landing-product-score-label">KI-Wahrscheinlichkeit</div>
+                    </div>
+                    <div class="ac-landing-product-score-bar"><span></span></div>
+                    <div class="ac-landing-product-grid">
+                      <div class="ac-landing-product-mini">
+                        <div class="ac-landing-product-mini-label">Ensemble</div>
+                        <div class="ac-landing-product-mini-value">Hoch</div>
+                      </div>
+                      <div class="ac-landing-product-mini">
+                        <div class="ac-landing-product-mini-label">Signale</div>
+                        <div class="ac-landing-product-mini-value">8 Hinweise</div>
+                      </div>
+                      <div class="ac-landing-product-mini">
+                        <div class="ac-landing-product-mini-label">Dauer</div>
+                        <div class="ac-landing-product-mini-value">19 Sek.</div>
+                      </div>
+                    </div>
+                    <div class="ac-landing-product-card-footer">
+                      <div class="ac-landing-product-signal">
+                        <span>Audio/Lippen-Sync</span>
+                        <strong>Abweichung</strong>
+                      </div>
+                      <div class="ac-landing-product-signal">
+                        <span>Metadaten</span>
+                        <strong>Fehlend</strong>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="ac-landing-product-side">
+                    <div class="ac-landing-product-card ac-landing-product-mini-card">
+                      <div class="ac-landing-product-card-title">Analyseverlauf</div>
+                      <div class="ac-landing-product-timeline">
+                        <div class="ac-landing-product-timeline-item">
+                          <span>Video &middot; 2:14</span>
+                          <strong>Risiko hoch</strong>
+                        </div>
+                        <div class="ac-landing-product-timeline-item">
+                          <span>Bild &middot; 1.2 MB</span>
+                          <strong>Risiko mittel</strong>
+                        </div>
+                        <div class="ac-landing-product-timeline-item">
+                          <span>Audio &middot; 18 Sek.</span>
+                          <strong>Risiko niedrig</strong>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="ac-landing-product-card ac-landing-product-mini-card">
+                      <div class="ac-landing-product-card-title">Credits &amp; Nutzung</div>
+                      <div class="ac-landing-product-meter">
+                        <div class="ac-landing-product-meter-bar"><span></span></div>
+                        <div class="ac-landing-product-meter-row">
+                          <span>100 Credits</span>
+                          <span>10 pro Bild</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section class="ac-landing-section" id="landing-problem">
+            <div class="ac-landing-container">
+              <div class="ac-landing-section-head">
+                <h2>KI-Inhalte werden immer realistischer</h2>
+                <p>
+                  Deepfakes, KI-Bilder und manipulierte Medien verbreiten sich schneller denn je. Schon kleine Details machen es schwer,
+                  echte Inhalte von synthetischen zu unterscheiden.
+                </p>
+              </div>
+              <div class="ac-landing-problem-grid">
+                <div class="ac-landing-problem-card">
+                  <div class="ac-landing-problem-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                      <circle cx="12" cy="8" r="3"/>
+                      <path d="M5 20c1.6-3 4.4-5 7-5s5.4 2 7 5"/>
+                    </svg>
+                  </div>
+                  <div>
+                    <h3>Deepfakes</h3>
+                    <p>Gesichter, Stimmen und Bewegungen wirken t&auml;uschend echt.</p>
+                  </div>
+                </div>
+                <div class="ac-landing-problem-card">
+                  <div class="ac-landing-problem-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                      <rect x="3" y="4" width="18" height="16" rx="2"/>
+                      <circle cx="9" cy="10" r="2"/>
+                      <path d="M21 17l-4.5-4.5a2.4 2.4 0 00-3.4 0L7 19"/>
+                    </svg>
+                  </div>
+                  <div>
+                    <h3>KI-Bilder</h3>
+                    <p>Visuals sind in Sekunden erstellt und kaum &uuml;berpr&uuml;fbar.</p>
+                  </div>
+                </div>
+                <div class="ac-landing-problem-card">
+                  <div class="ac-landing-problem-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M4 7h10"/>
+                      <path d="M4 12h16"/>
+                      <path d="M4 17h12"/>
+                      <path d="M16 6l4 4-4 4"/>
+                    </svg>
+                  </div>
+                  <div>
+                    <h3>Manipulierte Medien</h3>
+                    <p>Kleine Ver&auml;nderungen verschieben die Bedeutung massiv.</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section class="ac-landing-section" id="landing-solution">
+            <div class="ac-landing-container">
+              <div class="ac-landing-section-head">
+                <h2>AIRealCheck hilft dir dabei</h2>
+                <p>Wir kombinieren mehrere Detektoren, um Ergebnisse nachvollziehbar und verl&auml;sslich zu machen.</p>
+              </div>
+              <div class="ac-landing-grid">
+                <div class="ac-landing-card">
+                  <div class="ac-landing-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                      <rect x="3" y="4" width="18" height="16" rx="2"/>
+                      <path d="M8 16l3-3 4 4 3-3"/>
+                      <path d="M14 9l4-2v10l-4-2"/>
+                    </svg>
+                  </div>
+                  <h3>Analyse von Bildern, Videos und Audio</h3>
+                  <p>Ein Workflow f&uuml;r alle g&auml;ngigen Medientypen inklusive klarer Ergebnisse.</p>
+                </div>
+                <div class="ac-landing-card">
+                  <div class="ac-landing-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                      <rect x="4" y="4" width="7" height="7" rx="1.5"/>
+                      <rect x="13" y="4" width="7" height="7" rx="1.5"/>
+                      <rect x="4" y="13" width="7" height="7" rx="1.5"/>
+                      <rect x="13" y="13" width="7" height="7" rx="1.5"/>
+                    </svg>
+                  </div>
+                  <h3>Mehrere KI-Detektoren im Ensemble</h3>
+                  <p>Kombiniert spezialisierte Engines f&uuml;r robuste, nachvollziehbare Resultate.</p>
+                </div>
+                <div class="ac-landing-card">
+                  <div class="ac-landing-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M4 18h16"/>
+                      <path d="M7 15l3-3 3 2 4-5"/>
+                      <circle cx="7" cy="15" r="1.2"/>
+                      <circle cx="10" cy="12" r="1.2"/>
+                      <circle cx="13" cy="14" r="1.2"/>
+                      <circle cx="17" cy="9" r="1.2"/>
+                    </svg>
+                  </div>
+                  <h3>Klare Wahrscheinlichkeit &amp; Risiko</h3>
+                  <p>Verst&auml;ndliche Scores und Konfidenz statt kryptischer Daten.</p>
+                </div>
+                <div class="ac-landing-card">
+                  <div class="ac-landing-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M8 6h12"/>
+                      <path d="M8 12h12"/>
+                      <path d="M8 18h12"/>
+                      <circle cx="4" cy="6" r="1"/>
+                      <circle cx="4" cy="12" r="1"/>
+                      <circle cx="4" cy="18" r="1"/>
+                    </svg>
+                  </div>
+                  <h3>Transparente Detailanalyse</h3>
+                  <p>Signale und Hinweise machen Entscheidungen nachvollziehbar.</p>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section class="ac-landing-section ac-landing-section-cta">
+            <div class="ac-landing-container">
+              <div class="ac-landing-cta-panel">
+                <div>
+                  <h3>Starte mit 100 kostenlosen Credits</h3>
+                  <p>Teste mehrere Dateien, erhalte sofort klare Ergebnisse und entscheide fundierter.</p>
+                </div>
+                <button type="button" class="ac-primary" data-link="/register">Kostenlos starten</button>
+              </div>
+            </div>
+          </section>
+
+          <section class="ac-landing-section" id="landing-why">
+            <div class="ac-landing-container">
+              <div class="ac-landing-section-head">
+                <h2>Warum AIRealCheck?</h2>
+                <p>Gebaut f&uuml;r Teams, die Vertrauen brauchen &ndash; ohne Blackbox und ohne Ratespiel.</p>
+              </div>
+              <div class="ac-landing-why-grid">
+                <div class="ac-landing-why-card">
+                  <div class="ac-landing-why-kicker">Ensemble</div>
+                  <h3>Mehrere Engines, ein Ergebnis</h3>
+                  <p>Wir kombinieren spezialisierte Detektoren zu einem konsistenten Score.</p>
+                </div>
+                <div class="ac-landing-why-card">
+                  <div class="ac-landing-why-kicker">Verlauf</div>
+                  <h3>Analysen bleiben nachvollziehbar</h3>
+                  <p>Jede Pr&uuml;fung erscheint im Verlauf, inklusive Details und Ergebnisstatus.</p>
+                </div>
+                <div class="ac-landing-why-card">
+                  <div class="ac-landing-why-kicker">Transparenz</div>
+                  <h3>Klare Signale statt reiner Prozent</h3>
+                  <p>Wichtige Hinweise helfen dir, Entscheidungen sauber zu begr&uuml;nden.</p>
+                </div>
+                <div class="ac-landing-why-card">
+                  <div class="ac-landing-why-kicker">Credits</div>
+                  <h3>Kontrolle &uuml;ber die Nutzung</h3>
+                  <p>Credits machen den Verbrauch transparent und planbar.</p>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section class="ac-landing-section" id="landing-how">
+            <div class="ac-landing-container">
+              <div class="ac-landing-section-head">
+                <h2>So funktioniert es</h2>
+                <p>In drei klaren Schritten von der Datei bis zum Ergebnis.</p>
+              </div>
+              <div class="ac-landing-steps">
+                <div class="ac-landing-step">
+                  <div class="ac-landing-step-header">
+                    <div class="ac-landing-step-icon" aria-hidden="true">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M12 3v12"/>
+                        <path d="M8 9l4 4 4-4"/>
+                        <rect x="4" y="15" width="16" height="6" rx="2"/>
+                      </svg>
+                    </div>
+                    <div class="ac-landing-step-num">1</div>
+                  </div>
+                  <h3>Datei hochladen</h3>
+                  <p>W&auml;hle Bild, Video oder Audio und starte die Pr&uuml;fung.</p>
+                </div>
+                <div class="ac-landing-step">
+                  <div class="ac-landing-step-header">
+                    <div class="ac-landing-step-icon" aria-hidden="true">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="4"/>
+                        <path d="M3 12h3"/>
+                        <path d="M18 12h3"/>
+                        <path d="M12 3v3"/>
+                        <path d="M12 18v3"/>
+                      </svg>
+                    </div>
+                    <div class="ac-landing-step-num">2</div>
+                  </div>
+                  <h3>KI analysiert den Inhalt</h3>
+                  <p>Mehrere Engines bewerten den Inhalt parallel.</p>
+                </div>
+                <div class="ac-landing-step">
+                  <div class="ac-landing-step-header">
+                    <div class="ac-landing-step-icon" aria-hidden="true">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M4 6h16"/>
+                        <path d="M4 12h10"/>
+                        <path d="M4 18h7"/>
+                        <circle cx="18" cy="14" r="3"/>
+                        <path d="M18 12v4"/>
+                        <path d="M16 14h4"/>
+                      </svg>
+                    </div>
+                    <div class="ac-landing-step-num">3</div>
+                  </div>
+                  <h3>Ergebnis und Details erhalten</h3>
+                  <p>Klare Ergebnisse plus nachvollziehbare Details.</p>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section class="ac-landing-section" id="landing-credits">
+            <div class="ac-landing-container">
+              <div class="ac-landing-credits-card">
+                <div class="ac-landing-credits-grid">
+                  <div class="ac-landing-credits-copy">
+                    <div class="ac-landing-section-head">
+                      <h2>Kostenlos starten</h2>
+                      <p>Ein professioneller Einstieg ohne komplizierte Tarife.</p>
+                    </div>
+                    <ul class="ac-landing-list">
+                      <li>Neue Nutzer erhalten 100 Credits</li>
+                      <li>Credits werden f&uuml;r Analysen verwendet</li>
+                      <li>Premium-Features und weitere Modelle folgen</li>
+                    </ul>
+                    <div class="ac-landing-actions">
+                      <button type="button" class="ac-primary" data-link="/register">Kostenlos starten</button>
+                      <button type="button" class="ac-ghost" data-link="/login">Login</button>
+                    </div>
+                  </div>
+                  <div class="ac-landing-credits-visual" aria-hidden="true">
+                    <div class="ac-landing-credits-meter">
+                      <div class="ac-landing-credits-meter-header">
+                        <span>Startguthaben</span>
+                        <strong>100 Credits</strong>
+                      </div>
+                      <div class="ac-landing-credits-meter-bar"><span></span></div>
+                      <div class="ac-landing-credits-meter-row">
+                        <span>Bild: 10</span>
+                        <span>Video: 25</span>
+                        <span>Audio: 15</span>
+                      </div>
+                      <div class="ac-landing-credits-meter-note">Credits pro Analyse</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section class="ac-landing-section" id="landing-faq">
+            <div class="ac-landing-container">
+              <div class="ac-landing-section-head">
+                <h2>FAQ</h2>
+                <p>Die wichtigsten Fragen zur Analyse, Credits und Nutzung.</p>
+              </div>
+              <div class="ac-landing-faq-list">
+                <details class="ac-landing-faq-item">
+                  <summary>
+                    <span>Wie funktioniert die Analyse?</span>
+                    <span class="ac-landing-faq-toggle" aria-hidden="true"></span>
+                  </summary>
+                  <div class="ac-landing-faq-body">
+                    <p>AIRealCheck kombiniert mehrere spezialisierte Detektoren, bewertet visuelle und technische Signale und fasst die Ergebnisse zu einer Wahrscheinlichkeit zusammen. Die Resultate sind eine fundierte Entscheidungshilfe.</p>
+                  </div>
+                </details>
+                <details class="ac-landing-faq-item">
+                  <summary>
+                    <span>Welche Dateitypen werden unterst&uuml;tzt?</span>
+                    <span class="ac-landing-faq-toggle" aria-hidden="true"></span>
+                  </summary>
+                  <div class="ac-landing-faq-body">
+                    <p>Unterst&uuml;tzt werden Bilder (JPG, PNG, WebP), Videos (MP4, MOV, WebM) und Audio (MP3, WAV, M4A). Weitere Formate folgen.</p>
+                  </div>
+                </details>
+                <details class="ac-landing-faq-item">
+                  <summary>
+                    <span>Wie genau sind die Ergebnisse?</span>
+                    <span class="ac-landing-faq-toggle" aria-hidden="true"></span>
+                  </summary>
+                  <div class="ac-landing-faq-body">
+                    <p>Die Genauigkeit h&auml;ngt vom Material ab. Wir zeigen Konfidenz und Hinweise, damit du Ergebnisse realistisch einsch&auml;tzen kannst.</p>
+                  </div>
+                </details>
+                <details class="ac-landing-faq-item">
+                  <summary>
+                    <span>Was sind Credits?</span>
+                    <span class="ac-landing-faq-toggle" aria-hidden="true"></span>
+                  </summary>
+                  <div class="ac-landing-faq-body">
+                    <p>Credits sind Einheiten f&uuml;r Analysen. Je nach Medientyp werden unterschiedliche Credits verbraucht (z. B. Bild 10, Video 25, Audio 15).</p>
+                  </div>
+                </details>
+                <details class="ac-landing-faq-item">
+                  <summary>
+                    <span>Werden meine Uploads gespeichert?</span>
+                    <span class="ac-landing-faq-toggle" aria-hidden="true"></span>
+                  </summary>
+                  <div class="ac-landing-faq-body">
+                    <p>Deine Uploads werden f&uuml;r die Analyse verarbeitet. Details zur Speicherung findest du in der Datenschutzseite.</p>
+                  </div>
+                </details>
+                <details class="ac-landing-faq-item">
+                  <summary>
+                    <span>Kann ich das Tool kostenlos testen?</span>
+                    <span class="ac-landing-faq-toggle" aria-hidden="true"></span>
+                  </summary>
+                  <div class="ac-landing-faq-body">
+                    <p>Ja. Neue Accounts starten mit 100 Credits, damit du mehrere Analysen ausprobieren kannst.</p>
+                  </div>
+                </details>
+              </div>
+            </div>
+          </section>
+
+          <section class="ac-landing-section" id="landing-cta">
+            <div class="ac-landing-container">
+              <div class="ac-landing-final-card">
+                <div>
+                  <h2>Starte jetzt kostenlos</h2>
+                  <p>Starte mit 100 Credits und erhalte in Sekunden nachvollziehbare Ergebnisse.</p>
+                </div>
+                <button type="button" class="ac-primary" data-link="/register">Account erstellen</button>
+              </div>
+            </div>
+          </section>
+
+          <footer class="ac-landing-footer">
+            <div class="ac-landing-container">
+              <div class="ac-landing-footer-grid">
+                <div class="ac-landing-footer-col ac-landing-footer-brand">
+                  <div class="ac-landing-footer-title">AIRealCheck</div>
+                  <div class="ac-landing-footer-text">Vertrauen in digitale Medien durch KI-Analyse.</div>
+                </div>
+                <div class="ac-landing-footer-col">
+                  <div class="ac-landing-footer-heading">Produkt</div>
+                  <a href="#landing-product">Produkt</a>
+                  <a href="#landing-solution">Features</a>
+                  <a href="#landing-how">So funktioniert es</a>
+                  <a href="#landing-cta">Kostenlos starten</a>
+                </div>
+                <div class="ac-landing-footer-col">
+                  <div class="ac-landing-footer-heading">Account</div>
+                  <a href="/login" data-link="/login">Login</a>
+                  <a href="/register" data-link="/register">Registrierung</a>
+                  <a href="/support" data-link="/support">Support</a>
+                </div>
+                <div class="ac-landing-footer-col">
+                  <div class="ac-landing-footer-heading">Rechtliches</div>
+                  <a href="/legal?section=privacy" data-link="/legal?section=privacy">Datenschutz</a>
+                  <a href="/legal?section=impressum" data-link="/legal?section=impressum">Impressum</a>
+                  <a href="/support" data-link="/support">Kontakt</a>
+                </div>
+              </div>
+              <div class="ac-landing-footer-bottom">
+                <span>&copy; 2026 AIRealCheck. All rights reserved.</span>
+              </div>
+            </div>
+          </footer>
+        </div>
+
+        <div id="startApp">
+          <div class="ac-container">
           <div class="ac-page-title" data-i18n="start.title">KI-Inhalte erkennen</div>
           <div class="ac-subtle" data-i18n="start.subtitle">Prüfe Bilder, Videos oder Audio auf KI-Manipulation.</div>
           <div id="emailVerifyBanner" class="ac-banner ac-hide" role="status" aria-live="polite">
@@ -308,6 +893,7 @@
               <div id="resultMount"></div>
             </div>
           </div>
+        </div>
         </div>
       </section>
 
@@ -1315,61 +1901,68 @@
         </div>
       </section>
 
-      <!-- PREMIUM -->
+      <!-- PREMIUM (Platzhalter) -->
       <section id="page-premium" class="ac-page ac-hide">
         <div class="ac-container">
-          <div class="ac-page-title">Premium</div>
-          <div class="ac-card">
-            <div class="ac-premium-hero">
-              <div class="ac-premium-copy">
-                <h3 class="ac-premium-title" data-i18n="premium.hTitle">Grenzenlose Erkennung. Sofortige Klarheit.</h3>
-                <p class="ac-premium-sub" data-i18n="premium.hSub">Hol dir AIRealCheck Premium: unbegrenzte Analysen, priorisierte Geschwindigkeit, tiefere Erklärungen.</p>
-                <ul class="ac-premium-list">
-                  <li data-i18n="premium.f1">Unbegrenzte Uploads & Link-Checks</li>
-                  <li data-i18n="premium.f2">Schnellere Analyse (Server-Priorität)</li>
-                  <li data-i18n="premium.f3">Detail-Reports + technische Indikatoren</li>
-                  <li data-i18n="premium.f4">Werbefrei, unbegrenzter Verlauf</li>
-                </ul>
-              </div>
-              <div class="ac-premium-cta">
-                <div class="ac-plan">
-                  <div class="ac-billing-toggle">
-                    <button id="billMonthly" class="ac-chip ac-chip-toggle ac-active" data-i18n="premium.monthly">Monatlich</button>
-                    <button id="billAnnual" class="ac-chip ac-chip-toggle" data-i18n="premium.annual">Jährlich</button>
-                  </div>
-                  <div class="ac-plan-price"><span id="priceAmount">€4,99</span><span id="priceSuffix">/Monat</span></div>
-                  <div class="ac-plan-note" id="priceNote" data-i18n="premium.noteMonthly">Jederzeit kündbar</div>
-                  <button class="ac-primary" id="btnGoPremium" data-i18n="premium.cta">Jetzt upgraden</button>
-                  <button class="ac-ghost" id="btnTryPremium" data-i18n="premium.trial">7 Tage testen</button>
-                </div>
-              </div>
+          <div class="ac-placeholder-page">
+            <div class="ac-placeholder-logo">
+              <img src="/Assets/Logos/airealcheck-brandmark.png" alt="AIRealCheck" />
             </div>
-
-            <!-- Vergleichstabelle wie bei großen Tools -->
-            <div class="ac-compare">
-              <div class="ac-compare-col">
-                <div class="ac-compare-title">Free</div>
-                <ul class="ac-compare-list">
-                  <li data-i18n="compare.f1">250 Credits/Monat</li>
-                  <li data-i18n="compare.f2">Basis-Analyse</li>
-                  <li data-i18n="compare.f3">Verlauf bis 50 Einträge</li>
-                </ul>
-              </div>
-              <div class="ac-compare-col ac-compare-pro">
-                <div class="ac-compare-title">Premium</div>
-                <ul class="ac-compare-list">
-                  <li data-i18n="compare.p1">Unbegrenzte Analysen</li>
-                  <li data-i18n="compare.p2">Priorisierte Analyse</li>
-                  <li data-i18n="compare.p3">Detail-Reports</li>
-                  <li data-i18n="compare.p4">Unbegrenzter Verlauf</li>
-                </ul>
-              </div>
+            <h1 class="ac-placeholder-title">Upgrade auf Premium</h1>
+            <p class="ac-placeholder-text">Unsere Premium-Pl&auml;ne werden gerade vorbereitet. Bald kannst du hier auf unbegrenzte Analysen und weitere Funktionen upgraden.</p>
+            <div class="ac-placeholder-actions">
+              <button type="button" class="ac-ghost" disabled>Pl&auml;ne ansehen &mdash; coming soon</button>
             </div>
+          </div>
+        </div>
+      </section>
 
-            <!-- Marketing Pitch -->
-            <div class="ac-card" style="margin-top:12px">
-              <div class="ac-card-title">Warum Premium?</div>
-              <p class="ac-subtle">Schütze dich und dein Umfeld vor Deepfakes. Verifiziere Inhalte in Sekunden – mit den zuverlässigsten KI-Indikatoren, die wir konstant verbessern.</p>
+      <!-- DASHBOARD (Platzhalter) -->
+      <section id="page-dashboard" class="ac-page ac-hide">
+        <div class="ac-container">
+          <div class="ac-placeholder-page">
+            <div class="ac-placeholder-logo">
+              <img src="/Assets/Logos/airealcheck-brandmark.png" alt="AIRealCheck" />
+            </div>
+            <h1 class="ac-placeholder-title">Dashboard</h1>
+            <p class="ac-placeholder-text">Diese Seite ist noch in Vorbereitung. Wir arbeiten daran.</p>
+            <div class="ac-placeholder-actions">
+              <button type="button" class="ac-primary" data-link="/">Zur&uuml;ck zur Analyse</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- SUPPORT & HILFE (Platzhalter) -->
+      <section id="page-support" class="ac-page ac-hide">
+        <div class="ac-container">
+          <div class="ac-placeholder-page">
+            <div class="ac-placeholder-logo">
+              <img src="/Assets/Logos/airealcheck-brandmark.png" alt="AIRealCheck" />
+            </div>
+            <h1 class="ac-placeholder-title">Support &amp; Hilfe</h1>
+            <p class="ac-placeholder-text">Diese Seite ist noch in Vorbereitung. Wir arbeiten daran.</p>
+            <div class="ac-placeholder-actions">
+              <button type="button" class="ac-primary" data-link="/">Zur&uuml;ck zur Analyse</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- FEEDBACK (mit Tally-Link) -->
+      <section id="page-feedback" class="ac-page ac-hide">
+        <div class="ac-container">
+          <div class="ac-placeholder-page">
+            <div class="ac-placeholder-logo">
+              <img src="/Assets/Logos/airealcheck-brandmark.png" alt="AIRealCheck" />
+            </div>
+            <h1 class="ac-placeholder-title">Feedback</h1>
+            <p class="ac-placeholder-text">Teile uns dein Feedback mit und hilf uns, AIRealCheck zu verbessern. Jede R&uuml;ckmeldung z&auml;hlt.</p>
+            <div class="ac-placeholder-actions">
+              <a href="https://tally.so" target="_blank" rel="noopener noreferrer" class="ac-primary" style="text-decoration:none;display:inline-flex;align-items:center;padding:10px 22px;border-radius:10px;font-weight:600;font-size:0.95rem">
+                Feedback geben
+              </a>
+              <p class="ac-subtle" style="font-size:0.8rem">Feedback-Formular wird geladen&hellip;</p>
             </div>
           </div>
         </div>
@@ -1441,7 +2034,7 @@
   <nav class="ac-bottom" id="bottomNav"></nav>
 
 
-  <script type="module" src="/main.js?v=20260307_1"></script>
+  <script type="module" src="/main.js?v=20260307_2"></script>
 </body>
 </html>
 

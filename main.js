@@ -1,5 +1,5 @@
 import { createAuth, initAuthPages } from './auth.js';
-import { initUI, updateProfileView, updateCreditsUI, updateAnalyzeButtons, initRouter } from '/ui.js?v=20260305_2';
+import { initUI, updateProfileView, updateCreditsUI, updateAnalyzeButtons, initRouter } from '/ui.js?v=20260307_3';
 import { initAnalyze } from './analyze.js';
 import { initAdminPanel } from './admin.js';
 

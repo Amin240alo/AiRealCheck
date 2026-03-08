@@ -1,7 +1,7 @@
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => Array.from(document.querySelectorAll(sel));
 
-console.log('UI VERSION:', '20260307_2');
+console.log('UI VERSION:', '20260307_3');
 
 const DEBUG_PROGRESS_RENDER = window?.AIREALCHECK_DEBUG_PROGRESS === true;
 
@@ -28,6 +28,8 @@ const pages = {
 
 const header = $('#mainHeader');
 const headerAuth = $('#headerAuth');
+const headerLoginBtn = $('#headerLoginBtn');
+const headerRegisterBtn = $('#headerRegisterBtn');
 const headerBack = $('#headerBack');
 const adminContext = $('#adminContext');
 const pageIndicator = $('#pageIndicator');
@@ -537,13 +539,18 @@ export function showPage(name, route = null) {
 function updateHeaderUI(auth, path = currentRoute) {
   const loggedIn = auth?.isLoggedIn?.() === true;
   const isAdmin = auth?.isAdmin?.() === true;
-  const route = resolveRoute(path);
-  const authRoute = isAuthRoute(path);
+  const safePath = normalizePath(path);
+  const route = resolveRoute(safePath);
+  const authRoute = isAuthRoute(safePath);
   const adminRoute = route?.key === 'admin';
-  const canShowSidebar = !authRoute && (loggedIn || hasGuestSidebarItems());
+  const isLanding = !loggedIn && safePath === '/';
+  const isHomeApp = loggedIn && safePath === '/';
+  const canShowSidebar = !authRoute && !isLanding && (loggedIn || hasGuestSidebarItems());
 
   document.documentElement.classList.toggle('ac-shell', loggedIn && !authRoute);
   document.documentElement.classList.toggle('ac-guest', !loggedIn);
+  document.documentElement.classList.toggle('ac-route-landing', isLanding);
+  document.documentElement.classList.toggle('ac-route-home-app', isHomeApp);
 
   if (header) header.classList.toggle('ac-header-simple', authRoute);
 
@@ -567,6 +574,14 @@ function updateHeaderUI(auth, path = currentRoute) {
 
   // Auth-Buttons (Gäste)
   if (headerAuth) headerAuth.hidden = loggedIn || authRoute;
+  const applyHeaderLabel = (btn) => {
+    if (!btn) return;
+    const defaultLabel = btn.dataset.labelDefault || btn.textContent.trim();
+    const landingLabel = btn.dataset.labelLanding || defaultLabel;
+    btn.textContent = isLanding ? landingLabel : defaultLabel;
+  };
+  applyHeaderLabel(headerLoginBtn);
+  applyHeaderLabel(headerRegisterBtn);
 
   // User-Pill: Credits + Avatar (eingeloggte Nutzer, keine Auth-Seite)
   const userPillEl = document.getElementById('userPill');
@@ -583,7 +598,7 @@ function updateHeaderUI(auth, path = currentRoute) {
   }
 
   // Breadcrumb (Seitenname links) — nur auf normalen Seiten
-  if (pageIndicator) pageIndicator.hidden = authRoute;
+  if (pageIndicator) pageIndicator.hidden = authRoute || isLanding;
 
   // Admin-Kontext in der Mitte
   if (adminContext) adminContext.hidden = !adminRoute;
