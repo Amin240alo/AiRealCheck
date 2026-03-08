@@ -1,7 +1,8 @@
 import type { Metadata, Viewport } from 'next';
 import { Inter } from 'next/font/google';
-import { Toaster } from 'sonner';
 import { AuthProvider } from '@/contexts/AuthContext';
+import { ThemeProvider } from '@/contexts/ThemeContext';
+import { DynamicToaster } from '@/components/ui/DynamicToaster';
 import './globals.css';
 
 const inter = Inter({
@@ -17,33 +18,39 @@ export const metadata: Metadata = {
   },
   description: 'AIRealCheck analysiert Bilder, Videos und Audio mit mehreren KI-Detektoren gleichzeitig.',
   icons: {
-    icon: '/Assets/Logos/airealcheck-Favicon.png',
+    icon: [
+      { url: '/favicon.ico', type: 'image/png', sizes: '582x582' },
+      { url: '/Assets/Logos/airealcheck-Favicon.png', type: 'image/png' },
+    ],
     apple: '/Assets/Logos/airealcheck-Favicon.png',
   },
 };
 
 export const viewport: Viewport = {
-  themeColor: '#0c0e14',
+  themeColor: [
+    { media: '(prefers-color-scheme: light)', color: '#f7f8fc' },
+    { media: '(prefers-color-scheme: dark)', color: '#0c0e14' },
+  ],
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="de" className={inter.variable}>
+    <html lang="de" className={inter.variable} suppressHydrationWarning>
+      <head>
+        {/* Anti-FOUC: apply stored theme before first paint */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `try{var t=localStorage.getItem('ac_theme');if(t==='dark')document.documentElement.classList.add('dark')}catch(e){}`,
+          }}
+        />
+      </head>
       <body>
-        <AuthProvider>
-          {children}
-          <Toaster
-            position="bottom-right"
-            theme="dark"
-            toastOptions={{
-              style: {
-                background: 'var(--color-surface)',
-                border: '1px solid var(--color-border)',
-                color: 'var(--color-text)',
-              },
-            }}
-          />
-        </AuthProvider>
+        <ThemeProvider>
+          <AuthProvider>
+            {children}
+            <DynamicToaster />
+          </AuthProvider>
+        </ThemeProvider>
       </body>
     </html>
   );

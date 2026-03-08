@@ -248,10 +248,10 @@ export default function AnalyzePage() {
   }
 
   return (
-    <div className="max-w-2xl mx-auto px-4 py-8">
-      <div className="mb-6">
-        <h1 className="text-[22px] font-bold text-[var(--color-text)]">KI-Inhalte erkennen</h1>
-        <p className="text-[13px] text-[var(--color-muted)] mt-1">Prüfe Bilder, Videos oder Audio auf KI-Manipulation.</p>
+    <div className="max-w-3xl mx-auto px-6 py-10">
+      <div className="mb-7">
+        <h1 className="text-[24px] font-bold text-[var(--color-text)]">KI-Inhalte erkennen</h1>
+        <p className="text-[14px] text-[var(--color-muted)] mt-1.5">Prüfe Bilder, Videos oder Audio auf KI-Manipulation.</p>
       </div>
 
       {/* Email verify banner */}
@@ -269,31 +269,31 @@ export default function AnalyzePage() {
       )}
 
       {/* Main card */}
-      <div className="rounded-[var(--radius-lg)] bg-[var(--color-surface)] border border-[var(--color-border)] p-5">
+      <div className="rounded-[var(--radius-xl)] bg-[var(--color-surface)] border border-[var(--color-border)] shadow-[var(--shadow-sm)] p-7">
         {/* Media type selector */}
-        <div className="mb-5">
+        <div className="mb-6">
           <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--color-muted)] mb-3">Medientyp wählen</div>
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-3 gap-3">
             {(['image', 'video', 'audio'] as MediaType[]).map(type => (
               <button
                 key={type}
                 onClick={() => setMediaType(type)}
-                className={`flex flex-col items-center gap-2 p-3 rounded-[var(--radius-md)] border transition-all duration-150 ${
+                className={`flex flex-col items-center gap-2.5 p-4 rounded-[var(--radius-lg)] border transition-all duration-150 ${
                   mediaType === type
                     ? 'border-[var(--color-primary)] bg-[var(--color-primary-muted)] text-[var(--color-primary)]'
                     : 'border-[var(--color-border)] hover:border-[var(--color-border-2)] hover:bg-[var(--color-surface-2)] text-[var(--color-muted)]'
                 }`}
               >
-                {type === 'image' ? <ImageIcon size={20} /> : type === 'video' ? <Video size={20} /> : <Music size={20} />}
-                <span className="text-[12px] font-medium">{TYPE_LABELS[type]} prüfen</span>
-                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[var(--color-surface-3)] text-[var(--color-muted-2)]">{COSTS[type]} Credits</span>
+                {type === 'image' ? <ImageIcon size={22} /> : type === 'video' ? <Video size={22} /> : <Music size={22} />}
+                <span className="text-[13px] font-medium">{TYPE_LABELS[type]} prüfen</span>
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-[var(--color-surface-3)] text-[var(--color-muted-2)]">{COSTS[type]} Credits</span>
               </button>
             ))}
           </div>
         </div>
 
         {/* Input mode tabs */}
-        <div className="flex items-center gap-1 mb-4 p-1 rounded-[var(--radius-md)] bg-[var(--color-surface-2)] w-fit">
+        <div className="flex items-center gap-1 mb-5 p-1 rounded-[var(--radius-md)] bg-[var(--color-surface-2)] w-fit">
           {(['file', 'link'] as const).map(mode => (
             <button key={mode} onClick={() => setInputMode(mode)}
               className={`flex items-center gap-1.5 h-7 px-3 rounded-[var(--radius-sm)] text-[12px] font-medium transition-all ${
@@ -314,7 +314,7 @@ export default function AnalyzePage() {
                 onDragOver={e => { e.preventDefault(); setDragging(true); }}
                 onDragLeave={() => setDragging(false)}
                 onDrop={onDrop}
-                className={`relative flex flex-col items-center justify-center gap-3 p-8 rounded-[var(--radius-lg)] border-2 border-dashed cursor-pointer transition-all duration-150 ${
+                className={`relative flex flex-col items-center justify-center gap-4 p-10 rounded-[var(--radius-lg)] border-2 border-dashed cursor-pointer transition-all duration-150 ${
                   dragging
                     ? 'border-[var(--color-primary)] bg-[var(--color-primary-muted)]'
                     : file
@@ -357,7 +357,7 @@ export default function AnalyzePage() {
                 onChange={e => setUrl(e.target.value)}
                 placeholder="https://..."
                 disabled={mediaType !== 'video'}
-                className="w-full h-10 px-3 rounded-[var(--radius-md)] bg-[var(--color-surface-2)] border border-[var(--color-border)] text-[var(--color-text)] text-[13px] placeholder:text-[var(--color-muted-2)] focus:outline-none focus:border-[var(--color-primary)] disabled:opacity-50 transition-colors"
+                className="w-full h-11 px-3.5 rounded-[var(--radius-md)] bg-[var(--color-surface-2)] border border-[var(--color-border)] text-[var(--color-text)] text-[14px] placeholder:text-[var(--color-muted-2)] focus:outline-none focus:border-[var(--color-primary)] disabled:opacity-50 transition-colors"
               />
             </motion.div>
           )}
@@ -371,8 +371,8 @@ export default function AnalyzePage() {
         )}
 
         {/* Analyze button */}
-        <div className="mt-4 flex items-center justify-between">
-          <div className="text-[12px] text-[var(--color-muted)]">
+        <div className="mt-5 flex items-center justify-between">
+          <div className="text-[13px] text-[var(--color-muted)]">
             Kosten: <strong className="text-[var(--color-text)]">{cost} Credits</strong>
             {isLoggedIn && (
               <span className={`ml-2 ${hasEnoughCredits ? 'text-[var(--color-success)]' : 'text-[var(--color-danger)]'}`}>
@@ -383,7 +383,7 @@ export default function AnalyzePage() {
           <button
             onClick={startAnalysis}
             disabled={analyzing || (inputMode === 'file' && !file)}
-            className="h-9 px-5 rounded-[var(--radius-md)] bg-[var(--color-primary)] text-white text-[13px] font-semibold hover:bg-[var(--color-primary-hover)] disabled:opacity-50 transition-colors flex items-center gap-2"
+            className="h-11 px-6 rounded-[var(--radius-md)] bg-[var(--color-primary)] text-white text-[14px] font-semibold hover:bg-[var(--color-primary-hover)] disabled:opacity-50 transition-colors flex items-center gap-2"
           >
             {analyzing
               ? <><svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.4 0 0 5.4 0 12h4z"/></svg> Analysieren…</>

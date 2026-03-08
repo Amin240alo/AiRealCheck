@@ -52,23 +52,23 @@ function LoginContent() {
       initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3 }}
-      className="w-full max-w-sm"
+      className="w-full max-w-md"
     >
-      <div className="rounded-[var(--radius-xl)] bg-[var(--color-surface)] border border-[var(--color-border)] shadow-[var(--shadow-lg)] p-8">
-        <div className="mb-6">
-          <div className="text-[11px] font-semibold uppercase tracking-widest text-[var(--color-primary)] mb-1">AIRealCheck</div>
-          <h2 className="text-[22px] font-bold text-[var(--color-text)]">Anmelden</h2>
-          <p className="text-[13px] text-[var(--color-muted)] mt-1">Melde dich an, um Analysen zu starten.</p>
+      <div className="rounded-[var(--radius-xl)] bg-[var(--color-surface)] border border-[var(--color-border)] shadow-[var(--shadow-lg)] p-10">
+        <div className="mb-7">
+          <div className="text-[11px] font-semibold uppercase tracking-widest text-[var(--color-primary)] mb-2">AIRealCheck</div>
+          <h2 className="text-[24px] font-bold text-[var(--color-text)]">Anmelden</h2>
+          <p className="text-[14px] text-[var(--color-muted)] mt-1.5">Melde dich an, um Analysen zu starten.</p>
         </div>
 
         {(error || oauthError) && (
-          <div className="mb-4 px-4 py-3 rounded-[var(--radius-md)] bg-[var(--color-danger-muted)] border border-[var(--color-danger)] border-opacity-30 text-[var(--color-danger)] text-[13px]">
+          <div className="mb-5 px-4 py-3 rounded-[var(--radius-md)] bg-[var(--color-danger-muted)] border border-[var(--color-danger)] border-opacity-30 text-[var(--color-danger)] text-[13px]">
             {oauthError ? 'Google-Login fehlgeschlagen. Bitte erneut versuchen.' : error}
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="flex flex-col gap-4" noValidate>
-          <div className="flex flex-col gap-1.5">
+        <form onSubmit={handleSubmit} className="flex flex-col gap-5" noValidate>
+          <div className="flex flex-col gap-2">
             <label className="text-[11px] font-semibold uppercase tracking-wider text-[var(--color-muted)]">E-Mail</label>
             <input
               type="email"
@@ -77,10 +77,10 @@ function LoginContent() {
               placeholder="name@example.com"
               autoComplete="email"
               required
-              className="h-10 px-3 rounded-[var(--radius-md)] bg-[var(--color-surface-2)] border border-[var(--color-border)] text-[var(--color-text)] text-[13px] placeholder:text-[var(--color-muted-2)] focus:outline-none focus:border-[var(--color-primary)] focus:ring-1 focus:ring-[var(--color-primary)] transition-colors"
+              className="h-11 px-3.5 rounded-[var(--radius-md)] bg-[var(--color-surface-2)] border border-[var(--color-border)] text-[var(--color-text)] text-[14px] placeholder:text-[var(--color-muted-2)] focus:outline-none focus:border-[var(--color-primary)] focus:ring-1 focus:ring-[var(--color-primary)] transition-colors"
             />
           </div>
-          <div className="flex flex-col gap-1.5">
+          <div className="flex flex-col gap-2">
             <label className="text-[11px] font-semibold uppercase tracking-wider text-[var(--color-muted)]">Passwort</label>
             <div className="relative">
               <input
@@ -90,37 +90,42 @@ function LoginContent() {
                 placeholder="Mindestens 8 Zeichen"
                 autoComplete="current-password"
                 required
-                className="w-full h-10 px-3 pr-10 rounded-[var(--radius-md)] bg-[var(--color-surface-2)] border border-[var(--color-border)] text-[var(--color-text)] text-[13px] placeholder:text-[var(--color-muted-2)] focus:outline-none focus:border-[var(--color-primary)] focus:ring-1 focus:ring-[var(--color-primary)] transition-colors"
+                className="w-full h-11 px-3.5 pr-11 rounded-[var(--radius-md)] bg-[var(--color-surface-2)] border border-[var(--color-border)] text-[var(--color-text)] text-[14px] placeholder:text-[var(--color-muted-2)] focus:outline-none focus:border-[var(--color-primary)] focus:ring-1 focus:ring-[var(--color-primary)] transition-colors"
               />
               <button
                 type="button"
                 onClick={() => setShowPw(!showPw)}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[var(--color-muted)] hover:text-[var(--color-text)]"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
                 tabIndex={-1}
               >
-                {showPw ? <EyeOff size={16} /> : <Eye size={16} />}
+                {showPw ? <EyeOff size={17} /> : <Eye size={17} />}
               </button>
             </div>
           </div>
           <button
             type="submit"
             disabled={loading}
-            className="h-10 w-full rounded-[var(--radius-md)] bg-[var(--color-primary)] text-white text-[13px] font-semibold hover:bg-[var(--color-primary-hover)] disabled:opacity-50 transition-colors flex items-center justify-center gap-2"
+            className="h-11 w-full rounded-[var(--radius-md)] bg-[var(--color-primary)] text-white text-[14px] font-semibold hover:bg-[var(--color-primary-hover)] disabled:opacity-50 transition-colors flex items-center justify-center gap-2"
           >
-            {loading && <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.4 0 0 5.4 0 12h4z"/></svg>}
+            {loading && (
+              <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.4 0 0 5.4 0 12h4z"/>
+              </svg>
+            )}
             {loading ? 'Anmelden…' : 'Anmelden'}
           </button>
         </form>
 
-        <div className="my-4 flex items-center gap-3">
+        <div className="my-5 flex items-center gap-3">
           <div className="flex-1 h-px bg-[var(--color-border)]" />
-          <span className="text-[11px] text-[var(--color-muted-2)]">oder</span>
+          <span className="text-[12px] text-[var(--color-muted-2)]">oder</span>
           <div className="flex-1 h-px bg-[var(--color-border)]" />
         </div>
 
         <a
           href={`${API_BASE}/auth/google`}
-          className="flex items-center justify-center gap-3 h-10 w-full rounded-[var(--radius-md)] bg-[var(--color-surface-2)] border border-[var(--color-border)] text-[var(--color-text)] text-[13px] font-medium hover:bg-[var(--color-surface-3)] transition-colors"
+          className="flex items-center justify-center gap-3 h-11 w-full rounded-[var(--radius-md)] bg-[var(--color-surface-2)] border border-[var(--color-border)] text-[var(--color-text)] text-[14px] font-medium hover:bg-[var(--color-surface-3)] transition-colors"
         >
           <svg viewBox="0 0 48 48" className="w-4 h-4 flex-shrink-0">
             <path fill="#EA4335" d="M24 9.5c3.54 0 6.74 1.23 9.26 3.65l6.94-6.94C36.28 2.59 30.5 0 24 0 14.7 0 6.71 5.38 2.83 13.22l8.06 6.26C12.62 12.1 17.85 9.5 24 9.5z"/>
@@ -131,7 +136,7 @@ function LoginContent() {
           Mit Google anmelden
         </a>
 
-        <div className="mt-5 flex items-center justify-center gap-3 text-[12px] text-[var(--color-muted)]">
+        <div className="mt-6 flex items-center justify-center gap-3 text-[13px] text-[var(--color-muted)]">
           <Link href="/forgot-password" className="hover:text-[var(--color-text)] transition-colors">Passwort vergessen?</Link>
           <span>·</span>
           <Link href="/register" className="hover:text-[var(--color-text)] transition-colors">Konto erstellen</Link>

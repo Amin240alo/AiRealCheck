@@ -1,53 +1,93 @@
 @import "tailwindcss";
 
 @theme {
-  /* Colors */
-  --color-bg: #0c0e14;
-  --color-surface: #13161f;
-  --color-surface-2: #1a1d2a;
-  --color-surface-3: #222537;
-  --color-border: rgba(255,255,255,0.08);
-  --color-border-2: rgba(255,255,255,0.12);
-  --color-text: #f1f3f9;
-  --color-muted: #8892a4;
-  --color-muted-2: #5a6377;
-  --color-primary: #3b82f6;
-  --color-primary-hover: #2563eb;
-  --color-primary-muted: rgba(59,130,246,0.12);
-  --color-success: #22c55e;
-  --color-success-muted: rgba(34,197,94,0.12);
-  --color-warning: #f59e0b;
-  --color-warning-muted: rgba(245,158,11,0.12);
-  --color-danger: #ef4444;
-  --color-danger-muted: rgba(239,68,68,0.12);
-
-  /* Typography */
+  /* Non-color tokens only – Tailwind uses these for utility generation */
   --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
-
-  /* Radii */
   --radius-sm: 6px;
   --radius-md: 8px;
   --radius-lg: 12px;
   --radius-xl: 16px;
-
-  /* Shadows */
-  --shadow-sm: 0 1px 3px rgba(0,0,0,0.4);
-  --shadow-md: 0 4px 16px rgba(0,0,0,0.5);
-  --shadow-lg: 0 8px 32px rgba(0,0,0,0.6);
-
-  /* Sidebar */
   --sidebar-width: 220px;
-  --sidebar-collapsed: 56px;
+  --sidebar-collapsed: 60px;
   --header-height: 56px;
 }
 
+/* ══════════════════════════════════════
+   LIGHT MODE (default / :root)
+   ══════════════════════════════════════ */
 :root {
-  color-scheme: dark;
+  color-scheme: light;
+
+  /* Backgrounds */
+  --color-bg:        #f7f8fc;
+  --color-surface:   #ffffff;
+  --color-surface-2: #f0f2f8;
+  --color-surface-3: #e4e7f0;
+
+  /* Borders */
+  --color-border:   rgba(0,0,0,0.07);
+  --color-border-2: rgba(0,0,0,0.12);
+
+  /* Text */
+  --color-text:    #111827;
+  --color-muted:   #6b7280;
+  --color-muted-2: #9ca3af;
+
+  /* Brand */
+  --color-primary:       #3b82f6;
+  --color-primary-hover: #2563eb;
+  --color-primary-muted: rgba(59,130,246,0.10);
+
+  /* States */
+  --color-success:       #16a34a;
+  --color-success-muted: rgba(22,163,74,0.10);
+  --color-warning:       #d97706;
+  --color-warning-muted: rgba(217,119,6,0.10);
+  --color-danger:        #dc2626;
+  --color-danger-muted:  rgba(220,38,38,0.10);
+
+  /* Shadows */
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+  --shadow-md: 0 4px 16px rgba(0,0,0,0.08), 0 2px 6px rgba(0,0,0,0.04);
+  --shadow-lg: 0 8px 32px rgba(0,0,0,0.10), 0 4px 12px rgba(0,0,0,0.06);
 }
 
-* {
-  box-sizing: border-box;
+/* ══════════════════════════════════════
+   DARK MODE  (.dark on <html>)
+   ══════════════════════════════════════ */
+.dark {
+  color-scheme: dark;
+
+  --color-bg:        #0c0e14;
+  --color-surface:   #13161f;
+  --color-surface-2: #1a1d2a;
+  --color-surface-3: #222537;
+
+  --color-border:   rgba(255,255,255,0.08);
+  --color-border-2: rgba(255,255,255,0.12);
+
+  --color-text:    #f1f3f9;
+  --color-muted:   #8892a4;
+  --color-muted-2: #5a6377;
+
+  --color-primary-muted: rgba(59,130,246,0.12);
+
+  --color-success:       #22c55e;
+  --color-success-muted: rgba(34,197,94,0.12);
+  --color-warning:       #f59e0b;
+  --color-warning-muted: rgba(245,158,11,0.12);
+  --color-danger:        #ef4444;
+  --color-danger-muted:  rgba(239,68,68,0.12);
+
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.40);
+  --shadow-md: 0 4px 16px rgba(0,0,0,0.50);
+  --shadow-lg: 0 8px 32px rgba(0,0,0,0.60);
 }
+
+/* ══════════════════════════════════════
+   BASE STYLES
+   ══════════════════════════════════════ */
+* { box-sizing: border-box; }
 
 html, body {
   margin: 0;
@@ -67,7 +107,7 @@ html, body {
 ::-webkit-scrollbar-thumb { background: var(--color-surface-3); border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--color-muted-2); }
 
-/* Focus visible */
+/* Focus */
 :focus-visible {
   outline: 2px solid var(--color-primary);
   outline-offset: 2px;

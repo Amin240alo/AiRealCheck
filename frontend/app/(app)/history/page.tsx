@@ -30,12 +30,12 @@ function HistoryItemCard({ item }: { item: HistoryItem }) {
   const statusOk = item.status === 'success';
 
   return (
-    <motion.div layout className="rounded-[var(--radius-md)] bg-[var(--color-surface-2)] border border-[var(--color-border)] overflow-hidden">
+    <motion.div layout className="rounded-[var(--radius-lg)] bg-[var(--color-surface)] border border-[var(--color-border)] shadow-[var(--shadow-sm)] overflow-hidden">
       <button
         onClick={() => statusOk && setExpanded(!expanded)}
-        className={`flex items-center gap-3 w-full px-4 py-3 text-left transition-colors ${statusOk ? 'hover:bg-[var(--color-surface-3)] cursor-pointer' : 'cursor-default'}`}
+        className={`flex items-center gap-4 w-full px-5 py-4 text-left transition-colors ${statusOk ? 'hover:bg-[var(--color-surface-2)] cursor-pointer' : 'cursor-default'}`}
       >
-        <div className="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center bg-[var(--color-surface-3)] text-[var(--color-muted)]">
+        <div className="flex-shrink-0 w-9 h-9 rounded-full flex items-center justify-center bg-[var(--color-surface-2)] text-[var(--color-muted)]">
           {TYPE_ICONS[item.media_type]}
         </div>
         <div className="flex-1 min-w-0">
@@ -124,11 +124,11 @@ export default function HistoryPage() {
   const filtered = filter === 'all' ? items : items.filter(i => i.media_type === filter);
 
   return (
-    <div className="max-w-2xl mx-auto px-4 py-8">
-      <div className="flex items-center justify-between mb-6">
+    <div className="max-w-3xl mx-auto px-6 py-10">
+      <div className="flex items-center justify-between mb-7">
         <div>
-          <h1 className="text-[22px] font-bold text-[var(--color-text)]">Verlauf</h1>
-          <p className="text-[13px] text-[var(--color-muted)] mt-1">Deine letzten Prüfungen</p>
+          <h1 className="text-[24px] font-bold text-[var(--color-text)]">Verlauf</h1>
+          <p className="text-[14px] text-[var(--color-muted)] mt-1.5">Deine letzten Prüfungen</p>
         </div>
         {isLoggedIn && (
           <button onClick={fetchHistory} className="p-2 rounded-[var(--radius-md)] text-[var(--color-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-surface-2)] transition-colors">
@@ -139,14 +139,14 @@ export default function HistoryPage() {
 
       {/* Stats */}
       {isLoggedIn && items.length > 0 && (
-        <div className="grid grid-cols-2 gap-3 mb-5">
-          <div className="rounded-[var(--radius-md)] bg-[var(--color-surface)] border border-[var(--color-border)] p-4">
-            <div className="text-[22px] font-bold text-[var(--color-text)]">{last7.length}</div>
-            <div className="text-[11px] text-[var(--color-muted)] mt-0.5">Analysen (7 Tage)</div>
+        <div className="grid grid-cols-2 gap-4 mb-6">
+          <div className="rounded-[var(--radius-lg)] bg-[var(--color-surface)] border border-[var(--color-border)] shadow-[var(--shadow-sm)] p-5">
+            <div className="text-[26px] font-bold text-[var(--color-text)] leading-none">{last7.length}</div>
+            <div className="text-[12px] text-[var(--color-muted)] mt-1.5">Analysen (7 Tage)</div>
           </div>
-          <div className="rounded-[var(--radius-md)] bg-[var(--color-surface)] border border-[var(--color-border)] p-4">
-            <div className="text-[22px] font-bold text-[var(--color-danger)]">{aiDetected}</div>
-            <div className="text-[11px] text-[var(--color-muted)] mt-0.5">KI erkannt</div>
+          <div className="rounded-[var(--radius-lg)] bg-[var(--color-surface)] border border-[var(--color-border)] shadow-[var(--shadow-sm)] p-5">
+            <div className="text-[26px] font-bold text-[var(--color-danger)] leading-none">{aiDetected}</div>
+            <div className="text-[12px] text-[var(--color-muted)] mt-1.5">KI erkannt</div>
           </div>
         </div>
       )}
