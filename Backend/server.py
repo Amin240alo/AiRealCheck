@@ -139,7 +139,7 @@ log_ffmpeg_diagnostics()
 
 
 # Restrictive CORS per requirements
-_allowed_origins = ["http://localhost:5500", "http://127.0.0.1:5500"]
+_allowed_origins = ["http://localhost:5500", "http://127.0.0.1:5500", "http://localhost:3000", "http://127.0.0.1:3000"]
 _allowed_methods = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
 _allowed_headers = ["Content-Type", "Authorization", "Idempotency-Key"]
 
