@@ -13,6 +13,7 @@ import {
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { cn } from '@/lib/utils';
+import { ThemeLogo } from '@/components/ui/ThemeLogo';
 
 const SIDEBAR_KEY = 'ac_sidebar_collapsed';
 const COLLAPSED_W = 60;
@@ -130,12 +131,7 @@ export function Sidebar() {
               onClick={() => router.push(isLoggedIn ? '/analyze' : '/')}
               className="flex items-center min-w-0 cursor-pointer"
             >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src="/Assets/Logos/airealcheck-secondary.png"
-                alt="AIRealCheck"
-                className="h-8 object-contain"
-              />
+              <ThemeLogo height="h-[37px]" />
             </motion.button>
           )}
         </AnimatePresence>

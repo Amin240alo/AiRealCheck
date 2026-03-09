@@ -7,30 +7,30 @@ const audiences = [
   {
     icon: Newspaper,
     title: 'Journalisten',
-    desc: 'Verifiziere Bildmaterial schnell und sicher. Keine Annahmen — klare Signale und Transparenz.',
+    desc: 'Verifiziere Bild-, Video- und Audiomaterial schnell. Deepfake Detection für professionelles Fact-Checking.',
     accent: '#35D6FF',
-    detail: 'Fact-Checking · Editorial · Breaking News',
+    detail: 'Fact-Checking · Deepfake Detection · Breaking News',
   },
   {
     icon: Building2,
     title: 'Agenturen',
-    desc: 'Schütze deine Clients vor KI-generierten Fake-Visuals mit systemischer Verifizierung.',
+    desc: 'Schütze Clients vor KI-generiertem Fake-Content — egal ob Bild, Video oder Audio.',
     accent: '#8B5CF6',
-    detail: 'Brand Safety · Campaign Audit · Compliance',
+    detail: 'Brand Safety · Deepfake Audit · Campaign Compliance',
   },
   {
     icon: Users,
     title: 'Unternehmen',
-    desc: 'Interne Checks für Brand Safety, Compliance und Content-Qualitätssicherung.',
+    desc: 'Content-Verification für Brand Safety, Compliance und internes Risikomanagement.',
     accent: '#35D6FF',
-    detail: 'Internal Review · Risk Management · QA',
+    detail: 'Risk Management · Content QA · Compliance',
   },
   {
     icon: Camera,
     title: 'Creator',
-    desc: 'Beweise die Authentizität deiner Arbeit. Hebe dich von KI-generiertem Content ab.',
+    desc: 'Beweise die Authentizität deines Contents — Fotos, Videos, Aufnahmen.',
     accent: '#8B5CF6',
-    detail: 'Photography · Portfolio · Attribution',
+    detail: 'Authenticity · Attribution · Portfolio',
   },
 ];
 
@@ -51,11 +51,11 @@ export function AudienceFitSection() {
           viewport={{ once: true }}
         >
           <h2 className="text-[26px] md:text-[42px] font-bold text-[#F5F7FB] mb-4 leading-tight">
-            Relevanz ohne fake Social Proof.
+            Für alle, die Verantwortung für digitale Medien tragen.
           </h2>
           <p className="text-[16px] text-[#9AA6B2] max-w-lg mx-auto">
-            AIRealCheck ist für jede Person gebaut, die Verantwortung
-            für digitale Medien trägt.
+            AIRealCheck ist gebaut für Profis, die täglich mit
+            Bild-, Video- und Audio-Content arbeiten.
           </p>
         </motion.div>
 

@@ -1,43 +1,43 @@
 'use client';
 
 import { motion } from 'framer-motion';
-import { Layers, ScanSearch, BarChart3, ListOrdered, Wallet, Briefcase } from 'lucide-react';
+import { Layers, ScanSearch, BarChart3, ListOrdered, ShieldCheck, Briefcase } from 'lucide-react';
 
 const features = [
   {
     icon: Layers,
-    title: 'Ensemble Detection',
-    desc: '6+ Engines, reduzierte Abhängigkeit von einem Modell. Robustere, nachvollziehbarere Ergebnisse.',
+    title: 'Multi-Format Detection',
+    desc: 'Erkennt KI-generierte Inhalte in Bildern, Videos und Audio — eine Plattform für alle Content-Typen.',
     accent: '#35D6FF',
   },
   {
     icon: ScanSearch,
     title: 'Technical Signal Analysis',
-    desc: 'Artifacts, Compression, Edge-Verhalten, Texturen — tiefgreifende Signalanalyse statt Blackbox.',
+    desc: 'Artifacts, Compression, Frame-Anomalien, Audio-Patterns — tiefgreifende Signalanalyse statt Blackbox.',
     accent: '#8B5CF6',
   },
   {
     icon: BarChart3,
     title: 'Confidence Scoring',
-    desc: 'Klare Range statt vagem Score. Wisse, wie sicher das Ergebnis wirklich ist.',
+    desc: 'Klare Wahrscheinlichkeit und Verlässlichkeitsindikatoren. Wisse, wie sicher das Ergebnis ist.',
     accent: '#35D6FF',
   },
   {
     icon: ListOrdered,
     title: 'Model-Level Breakdown',
-    desc: 'Wie jeder Detektor reagiert hat — transparent, nachvollziehbar, detailliert.',
+    desc: 'Wie jeder einzelne Detektor reagiert hat — transparent, nachvollziehbar, detailliert.',
     accent: '#8B5CF6',
   },
   {
-    icon: Wallet,
-    title: 'Fast Credit-Based Workflow',
-    desc: 'Nutzung tracken, schnell analysieren, kein Abo-Overhead.',
+    icon: ShieldCheck,
+    title: 'Ensemble Detection',
+    desc: '6+ spezialisierte Engines pro Analyse. Robustere Ergebnisse durch Konsensbildung statt einem Modell.',
     accent: '#35D6FF',
   },
   {
     icon: Briefcase,
-    title: 'Built for Real Verification Work',
-    desc: 'Editorial, Agency, Interne Checks. Für professionelle Verifizierungs-Workflows gebaut.',
+    title: 'Built for Professional Work',
+    desc: 'Editorial, Agency, Enterprise. Für professionelle Content-Verification-Workflows gebaut.',
     accent: '#8B5CF6',
   },
 ];
@@ -70,11 +70,11 @@ export function FeaturesSection() {
           viewport={{ once: true }}
         >
           <h2 className="text-[26px] md:text-[42px] font-bold text-[#F5F7FB] mb-4 leading-tight">
-            Tiefe zeigen — kein Blackbox-Tool.
+            Eine Platform. Alle Formate. Volle Transparenz.
           </h2>
           <p className="text-[16px] max-w-lg mx-auto" style={{ color: '#9AA6B2' }}>
-            AIRealCheck ist mehr als ein einfacher Ja/Nein-Detektor.
-            Jede Analyse zeigt dir warum.
+            AIRealCheck ist mehr als ein einfacher Detektor —
+            multi-format, multi-engine, vollständig nachvollziehbar.
           </p>
         </motion.div>
 

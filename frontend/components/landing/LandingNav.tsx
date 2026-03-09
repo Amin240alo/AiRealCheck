@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Menu, X } from 'lucide-react';
+import { ThemeLogo } from '@/components/ui/ThemeLogo';
 
 const navLinks = [
   { label: 'Features', href: '#features' },
@@ -37,7 +38,7 @@ export function LandingNav() {
   return (
     <>
       <nav
-        className="sticky top-0 z-50 flex items-center justify-between h-16 px-5 md:px-12"
+        className="sticky top-0 z-50 flex items-center justify-between py-3 px-5 md:px-12"
         style={{
           background: 'rgba(6,7,10,0.88)',
           backdropFilter: 'blur(20px)',
@@ -48,12 +49,7 @@ export function LandingNav() {
       >
         {/* Logo */}
         <div className="flex items-center">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src="/Assets/Logos/airealcheck-secondary.png"
-            alt="AIRealCheck"
-            className="h-10 w-auto object-contain"
-          />
+          <ThemeLogo height="h-[48px]" />
         </div>
 
         {/* Desktop Links */}

@@ -3,13 +3,14 @@
 import Link from 'next/link';
 import { useRef } from 'react';
 import { motion, useScroll, useTransform } from 'framer-motion';
-import { Layers, ScanSearch, BarChart3, Zap, ShieldCheck } from 'lucide-react';
+import { Layers, BarChart3, ShieldCheck, FileImage, Video, Mic } from 'lucide-react';
 
 const chips = [
-  { icon: Layers, label: '6 Engines' },
-  { icon: ScanSearch, label: 'Ensemble Detection' },
+  { icon: FileImage, label: 'Image Analysis' },
+  { icon: Video, label: 'Video Signals' },
+  { icon: Mic, label: 'Audio Detection' },
+  { icon: Layers, label: '6+ Engines' },
   { icon: BarChart3, label: 'Confidence Score' },
-  { icon: Zap, label: 'Fast Results' },
 ];
 
 const chipVariants = {
@@ -77,7 +78,7 @@ export function HeroSection() {
               className="w-1.5 h-1.5 rounded-full"
               style={{ background: '#35D6FF', boxShadow: '0 0 6px #35D6FF' }}
             />
-            KI-Erkennung — jetzt verfügbar
+            AI Content Verification
           </motion.div>
 
           {/* Headline */}
@@ -87,7 +88,7 @@ export function HeroSection() {
             transition={{ duration: 0.7, delay: 0.15, ease: [0.16, 1, 0.3, 1] }}
             className="text-[34px] sm:text-[42px] md:text-[50px] lg:text-[60px] font-bold leading-[1.1] tracking-[-0.02em] text-[#F5F7FB] mb-5 md:mb-6"
           >
-            Know if an image is real{' '}
+            Know if digital content is real{' '}
             <span
               style={{
                 background: 'linear-gradient(135deg, #35D6FF 0%, #8B5CF6 100%)',
@@ -108,7 +109,7 @@ export function HeroSection() {
             className="text-[15px] md:text-[17px] text-[#9AA6B2] leading-relaxed mb-7 md:mb-9 max-w-[480px]"
           >
             AIRealCheck uses ensemble analysis across 6+ detection engines
-            to verify visual content with depth, not just a single score.
+            to verify images, video, and audio — with depth, not just a single score.
           </motion.p>
 
           {/* CTAs */}
@@ -224,6 +225,27 @@ export function HeroSection() {
                   <ShieldCheck size={12} className="text-[#35D6FF]" />
                   <span className="text-[10px] text-[#35D6FF] font-mono">verified</span>
                 </div>
+              </div>
+
+              {/* Content format tabs */}
+              <div className="flex gap-1.5 px-4 py-2" style={{ borderBottom: '1px solid rgba(255,255,255,0.04)', background: 'rgba(255,255,255,0.01)' }}>
+                {[
+                  { label: 'Image', icon: FileImage, active: true },
+                  { label: 'Video', icon: Video, active: false },
+                  { label: 'Audio', icon: Mic, active: false },
+                ].map(tab => (
+                  <div
+                    key={tab.label}
+                    className="flex items-center gap-1 px-2 py-1 rounded text-[10px] font-mono"
+                    style={tab.active
+                      ? { background: 'rgba(53,214,255,0.1)', color: '#35D6FF', border: '1px solid rgba(53,214,255,0.2)' }
+                      : { color: 'rgba(154,166,178,0.35)' }
+                    }
+                  >
+                    <tab.icon size={9} />
+                    {tab.label}
+                  </div>
+                ))}
               </div>
 
               <div className="p-5">

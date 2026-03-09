@@ -6,8 +6,12 @@ import { Plus, Minus } from 'lucide-react';
 
 const faqs = [
   {
+    q: 'Welche Content-Typen erkennt AIRealCheck?',
+    a: 'AIRealCheck analysiert Bilder, Video-Content und Audio-Aufnahmen auf KI-Generierung. Die Analyse läuft über spezialisierte Engines, die je nach Format relevante technische Signale prüfen.',
+  },
+  {
     q: 'Wie genau ist die Erkennung?',
-    a: 'AIRealCheck kombiniert 6+ spezialisierte Detektoren. Das Ensemble reduziert False-Positives und erhöht die Zuverlässigkeit gegenüber einzelnen Modellen deutlich. Genauigkeitsangaben variieren je nach Bildtyp und Generierungsverfahren.',
+    a: 'AIRealCheck kombiniert 6+ spezialisierte Detektoren über ein Ensemble-System. Das reduziert False-Positives und erhöht die Zuverlässigkeit gegenüber einzelnen Modellen deutlich. Genauigkeit variiert je nach Content-Typ und Generierungsverfahren.',
   },
   {
     q: 'Was bedeutet der Confidence-Score?',
@@ -28,6 +32,10 @@ const faqs = [
   {
     q: 'Brauche ich ein Konto für die Analyse?',
     a: 'Ja, ein kostenloses Konto ist notwendig. Du bekommst sofort 100 Credits — keine Kreditkarte erforderlich. Das Konto ermöglicht uns, Missbrauch zu verhindern und die Qualität für alle Nutzer zu sichern.',
+  },
+  {
+    q: 'Kann AIRealCheck Deepfakes erkennen?',
+    a: 'Ja. AIRealCheck analysiert technische Signale, die auf KI-Manipulation hinweisen — darunter GAN-Patterns, Diffusion-Artifacts, Frame-Anomalien und Audio-Inkonsistenzen. Deepfake-Detection ist ein zentraler Anwendungsfall der Plattform.',
   },
 ];
 

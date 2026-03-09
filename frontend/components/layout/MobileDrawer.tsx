@@ -7,6 +7,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { X, LayoutDashboard, ScanSearch, History, User, Settings, HelpCircle, MessageSquare, ShieldCheck, Zap, Star } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { cn } from '@/lib/utils';
+import { ThemeLogo } from '@/components/ui/ThemeLogo';
 
 interface MobileDrawerProps {
   open: boolean;
@@ -54,8 +55,7 @@ export function MobileDrawer({ open, onClose }: MobileDrawerProps) {
             className="fixed left-0 top-0 bottom-0 z-50 w-72 bg-[var(--color-surface)] border-r border-[var(--color-border)] flex flex-col md:hidden"
           >
             <div className="flex items-center justify-between h-[var(--header-height)] px-4 border-b border-[var(--color-border)]">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/Assets/Logos/airealcheck-secondary.png" alt="AIRealCheck" className="h-7 object-contain" />
+              <ThemeLogo height="h-8" />
               <button onClick={onClose} className="p-2 text-[var(--color-muted)] hover:text-[var(--color-text)]">
                 <X size={18} />
               </button>

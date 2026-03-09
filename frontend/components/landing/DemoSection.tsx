@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Link from 'next/link';
-import { Upload, Loader2, Activity, AlertTriangle, CheckCircle2, Cpu } from 'lucide-react';
+import { Upload, Loader2, Activity, AlertTriangle, CheckCircle2, Cpu, FileImage, Video, Mic } from 'lucide-react';
 
 type Stage = 'idle' | 'loading' | 'result';
 
@@ -89,7 +89,7 @@ export function DemoSection() {
             <br className="hidden md:block" /> analyzes visual content.
           </h2>
           <p className="text-[15px] text-[#9AA6B2]">
-            Animierte Fake-Demo · kein echter API-Call · echte Ergebnisse nach Registration
+            Beispiel-Analyse mit einem Bild — AIRealCheck erkennt auch Video- und Audio-Content.
           </p>
         </motion.div>
 
@@ -128,6 +128,28 @@ export function DemoSection() {
                 <span className="text-[10px] text-[#22C55E] font-mono">complete</span>
               </motion.div>
             )}
+          </div>
+
+          {/* Content format selector */}
+          <div className="flex gap-1.5 px-5 py-2.5" style={{ borderBottom: '1px solid rgba(255,255,255,0.04)', background: 'rgba(255,255,255,0.01)' }}>
+            {[
+              { label: 'Image', icon: FileImage, active: true },
+              { label: 'Video', icon: Video, active: false },
+              { label: 'Audio', icon: Mic, active: false },
+            ].map(tab => (
+              <div
+                key={tab.label}
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded text-[10px] font-mono"
+                style={tab.active
+                  ? { background: 'rgba(53,214,255,0.1)', color: '#35D6FF', border: '1px solid rgba(53,214,255,0.2)' }
+                  : { color: 'rgba(154,166,178,0.35)' }
+                }
+              >
+                <tab.icon size={10} />
+                {tab.label}
+              </div>
+            ))}
+            <span className="ml-auto text-[10px] font-mono" style={{ color: 'rgba(154,166,178,0.3)' }}>Demo</span>
           </div>
 
           {/* ── Stage Content ── */}

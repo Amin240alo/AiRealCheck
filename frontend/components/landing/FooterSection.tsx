@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { ThemeLogo } from '@/components/ui/ThemeLogo';
 
 export function FooterSection() {
   return (
@@ -19,12 +20,7 @@ export function FooterSection() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-10 md:gap-8 mb-14">
           {/* Brand column */}
           <div className="col-span-2 md:col-span-1">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src="/Assets/Logos/airealcheck-secondary.png"
-              alt="AIRealCheck"
-              className="h-7 w-auto object-contain mb-5"
-            />
+            <ThemeLogo height="h-7" className="mb-5" />
             <p className="text-[12px] text-[#9AA6B2]/60 leading-relaxed max-w-[180px]">
               Vertrauen in digitale Medien durch KI-Ensemble-Analyse.
             </p>

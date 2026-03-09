@@ -1,5 +1,8 @@
 @import "tailwindcss";
 
+/* Use .dark class on <html> for dark: variant (not media query) */
+@variant dark (&:where(.dark, .dark *));
+
 @theme {
   /* Non-color tokens only – Tailwind uses these for utility generation */
   --font-sans: 'Inter', system-ui, -apple-system, sans-serif;

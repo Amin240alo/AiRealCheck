@@ -5,12 +5,12 @@ import { Check, X } from 'lucide-react';
 import Link from 'next/link';
 
 const rows = [
-  { label: 'Einzelner Score',                 basic: true,  aire: false },
-  { label: 'Ensemble (6+ Engines)',            basic: false, aire: true  },
-  { label: 'Model-Level Output',              basic: false, aire: true  },
-  { label: 'Technical Signals',              basic: false, aire: true  },
-  { label: 'Confidence-Framing',             basic: false, aire: true  },
-  { label: 'Transparenz / Nachvollziehb.',   basic: false, aire: true  },
+  { label: 'Image-only Detection',              basic: true,  aire: false },
+  { label: 'Multi-Format (Image/Video/Audio)',  basic: false, aire: true  },
+  { label: 'Ensemble (6+ Engines)',             basic: false, aire: true  },
+  { label: 'Technical Signals',                basic: false, aire: true  },
+  { label: 'Model-Level Output',               basic: false, aire: true  },
+  { label: 'Confidence-Framing',               basic: false, aire: true  },
 ];
 
 // ─── Shared icon helpers ──────────────────────────────────────────────────────
@@ -43,7 +43,7 @@ export function ComparisonSection() {
             Mehr als ein einfacher Score.
           </h2>
           <p className="text-[15px] md:text-[16px] text-[#9AA6B2]">
-            AIRealCheck geht tiefer als shallow Detektoren mit nur einem Score.
+            AIRealCheck geht tiefer — mehr Formate, mehr Engines, mehr Transparenz.
           </p>
         </motion.div>
 
@@ -63,7 +63,7 @@ export function ComparisonSection() {
             <div className="h-[2px]" style={{ background: 'linear-gradient(90deg, transparent, #35D6FF, transparent)' }} />
             <div className="px-5 py-4" style={{ borderBottom: '1px solid rgba(53,214,255,0.1)' }}>
               <div className="text-[14px] font-semibold text-[#35D6FF]">AIRealCheck</div>
-              <div className="text-[11px] mt-0.5" style={{ color: 'rgba(53,214,255,0.5)' }}>Ensemble + Transparenz</div>
+              <div className="text-[11px] mt-0.5" style={{ color: 'rgba(53,214,255,0.5)' }}>Multi-Format · Ensemble · Transparent</div>
             </div>
             <div className="divide-y" style={{ borderColor: 'rgba(255,255,255,0.04)' }}>
               {rows.map(row => (
@@ -88,7 +88,7 @@ export function ComparisonSection() {
           >
             <div className="px-5 py-4" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
               <div className="text-[14px] font-medium text-[#9AA6B2]">Basic Detector</div>
-              <div className="text-[11px] mt-0.5" style={{ color: 'rgba(154,166,178,0.4)' }}>Ein Score, keine Details</div>
+              <div className="text-[11px] mt-0.5" style={{ color: 'rgba(154,166,178,0.4)' }}>Image-only · Single Model</div>
             </div>
             <div className="divide-y" style={{ borderColor: 'rgba(255,255,255,0.04)' }}>
               {rows.map(row => (
@@ -118,13 +118,13 @@ export function ComparisonSection() {
             <div className="p-5" />
             <div className="p-5 text-center" style={{ borderLeft: '1px solid rgba(255,255,255,0.06)' }}>
               <div className="text-[12px] text-[#9AA6B2] font-medium">Basic Detector</div>
-              <div className="text-[10px] mt-0.5" style={{ color: 'rgba(154,166,178,0.45)' }}>Ein Score, keine Details</div>
+              <div className="text-[10px] mt-0.5" style={{ color: 'rgba(154,166,178,0.45)' }}>Image-only · Single Model</div>
             </div>
             <div className="p-5 text-center relative" style={{ borderLeft: '1px solid rgba(53,214,255,0.2)', background: 'rgba(53,214,255,0.03)' }}>
               <div className="absolute top-0 left-0 right-0 h-[2px]"
                 style={{ background: 'linear-gradient(90deg, transparent, #35D6FF, transparent)' }} />
               <div className="text-[12px] text-[#35D6FF] font-semibold">AIRealCheck</div>
-              <div className="text-[10px] mt-0.5" style={{ color: 'rgba(53,214,255,0.5)' }}>Ensemble + Transparenz</div>
+              <div className="text-[10px] mt-0.5" style={{ color: 'rgba(53,214,255,0.5)' }}>Multi-Format · Ensemble · Transparent</div>
             </div>
           </div>
 
