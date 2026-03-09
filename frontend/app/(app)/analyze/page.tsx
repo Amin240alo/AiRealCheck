@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
@@ -6,7 +6,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Image as ImageIcon, Video, Music, Upload, Link as LinkIcon, CheckCircle2, XCircle, HelpCircle, ChevronDown, ChevronUp, AlertTriangle, RefreshCw } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { apiFetch, getToken, API_BASE } from '@/lib/api';
-import type { AnalysisResult, MediaType } from '@/lib/types';
+import type { AnalysisResult, MediaType, PublicResultDetails, PublicResultEngineEntry, PublicResultMeta, PublicResultSummary, PublicResultUsage, VerdictKey } from '@/lib/types';
+import { formatDate } from '@/lib/utils';
 
 const COSTS: Record<MediaType, number> = { image: 10, video: 25, audio: 15 };
 const ACCEPT: Record<MediaType, string> = {
@@ -22,31 +23,155 @@ const ACCEPT_HINTS: Record<MediaType, string> = {
 };
 const TIMEOUT_MS = 180000;
 
-function getVerdict(data: AnalysisResult) {
-  const fake = Number(data.fake || 0);
-  const confidence = String(data.confidence || '').toLowerCase();
-  if (fake >= 70 && confidence !== 'low') return 'fake';
-  if ((100 - fake) >= 70 && confidence !== 'low') return 'real';
+const VERDICT_LABELS: Record<VerdictKey, string> = {
+  likely_real: 'Wahrscheinlich echt',
+  likely_ai: 'Wahrscheinlich KI-generiert',
+  uncertain: 'Unklar',
+};
+
+const CONF_LABELS: Record<'high' | 'medium' | 'low', string> = {
+  high: 'Hoch',
+  medium: 'Mittel',
+  low: 'Niedrig',
+};
+
+type NormalizedAnalysis = {
+  verdictKey: VerdictKey;
+  verdictLabel: string;
+  aiPercent: number | null;
+  confidenceLabel: 'high' | 'medium' | 'low';
+  confidence01?: number | null;
+  reasons: string[];
+  warnings: string[];
+  engines: PublicResultEngineEntry[];
+  sources: string[];
+  details?: PublicResultDetails;
+  meta?: PublicResultMeta;
+  usage?: PublicResultUsage;
+};
+
+function isPublicResult(data: AnalysisResult): data is { meta: PublicResultMeta; summary: PublicResultSummary; details?: PublicResultDetails; usage?: PublicResultUsage } {
+  return Boolean((data as { meta?: PublicResultMeta })?.meta?.schema_version === 'public_result_v1');
+}
+
+function verdictFromAiPercent(aiPercent: number | null | undefined): VerdictKey {
+  if (typeof aiPercent !== 'number' || !Number.isFinite(aiPercent)) return 'uncertain';
+  if (aiPercent <= 20) return 'likely_real';
+  if (aiPercent <= 60) return 'uncertain';
+  return 'likely_ai';
+}
+
+function verdictFromLegacy(fakeRaw: number, confidenceRaw: string): VerdictKey {
+  const confidence = String(confidenceRaw || '').toLowerCase();
+  const fake = Number.isFinite(fakeRaw) ? fakeRaw : 0;
+  if (fake >= 70 && confidence !== 'low') return 'likely_ai';
+  if ((100 - fake) >= 70 && confidence !== 'low') return 'likely_real';
   return 'uncertain';
+}
+
+function normalizeAnalysisResult(data: AnalysisResult): NormalizedAnalysis {
+  if (isPublicResult(data)) {
+    const summary = data.summary || {};
+    const details = data.details || {};
+    const verdictKey = summary.verdict_key || verdictFromAiPercent(summary.ai_percent);
+    const aiPercent = typeof summary.ai_percent === 'number' && Number.isFinite(summary.ai_percent)
+      ? Math.max(0, Math.min(100, summary.ai_percent))
+      : null;
+    const confidenceLabel = summary.confidence_label || 'low';
+    const reasons = Array.isArray(summary.reasons_user) ? summary.reasons_user.filter(Boolean) : [];
+    const warnings = Array.isArray(summary.warnings_user) ? summary.warnings_user.filter(Boolean) : [];
+    if (summary.conflict) {
+      warnings.unshift('Konflikt zwischen Engines erkannt.');
+    }
+    const engines = Array.isArray(details.engines) ? details.engines.filter(Boolean) : [];
+    const sources = engines.map(e => e.engine).filter(Boolean);
+    const verdictLabel = (summary.label_de || '').trim() || VERDICT_LABELS[verdictKey];
+    return {
+      verdictKey,
+      verdictLabel,
+      aiPercent,
+      confidenceLabel,
+      confidence01: summary.confidence01 ?? null,
+      reasons,
+      warnings,
+      engines,
+      sources,
+      details,
+      meta: data.meta,
+      usage: data.usage,
+    };
+  }
+
+  const legacy = data as {
+    fake?: number;
+    confidence?: 'high' | 'medium' | 'low';
+    user_summary?: string[];
+    message?: string;
+    warnings?: string[];
+    sources_used?: string[];
+    primary_source?: string;
+    usage?: PublicResultUsage;
+  };
+  const fakeRaw = typeof legacy.fake === 'number' ? legacy.fake : Number(legacy.fake || 0);
+  const verdictKey = verdictFromLegacy(fakeRaw, legacy.confidence || 'low');
+  const reasons = Array.isArray(legacy.user_summary) && legacy.user_summary.length
+    ? legacy.user_summary
+    : legacy.message ? [legacy.message] : [];
+  const warnings = Array.isArray(legacy.warnings) ? legacy.warnings.filter(Boolean) : [];
+  const sourcesUsed = Array.isArray(legacy.sources_used) ? legacy.sources_used.filter(Boolean) : [];
+  const sources = sourcesUsed.length ? sourcesUsed : legacy.primary_source ? [legacy.primary_source] : [];
+  const aiPercent = Number.isFinite(fakeRaw) ? Math.max(0, Math.min(100, fakeRaw)) : null;
+  return {
+    verdictKey,
+    verdictLabel: VERDICT_LABELS[verdictKey],
+    aiPercent,
+    confidenceLabel: legacy.confidence || 'low',
+    reasons,
+    warnings,
+    engines: [],
+    sources,
+    usage: legacy.usage,
+  };
+}
+
+function formatPercent(value: number | null | undefined) {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return '—';
+  return `${Math.round(value)}%`;
+}
+
+function formatTimingMs(value: number | null | undefined) {
+  const ms = typeof value === 'number' ? value : NaN;
+  if (!Number.isFinite(ms) || ms <= 0) return '—';
+  if (ms >= 1000) return `${(ms / 1000).toFixed(1)} s`;
+  return `${Math.round(ms)} ms`;
 }
 
 function ResultCard({ data, onReset }: { data: AnalysisResult; onReset: () => void }) {
   const [detailsOpen, setDetailsOpen] = useState(false);
-  const verdict = getVerdict(data);
-  const fake = Math.round(Number(data.fake || 0));
-  const confidence = data.confidence || 'low';
-  const confLabel = confidence === 'high' ? 'Hoch' : confidence === 'medium' ? 'Mittel' : 'Niedrig';
+  const normalized = normalizeAnalysisResult(data);
+  const aiPercentValue = normalized.aiPercent !== null ? Math.round(normalized.aiPercent) : null;
+  const confidence = normalized.confidenceLabel;
+  const confLabel = CONF_LABELS[confidence] || 'Niedrig';
 
   const verdictConfig = {
-    real: { label: 'Wahrscheinlich echt', color: 'var(--color-success)', bg: 'var(--color-success-muted)', icon: CheckCircle2 },
-    fake: { label: 'Wahrscheinlich KI-generiert', color: 'var(--color-danger)', bg: 'var(--color-danger-muted)', icon: XCircle },
+    likely_real: { label: 'Wahrscheinlich echt', color: 'var(--color-success)', bg: 'var(--color-success-muted)', icon: CheckCircle2 },
+    likely_ai: { label: 'Wahrscheinlich KI-generiert', color: 'var(--color-danger)', bg: 'var(--color-danger-muted)', icon: XCircle },
     uncertain: { label: 'Unklar', color: 'var(--color-warning)', bg: 'var(--color-warning-muted)', icon: HelpCircle },
-  }[verdict];
+  }[normalized.verdictKey];
   const VIcon = verdictConfig.icon;
 
-  const summaryLines = Array.isArray(data.user_summary) && data.user_summary.length
-    ? data.user_summary
-    : data.message ? [data.message] : ['Keine weiteren Details verfügbar.'];
+  const summaryLines = normalized.reasons.length
+    ? normalized.reasons
+    : ['Keine weiteren Details verfügbar.'];
+  const warnings = normalized.warnings;
+  const engineEntries = normalized.engines;
+  const engineNames = engineEntries.length
+    ? engineEntries.map(e => e.engine).filter(Boolean)
+    : normalized.sources;
+  const meta = normalized.meta;
+  const details = normalized.details;
+  const creditsLeft = typeof normalized.usage?.credits_left === 'number' ? normalized.usage?.credits_left : null;
+  const creditsUsed = typeof normalized.usage?.credits_used === 'number' ? normalized.usage?.credits_used : null;
 
   return (
     <motion.div
@@ -62,8 +187,8 @@ function ResultCard({ data, onReset }: { data: AnalysisResult; onReset: () => vo
             <VIcon size={20} style={{ color: verdictConfig.color }} />
           </div>
           <div>
-            <div className="text-[15px] font-bold" style={{ color: verdictConfig.color }}>{verdictConfig.label}</div>
-            <div className="text-[12px] text-[var(--color-muted)] mt-0.5">KI-Wahrscheinlichkeit: {fake}% · Sicherheit: {confLabel}</div>
+            <div className="text-[15px] font-bold" style={{ color: verdictConfig.color }}>{normalized.verdictLabel || verdictConfig.label}</div>
+            <div className="text-[12px] text-[var(--color-muted)] mt-0.5">KI-Wahrscheinlichkeit: {aiPercentValue !== null ? `${aiPercentValue}%` : '—'} · Sicherheit: {confLabel}</div>
           </div>
         </div>
         <button onClick={onReset} className="p-2 rounded-[var(--radius-sm)] text-[var(--color-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-surface-2)] transition-colors flex-shrink-0">
@@ -79,7 +204,7 @@ function ResultCard({ data, onReset }: { data: AnalysisResult; onReset: () => vo
         <div className="h-2 rounded-full bg-[var(--color-surface-3)] overflow-hidden">
           <motion.div
             initial={{ width: 0 }}
-            animate={{ width: `${fake}%` }}
+            animate={{ width: `${aiPercentValue ?? 0}%` }}
             transition={{ duration: 0.8, ease: 'easeOut' }}
             className="h-full rounded-full"
             style={{ background: verdictConfig.color }}
@@ -88,14 +213,18 @@ function ResultCard({ data, onReset }: { data: AnalysisResult; onReset: () => vo
       </div>
 
       {/* Summary chips */}
-      {data.usage && (
+      {(creditsLeft !== null || creditsUsed !== null) && (
         <div className="flex gap-2 mb-3 flex-wrap">
-          <span className="text-[11px] px-2 py-0.5 rounded-full bg-[var(--color-surface-2)] text-[var(--color-muted)]">
-            {data.usage.credits_used} Credits verbraucht
-          </span>
-          <span className="text-[11px] px-2 py-0.5 rounded-full bg-[var(--color-surface-2)] text-[var(--color-muted)]">
-            {data.usage.credits_left} Credits verbleibend
-          </span>
+          {creditsUsed !== null && (
+            <span className="text-[11px] px-2 py-0.5 rounded-full bg-[var(--color-surface-2)] text-[var(--color-muted)]">
+              {creditsUsed} Credits verbraucht
+            </span>
+          )}
+          {creditsLeft !== null && (
+            <span className="text-[11px] px-2 py-0.5 rounded-full bg-[var(--color-surface-2)] text-[var(--color-muted)]">
+              {creditsLeft} Credits verbleibend
+            </span>
+          )}
         </div>
       )}
 
@@ -118,25 +247,163 @@ function ResultCard({ data, onReset }: { data: AnalysisResult; onReset: () => vo
             className="overflow-hidden"
           >
             <div className="mt-4 pt-4 border-t border-[var(--color-border)]">
-              <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--color-muted)] mb-2">Warum?</div>
-              <ul className="space-y-1">
-                {summaryLines.slice(0, 4).map((line, i) => (
-                  <li key={i} className="text-[13px] text-[var(--color-muted)] flex items-start gap-2">
-                    <span className="mt-0.5 flex-shrink-0 w-1.5 h-1.5 rounded-full bg-[var(--color-muted-2)] inline-block mt-1.5" />
-                    {line}
-                  </li>
-                ))}
-              </ul>
-              {data.sources_used && data.sources_used.length > 0 && (
-                <div className="mt-3">
-                  <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--color-muted)] mb-1.5">Engines</div>
-                  <div className="flex flex-wrap gap-1.5">
-                    {data.sources_used.map(s => (
-                      <span key={s} className="text-[11px] px-2 py-0.5 rounded-full bg-[var(--color-surface-2)] text-[var(--color-muted)]">{s}</span>
+              <div className="space-y-4">
+                <div>
+                  <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--color-muted)] mb-2">Warum?</div>
+                  <ul className="space-y-1">
+                    {summaryLines.slice(0, 6).map((line, i) => (
+                      <li key={i} className="text-[13px] text-[var(--color-muted)] flex items-start gap-2">
+                        <span className="mt-0.5 flex-shrink-0 w-1.5 h-1.5 rounded-full bg-[var(--color-muted-2)] inline-block mt-1.5" />
+                        {line}
+                      </li>
                     ))}
-                  </div>
+                  </ul>
                 </div>
-              )}
+
+                {warnings.length > 0 && (
+                  <div>
+                    <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--color-muted)] mb-2">Warnungen</div>
+                    <ul className="space-y-1">
+                      {warnings.slice(0, 6).map((line, i) => (
+                        <li key={i} className="text-[13px] text-[var(--color-muted)] flex items-start gap-2">
+                          <span className="mt-0.5 flex-shrink-0 w-1.5 h-1.5 rounded-full bg-[var(--color-warning)] inline-block mt-1.5" />
+                          {line}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {(meta?.analysis_id || meta?.created_at || meta?.media_type) && (
+                  <div>
+                    <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--color-muted)] mb-2">Analyse</div>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-[12px] text-[var(--color-muted)]">
+                      {meta?.analysis_id && (
+                        <div className="rounded-[var(--radius-sm)] bg-[var(--color-surface-2)] border border-[var(--color-border)] px-3 py-2">
+                          <div className="text-[10px] uppercase tracking-wider text-[var(--color-muted-2)]">ID</div>
+                          <div className="text-[12px] text-[var(--color-text)] mt-1 break-all">{meta.analysis_id}</div>
+                        </div>
+                      )}
+                      {meta?.created_at && (
+                        <div className="rounded-[var(--radius-sm)] bg-[var(--color-surface-2)] border border-[var(--color-border)] px-3 py-2">
+                          <div className="text-[10px] uppercase tracking-wider text-[var(--color-muted-2)]">Datum</div>
+                          <div className="text-[12px] text-[var(--color-text)] mt-1">{formatDate(meta.created_at)}</div>
+                        </div>
+                      )}
+                      {meta?.media_type && (
+                        <div className="rounded-[var(--radius-sm)] bg-[var(--color-surface-2)] border border-[var(--color-border)] px-3 py-2">
+                          <div className="text-[10px] uppercase tracking-wider text-[var(--color-muted-2)]">Typ</div>
+                          <div className="text-[12px] text-[var(--color-text)] mt-1">{TYPE_LABELS[meta.media_type]}</div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {engineEntries.length > 0 && (
+                  <div>
+                    <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--color-muted)] mb-2">Engines & Modelle</div>
+                    <div className="space-y-2">
+                      {engineEntries.map((engine, idx) => {
+                        const statusRaw = String(engine.status || '').toLowerCase();
+                        const available = engine.available !== false;
+                        let statusLabel = 'Verfügbar';
+                        let statusClass = 'bg-[var(--color-success-muted)] text-[var(--color-success)]';
+                        if (!available) {
+                          statusLabel = 'Nicht verfügbar';
+                          statusClass = 'bg-[var(--color-surface-3)] text-[var(--color-muted)]';
+                        } else if (statusRaw && statusRaw !== 'ok') {
+                          statusLabel = 'Gestört';
+                          statusClass = 'bg-[var(--color-warning-muted)] text-[var(--color-warning)]';
+                        }
+                        const aiPercent = typeof engine.ai_percent === 'number'
+                          ? engine.ai_percent
+                          : (typeof engine.ai01 === 'number' ? engine.ai01 * 100 : null);
+                        const confPercent = typeof engine.confidence01 === 'number' ? engine.confidence01 * 100 : null;
+                        const note = engine.warning || engine.notes;
+                        return (
+                          <div key={`${engine.engine}-${idx}`} className="rounded-[var(--radius-md)] bg-[var(--color-surface-2)] border border-[var(--color-border)] px-3 py-2.5">
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="text-[13px] font-medium text-[var(--color-text)]">{engine.engine}</div>
+                              <span className={`text-[10px] px-2 py-0.5 rounded-full ${statusClass}`}>{statusLabel}</span>
+                            </div>
+                            <div className="mt-1.5 text-[11px] text-[var(--color-muted)] flex flex-wrap gap-2">
+                              <span>KI: {formatPercent(aiPercent)}</span>
+                              <span>Konf.: {formatPercent(confPercent)}</span>
+                              <span>Laufzeit: {formatTimingMs(engine.timing_ms)}</span>
+                            </div>
+                            {note && (
+                              <div className="mt-1.5 text-[11px] text-[var(--color-muted-2)]">{note}</div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {engineEntries.length === 0 && engineNames.length > 0 && (
+                  <div>
+                    <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--color-muted)] mb-1.5">Engines</div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {engineNames.map((s) => (
+                        <span key={s} className="text-[11px] px-2 py-0.5 rounded-full bg-[var(--color-surface-2)] text-[var(--color-muted)]">{s}</span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {details && (details.decision_threshold || details.provenance || details.watermarks || details.forensics) && (
+                  <div>
+                    <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--color-muted)] mb-2">Technische Details</div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {typeof normalized.confidence01 === 'number' && (
+                        <div className="rounded-[var(--radius-sm)] bg-[var(--color-surface-2)] border border-[var(--color-border)] px-3 py-2">
+                          <div className="text-[10px] uppercase tracking-wider text-[var(--color-muted-2)]">Konfidenz (0-1)</div>
+                          <div className="text-[12px] text-[var(--color-text)] mt-1">{normalized.confidence01.toFixed(2)}</div>
+                        </div>
+                      )}
+                      {typeof details.decision_threshold === 'number' && (
+                        <div className="rounded-[var(--radius-sm)] bg-[var(--color-surface-2)] border border-[var(--color-border)] px-3 py-2">
+                          <div className="text-[10px] uppercase tracking-wider text-[var(--color-muted-2)]">Entscheidungsschwelle</div>
+                          <div className="text-[12px] text-[var(--color-text)] mt-1">{Math.round(details.decision_threshold * 100)}%</div>
+                        </div>
+                      )}
+                      {details.provenance && (
+                        <div className="rounded-[var(--radius-sm)] bg-[var(--color-surface-2)] border border-[var(--color-border)] px-3 py-2">
+                          <div className="text-[10px] uppercase tracking-wider text-[var(--color-muted-2)]">C2PA</div>
+                          <div className="text-[12px] text-[var(--color-text)] mt-1">{details.provenance.c2pa_status || 'unbekannt'}</div>
+                          {details.provenance.c2pa_summary && (
+                            <div className="text-[11px] text-[var(--color-muted)] mt-1">{details.provenance.c2pa_summary}</div>
+                          )}
+                        </div>
+                      )}
+                      {details.watermarks && (
+                        <div className="rounded-[var(--radius-sm)] bg-[var(--color-surface-2)] border border-[var(--color-border)] px-3 py-2">
+                          <div className="text-[10px] uppercase tracking-wider text-[var(--color-muted-2)]">Watermark</div>
+                          <div className="text-[12px] text-[var(--color-text)] mt-1">{details.watermarks.status || 'unbekannt'}</div>
+                          {details.watermarks.summary && (
+                            <div className="text-[11px] text-[var(--color-muted)] mt-1">{details.watermarks.summary}</div>
+                          )}
+                        </div>
+                      )}
+                      {details.forensics && (
+                        <div className="rounded-[var(--radius-sm)] bg-[var(--color-surface-2)] border border-[var(--color-border)] px-3 py-2">
+                          <div className="text-[10px] uppercase tracking-wider text-[var(--color-muted-2)]">Forensik</div>
+                          <div className="text-[12px] text-[var(--color-text)] mt-1">
+                            {typeof details.forensics.ai_percent === 'number'
+                              ? `Score: ${Math.round(details.forensics.ai_percent)}%`
+                              : (details.forensics.summary_lines?.[0] || 'Keine Auffälligkeiten erkannt')}
+                          </div>
+                          {details.forensics.summary_lines?.[0] && (
+                            <div className="text-[11px] text-[var(--color-muted)] mt-1">{details.forensics.summary_lines[0]}</div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           </motion.div>
         )}

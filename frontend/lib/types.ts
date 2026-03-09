@@ -32,11 +32,77 @@ export interface AuthState {
 
 export type MediaType = 'image' | 'video' | 'audio';
 
-export interface AnalysisResult {
-  ok: boolean;
-  real: number;
-  fake: number;
-  confidence: 'high' | 'medium' | 'low';
+export type VerdictKey = 'likely_ai' | 'likely_real' | 'uncertain';
+
+export interface PublicResultMeta {
+  schema_version: 'public_result_v1';
+  analysis_id?: string;
+  media_type?: MediaType;
+  created_at?: string;
+}
+
+export interface PublicResultSummary {
+  verdict_key?: VerdictKey;
+  label_de?: string;
+  label_en?: string;
+  traffic_light?: 'red' | 'yellow' | 'green';
+  ai_percent?: number | null;
+  real_percent?: number | null;
+  confidence_label?: 'high' | 'medium' | 'low';
+  confidence01?: number | null;
+  conflict?: boolean;
+  reasons_user?: string[];
+  warnings_user?: string[];
+}
+
+export interface PublicResultEngineEntry {
+  engine: string;
+  status?: string;
+  available?: boolean;
+  ai01?: number | null;
+  ai_percent?: number | null;
+  confidence01?: number | null;
+  timing_ms?: number;
+  notes?: string;
+  warning?: string;
+}
+
+export interface PublicResultDetails {
+  decision_threshold?: number | null;
+  engines?: PublicResultEngineEntry[];
+  provenance?: {
+    c2pa_status?: string;
+    c2pa_summary?: string;
+  };
+  watermarks?: {
+    status?: string;
+    summary?: string;
+  };
+  forensics?: {
+    ai_percent?: number | null;
+    summary_lines?: string[];
+  };
+}
+
+export interface PublicResultUsage {
+  source?: string;
+  credit_spent?: boolean;
+  credits_left?: number | null;
+  credits_used?: number | null;
+}
+
+export interface PublicResultV1 {
+  meta: PublicResultMeta;
+  summary: PublicResultSummary;
+  details?: PublicResultDetails;
+  usage?: PublicResultUsage;
+}
+
+export interface LegacyAnalysisResult {
+  ok?: boolean;
+  real?: number;
+  fake?: number;
+  confidence?: 'high' | 'medium' | 'low';
   message?: string;
   user_summary?: string[];
   sources_used?: string[];
@@ -49,10 +115,12 @@ export interface AnalysisResult {
     model?: string | string[];
   };
   usage?: {
-    credits_left: number;
-    credits_used: number;
+    credits_left?: number;
+    credits_used?: number;
   };
 }
+
+export type AnalysisResult = PublicResultV1 | LegacyAnalysisResult;
 
 export interface HistoryItem {
   id: number;
