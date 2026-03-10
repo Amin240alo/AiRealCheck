@@ -829,6 +829,107 @@ def refresh():
         db.close()
 
 
+@bp_auth.patch("/profile")
+@require_auth
+def update_profile():
+    from flask import g
+
+    data = request.get_json(silent=True) or {}
+    display_name = (data.get("display_name") or "").strip()
+    if not display_name or len(display_name) > 120:
+        return _error("invalid_input", 400)
+
+    db = get_session()
+    try:
+        user = db.query(User).get(int(g.current_user_id))
+        if not user:
+            return _error("user_not_found", 404)
+        user.display_name = display_name
+        db.add(user)
+        db.commit()
+        return jsonify({"ok": True, "user": _sanitize_user(user)})
+    except Exception:
+        db.rollback()
+        current_app.logger.exception("update_profile_error")
+        return _error("server_error", 500)
+    finally:
+        db.close()
+
+
+@bp_auth.patch("/change-password")
+@require_auth
+def change_password():
+    from flask import g
+
+    data = request.get_json(silent=True) or {}
+    current_password = data.get("current_password") or ""
+    new_password = data.get("new_password") or ""
+    if not current_password or not new_password or len(new_password) < 8:
+        return _error("invalid_input", 400)
+    if not rate_limit(f"change_password:{g.current_user_id}", limit=5, window_sec=300):
+        return _error("rate_limited", 429)
+
+    db = get_session()
+    try:
+        user = db.query(User).get(int(g.current_user_id))
+        if not user:
+            return _error("user_not_found", 404)
+        if not check_password(current_password, user.password_hash):
+            return _error("invalid_credentials", 401)
+        user.password_hash = create_password_hash(new_password)
+        db.add(user)
+        db.commit()
+        return jsonify({"ok": True})
+    except Exception:
+        db.rollback()
+        current_app.logger.exception("change_password_error")
+        return _error("server_error", 500)
+    finally:
+        db.close()
+
+
+@bp_auth.delete("/account")
+@require_auth
+def delete_account():
+    from flask import g
+
+    data = request.get_json(silent=True) or {}
+    password = data.get("password") or ""
+    if not password:
+        return _error("invalid_input", 400)
+    if not rate_limit(f"delete_account:{g.current_user_id}", limit=3, window_sec=3600):
+        return _error("rate_limited", 429)
+
+    db = get_session()
+    try:
+        user = db.query(User).get(int(g.current_user_id))
+        if not user:
+            return _error("user_not_found", 404)
+        if not check_password(password, user.password_hash):
+            return _error("invalid_credentials", 401)
+        # Soft-delete: anonymize personal data and block access
+        now = dt.datetime.utcnow()
+        user.email = f"deleted_{user.id}@deleted.local"
+        user.display_name = "[gelöscht]"
+        user.password_hash = create_password_hash(secrets.token_urlsafe(32))
+        user.email_verified = False
+        user.is_banned = True
+        db.query(RefreshToken).filter(
+            RefreshToken.user_id == user.id, RefreshToken.revoked_at.is_(None)
+        ).update({RefreshToken.revoked_at: now})
+        db.add(user)
+        db.commit()
+        resp = make_response(jsonify({"ok": True}))
+        _clear_refresh_cookie(resp)
+        return resp
+    except Exception:
+        db.rollback()
+        current_app.logger.exception("delete_account_error")
+        return _error("server_error", 500)
+    finally:
+        db.close()
+
+
 @bp_auth.post("/logout")
 def logout():
     refresh_token = request.cookies.get(REFRESH_COOKIE_NAME)

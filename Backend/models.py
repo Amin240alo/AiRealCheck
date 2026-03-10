@@ -158,6 +158,7 @@ class AnalysisHistory(Base):
     status = Column(String(20), nullable=False, server_default=text("'success'"))
     final_score = Column(Float, nullable=True)
     verdict_label = Column(String(120), nullable=True)
+    confidence_label = Column(String(20), nullable=True)
     engine_breakdown = Column(Text, nullable=True)
     result_payload = Column(Text, nullable=True)
     credits_charged = Column(Integer, nullable=False, server_default=text("0"))

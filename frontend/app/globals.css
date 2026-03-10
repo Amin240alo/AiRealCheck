@@ -34,7 +34,7 @@
   /* Text */
   --color-text:    #111827;
   --color-muted:   #6b7280;
-  --color-muted-2: #9ca3af;
+  --color-muted-2: #7b8599; /* WCAG AA on white ~4.6:1 */
 
   /* Brand */
   --color-primary:       #3b82f6;
@@ -115,3 +115,31 @@ html, body {
   outline: 2px solid var(--color-primary);
   outline-offset: 2px;
 }
+
+/* Utilities */
+.scrollbar-none {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.scrollbar-none::-webkit-scrollbar { display: none; }
+
+/* iOS safe area for bottom nav */
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* Skip navigation link for accessibility */
+.skip-link {
+  position: absolute;
+  top: -40px;
+  left: 8px;
+  z-index: 9999;
+  padding: 6px 12px;
+  background: var(--color-primary);
+  color: #fff;
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  font-weight: 600;
+  transition: top 0.15s;
+}
+.skip-link:focus { top: 8px; }

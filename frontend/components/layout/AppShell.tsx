@@ -15,7 +15,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <MobileDrawer open={mobileOpen} onClose={() => setMobileOpen(false)} />
       <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
         <Header onMenuClick={() => setMobileOpen(true)} />
-        <main className="flex-1 overflow-y-auto pb-16 md:pb-0">
+        <main id="main-content" className="flex-1 overflow-y-auto pb-16 md:pb-0">
           {children}
         </main>
       </div>

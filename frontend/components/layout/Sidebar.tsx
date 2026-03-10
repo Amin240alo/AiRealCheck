@@ -49,7 +49,7 @@ const NAV_SECTIONS: { title: string; items: NavItem[] }[] = [
     items: [
       { label: 'Support & Hilfe', href: '/support',    icon: HelpCircle },
       { label: 'Feedback',        href: '/feedback',   icon: MessageSquare },
-      { label: 'API-Zugang',      href: '/api-access', icon: Zap, disabled: true, badge: 'Bald' },
+      { label: 'API-Zugang',      href: '/api-access', icon: Zap, badge: 'Bald' },
     ],
   },
   {
@@ -111,6 +111,7 @@ export function Sidebar() {
     <motion.aside
       animate={{ width: collapsed ? COLLAPSED_W : EXPANDED_W }}
       transition={sidebarTransition}
+      aria-label="Seitenleiste"
       className="hidden md:flex flex-col h-screen sticky top-0 bg-[var(--color-surface)] border-r border-[var(--color-border)] overflow-hidden flex-shrink-0 z-30"
       style={{ minWidth: collapsed ? COLLAPSED_W : EXPANDED_W }}
     >
@@ -170,7 +171,7 @@ export function Sidebar() {
       </div>
 
       {/* ── Nav ── */}
-      <div className="flex-1 overflow-y-auto overflow-x-hidden py-3">
+      <nav aria-label="Hauptnavigation" className="flex-1 overflow-y-auto overflow-x-hidden py-3">
         {NAV_SECTIONS.map((section, sectionIdx) => {
           const visibleItems = section.items.filter(item => !item.adminOnly || isAdmin);
           if (visibleItems.length === 0) return null;
@@ -237,6 +238,8 @@ export function Sidebar() {
                     ) : (
                       <Link
                         href={item.href}
+                        aria-current={isActive ? 'page' : undefined}
+                        aria-label={collapsed ? item.label : undefined}
                         className={cn(
                           'flex items-center h-9 rounded-[var(--radius-sm)] transition-colors duration-150',
                           collapsed ? 'justify-center' : 'gap-2.5 px-2.5',
@@ -280,6 +283,7 @@ export function Sidebar() {
               'flex items-center h-9 w-full rounded-[var(--radius-sm)] text-[var(--color-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-surface-2)] transition-colors duration-150',
               collapsed ? 'justify-center' : 'gap-2.5 px-2.5'
             )}
+            aria-label={theme === 'dark' ? 'Heller Modus aktivieren' : 'Dunkler Modus aktivieren'}
             title={collapsed ? (theme === 'dark' ? 'Heller Modus' : 'Dunkler Modus') : undefined}
           >
             <AnimatePresence mode="wait">
@@ -355,7 +359,7 @@ export function Sidebar() {
             </button>
           </div>
         )}
-      </div>
+      </nav>
 
       {/* ── Credits Card (expanded + logged in only) ── */}
       <AnimatePresence>

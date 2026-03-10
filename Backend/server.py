@@ -97,7 +97,7 @@ from Backend.engines.engine_utils import make_engine_result, safe_engine_call
 
 from Backend.db import init_db, get_session, using_sqlite, engine
 
-from Backend.models import Base, User, Analysis
+from Backend.models import Base, User, Analysis, AnalysisHistory
 from Backend.history import bp_history, record_history_entry
 
 from Backend.auth import bp_auth
@@ -292,10 +292,29 @@ def _ensure_analysis_schema():
     finally:
         db.close()
 
+def _ensure_history_schema():
+    """Add confidence_label column to analysis_history if missing (migration 008)."""
+    try:
+        inspector = inspect(engine)
+        if "analysis_history" not in inspector.get_table_names():
+            return
+        columns = {col.get("name") for col in inspector.get_columns("analysis_history")}
+        if "confidence_label" not in columns:
+            stmt = "ALTER TABLE analysis_history ADD COLUMN confidence_label VARCHAR(20)"
+            if not using_sqlite():
+                stmt = "ALTER TABLE analysis_history ADD COLUMN IF NOT EXISTS confidence_label VARCHAR(20)"
+            with engine.begin() as conn:
+                conn.execute(text(stmt))
+            print("[schema] analysis_history.confidence_label column added")
+    except Exception as exc:
+        print(f"[schema] confidence_label ensure failed: {type(exc).__name__}")
+
+
 # Initialize database tables
 
 init_db(Base)
 _ensure_analysis_schema()
+_ensure_history_schema()
 
 
 

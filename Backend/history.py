@@ -2,7 +2,7 @@ import datetime as dt
 import json
 
 from flask import Blueprint, request, jsonify, g
-from sqlalchemy import desc
+from sqlalchemy import desc, func
 from sqlalchemy.exc import IntegrityError
 
 from Backend.db import get_session
@@ -107,6 +107,19 @@ def _extract_verdict_label(payload):
         return "Wahrscheinlich echt"
     if verdict == "uncertain":
         return "Unsicher"
+    return None
+
+
+def _extract_confidence_label(payload):
+    summary = _public_summary(payload)
+    if summary is not None:
+        label = summary.get("confidence_label")
+        if label in {"high", "medium", "low"}:
+            return label
+    if isinstance(payload, dict):
+        label = payload.get("confidence_label") or payload.get("confidence")
+        if label in {"high", "medium", "low"}:
+            return label
     return None
 
 
@@ -217,6 +230,7 @@ def record_history_entry(
         title_value = title_value[:252] + "..."
     final_score = _extract_final_score(payload)
     verdict_label = _extract_verdict_label(payload)
+    confidence_label = _extract_confidence_label(payload)
     engine_breakdown = _extract_engine_breakdown(payload)
     result_payload = _extract_result_payload(payload)
     created_at_value = created_at if created_at is not None else dt.datetime.utcnow()
@@ -238,6 +252,7 @@ def record_history_entry(
             status=(status or "success"),
             final_score=final_score,
             verdict_label=verdict_label,
+            confidence_label=confidence_label,
             engine_breakdown=(
                 json.dumps(engine_breakdown, ensure_ascii=False)
                 if engine_breakdown is not None
@@ -284,13 +299,42 @@ def list_history():
     limit = min(max(limit, 1), 100)
     offset = max(offset, 0)
     media_type = (request.args.get("media_type") or "").strip().lower()
+    search = (request.args.get("search") or "").strip()
+    verdict = (request.args.get("verdict") or "").strip().lower()
+    confidence = (request.args.get("confidence") or "").strip().lower()
+    date_from = (request.args.get("date_from") or "").strip()
+    date_to = (request.args.get("date_to") or "").strip()
+    sort = (request.args.get("sort") or "newest").strip().lower()
+
     db = get_session()
     try:
         query = db.query(AnalysisHistory).filter(AnalysisHistory.user_id == int(g.current_user_id))
         if media_type:
             query = query.filter(AnalysisHistory.media_type == media_type)
+        if search:
+            query = query.filter(AnalysisHistory.title.ilike(f"%{search}%"))
+        if verdict == "likely_ai":
+            query = query.filter(AnalysisHistory.final_score >= 70)
+        elif verdict == "likely_real":
+            query = query.filter(AnalysisHistory.final_score <= 30)
+        elif verdict == "uncertain":
+            query = query.filter(AnalysisHistory.final_score > 30, AnalysisHistory.final_score < 70)
+        if confidence in {"high", "medium", "low"}:
+            query = query.filter(AnalysisHistory.confidence_label == confidence)
+        if date_from:
+            try:
+                query = query.filter(AnalysisHistory.created_at >= dt.datetime.fromisoformat(date_from))
+            except ValueError:
+                pass
+        if date_to:
+            try:
+                query = query.filter(AnalysisHistory.created_at <= dt.datetime.fromisoformat(date_to))
+            except ValueError:
+                pass
+        total = query.count()
+        order = AnalysisHistory.created_at if sort == "oldest" else desc(AnalysisHistory.created_at)
         rows = (
-            query.order_by(desc(AnalysisHistory.created_at))
+            query.order_by(order)
             .limit(limit)
             .offset(offset)
             .all()
@@ -309,10 +353,93 @@ def list_history():
                     "status": row.status,
                     "final_score": score,
                     "verdict_label": row.verdict_label,
+                    "confidence_label": row.confidence_label,
                     "credits_charged": int(row.credits_charged or 0),
                 }
             )
-        return jsonify(items)
+        return jsonify({"ok": True, "items": items, "total": total, "limit": limit, "offset": offset})
+    finally:
+        db.close()
+
+
+@bp_history.get("/summary")
+@require_verified_email
+def history_summary():
+    db = get_session()
+    try:
+        uid = int(g.current_user_id)
+        base = db.query(AnalysisHistory).filter(AnalysisHistory.user_id == uid)
+
+        total = base.count()
+        ai_count = base.filter(AnalysisHistory.final_score >= 70).count()
+        real_count = base.filter(AnalysisHistory.final_score <= 30).count()
+        uncertain_count = base.filter(
+            AnalysisHistory.final_score > 30, AnalysisHistory.final_score < 70
+        ).count()
+
+        now = dt.datetime.utcnow()
+        cutoff_7d = now - dt.timedelta(days=7)
+        cutoff_30d = now - dt.timedelta(days=30)
+
+        analyses_7d = base.filter(AnalysisHistory.created_at >= cutoff_7d).count()
+
+        credits_30d = (
+            db.query(func.sum(AnalysisHistory.credits_charged))
+            .filter(AnalysisHistory.user_id == uid, AnalysisHistory.created_at >= cutoff_30d)
+            .scalar()
+            or 0
+        )
+        credits_7d = (
+            db.query(func.sum(AnalysisHistory.credits_charged))
+            .filter(AnalysisHistory.user_id == uid, AnalysisHistory.created_at >= cutoff_7d)
+            .scalar()
+            or 0
+        )
+
+        media_rows = (
+            db.query(AnalysisHistory.media_type, func.count(AnalysisHistory.id))
+            .filter(AnalysisHistory.user_id == uid, AnalysisHistory.media_type.isnot(None))
+            .group_by(AnalysisHistory.media_type)
+            .all()
+        )
+        media_breakdown = {mt: cnt for mt, cnt in media_rows}
+
+        recent_rows = base.order_by(desc(AnalysisHistory.created_at)).limit(5).all()
+        recent = []
+        for row in recent_rows:
+            score = None
+            if isinstance(row.final_score, (int, float)):
+                score = int(round(float(row.final_score)))
+            recent.append(
+                {
+                    "id": row.id,
+                    "created_at": _iso(row.created_at),
+                    "media_type": row.media_type,
+                    "title": row.title,
+                    "status": row.status,
+                    "final_score": score,
+                    "verdict_label": row.verdict_label,
+                    "confidence_label": row.confidence_label,
+                    "credits_charged": int(row.credits_charged or 0),
+                }
+            )
+
+        return jsonify(
+            {
+                "ok": True,
+                "stats": {
+                    "total_analyses": total,
+                    "ai_count": ai_count,
+                    "real_count": real_count,
+                    "uncertain_count": uncertain_count,
+                    "analyses_7d": analyses_7d,
+                    "credits_30d": int(credits_30d),
+                    "credits_7d": int(credits_7d),
+                    "media_breakdown": media_breakdown,
+                },
+                "recent": recent,
+            }
+        )
     finally:
         db.close()
 
@@ -340,6 +467,7 @@ def get_history(history_id: str):
             "status": row.status,
             "final_score": score,
             "verdict_label": row.verdict_label,
+            "confidence_label": row.confidence_label,
             "credits_charged": int(row.credits_charged or 0),
             "engine_breakdown": engine_breakdown,
             "result_payload": result_payload or None,
