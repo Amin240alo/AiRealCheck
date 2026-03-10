@@ -1,11 +1,12 @@
 'use client';
 
-import React from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, LayoutDashboard, ScanSearch, History, User, Settings, HelpCircle, MessageSquare, ShieldCheck, Zap, Star } from 'lucide-react';
+import { X, LayoutDashboard, ScanSearch, History, User, Settings, HelpCircle, MessageSquare, ShieldCheck, Star, BadgeCheck } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
+import { useT } from '@/contexts/LanguageContext';
+import { PLAN_ORDER, PLANS, getNextPlanId, type PlanId } from '@/lib/plans';
 import { cn } from '@/lib/utils';
 import { ThemeLogo } from '@/components/ui/ThemeLogo';
 
@@ -14,26 +15,25 @@ interface MobileDrawerProps {
   onClose: () => void;
 }
 
-const NAV_ITEMS = [
-  { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
-  { label: 'Analyse', href: '/analyze', icon: ScanSearch },
-  { label: 'Verlauf', href: '/history', icon: History },
-  { label: 'Profil', href: '/profile', icon: User },
-  { label: 'Einstellungen', href: '/settings', icon: Settings },
-  { label: 'Support & Hilfe', href: '/support', icon: HelpCircle },
-  { label: 'Feedback', href: '/feedback', icon: MessageSquare },
+const NAV_ITEM_DEFS = [
+  { labelKey: 'nav.dashboard',  href: '/dashboard', icon: LayoutDashboard },
+  { labelKey: 'nav.analyze',    href: '/analyze',   icon: ScanSearch },
+  { labelKey: 'nav.history',    href: '/history',   icon: History },
+  { labelKey: 'nav.profile',    href: '/profile',   icon: User },
+  { labelKey: 'nav.settings',   href: '/settings',  icon: Settings },
+  { labelKey: 'nav.support',    href: '/support',   icon: HelpCircle },
+  { labelKey: 'nav.feedback',   href: '/feedback',  icon: MessageSquare },
 ];
 
 export function MobileDrawer({ open, onClose }: MobileDrawerProps) {
   const pathname = usePathname();
   const router = useRouter();
-  const { isLoggedIn, isAdmin, balance, logout } = useAuth();
+  const { isLoggedIn, isAdmin, balance } = useAuth();
+  const { t } = useT();
 
-  async function handleLogout() {
-    onClose();
-    await logout();
-    router.push('/login');
-  }
+  const planType   = (balance?.plan_type ?? 'free') as string;
+  const nextPlanId = getNextPlanId(planType, PLAN_ORDER);
+  const nextPlan   = nextPlanId ? PLANS[nextPlanId as PlanId] : null;
 
   return (
     <AnimatePresence>
@@ -61,8 +61,9 @@ export function MobileDrawer({ open, onClose }: MobileDrawerProps) {
               </button>
             </div>
             <div className="flex-1 overflow-y-auto py-3">
-              {NAV_ITEMS.map(({ label, href, icon: Icon }) => {
+              {NAV_ITEM_DEFS.map(({ labelKey, href, icon: Icon }) => {
                 const isActive = pathname === href;
+                const label = t(labelKey);
                 return (
                   <Link
                     key={href}
@@ -91,14 +92,14 @@ export function MobileDrawer({ open, onClose }: MobileDrawerProps) {
                       : 'text-[var(--color-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-surface-2)]'
                   )}
                 >
-                  <ShieldCheck size={18} /> Admin-Panel
+                  <ShieldCheck size={18} /> {t('nav.admin')}
                 </Link>
               )}
             </div>
             {isLoggedIn && balance && (
               <div className="mx-3 mb-3 p-3 rounded-[var(--radius-md)] bg-[var(--color-surface-2)] border border-[var(--color-border)]">
                 <div className="flex justify-between mb-2">
-                  <span className="text-[11px] text-[var(--color-muted-2)]">Credits</span>
+                  <span className="text-[11px] text-[var(--color-muted-2)]">{t('layout.credits')}</span>
                   <span className="text-[13px] font-semibold text-[var(--color-text)]">{balance.credits_available}</span>
                 </div>
                 <div className="h-1.5 rounded-full bg-[var(--color-surface-3)] overflow-hidden">
@@ -110,12 +111,18 @@ export function MobileDrawer({ open, onClose }: MobileDrawerProps) {
               </div>
             )}
             <div className="px-3 pb-4">
-              <button
-                onClick={() => router.push('/premium')}
-                className="flex items-center gap-2 w-full h-10 px-3 rounded-[var(--radius-md)] bg-gradient-to-r from-[#7c3aed] to-[#3b82f6] text-white text-[13px] font-medium"
-              >
-                <Star size={14} /> Upgrade auf Premium
-              </button>
+              {nextPlan ? (
+                <button
+                  onClick={() => { onClose(); router.push('/premium'); }}
+                  className="flex items-center gap-2 w-full h-10 px-3 rounded-[var(--radius-md)] bg-gradient-to-r from-[#7c3aed] to-[#3b82f6] text-white text-[13px] font-medium"
+                >
+                  <Star size={14} /> Upgrade auf {nextPlan.name}
+                </button>
+              ) : (
+                <div className="flex items-center gap-2 w-full h-10 px-3 rounded-[var(--radius-md)] border border-[var(--color-border)] text-[var(--color-muted)] text-[13px] font-medium">
+                  <BadgeCheck size={14} /> Aktiver Plan
+                </div>
+              )}
             </div>
           </motion.div>
         </>

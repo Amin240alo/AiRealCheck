@@ -137,7 +137,7 @@ def _median(values):
 
 class DeepFakeDetector:
     def __init__(self):
-        # Modell laden (Xception - oft fuer Deepfake-Erkennung genutzt)
+        # Modell laden (Xception - oft für Deepfake-Erkennung genutzt)
         if torch is None or timm is None or transforms is None:
             raise RuntimeError(
                 "torch/timm/torchvision nicht installiert. Bitte 'torch timm torchvision' installieren,"
@@ -148,7 +148,7 @@ class DeepFakeDetector:
         self.model = timm.create_model('xception', pretrained=True, num_classes=2)
         self.model.eval()
 
-        # Transformationen fuer Eingabebilder (deterministic per crop)
+        # Transformationen für Eingabebilder (deterministic per crop)
         self.transform = transforms.Compose([
             transforms.ToTensor(),
             transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5])
@@ -236,7 +236,7 @@ if __name__ == "__main__":
 
 def analyze_with_xception(file_path: str):
     """
-    Wrapper-Funktion fuer Server-Aufruf.
+    Wrapper-Funktion für Server-Aufruf.
     Nutzt die DeepFakeDetector-Klasse, um ein Bild zu analysieren.
     """
     _enable_determinism()

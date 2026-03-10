@@ -24,6 +24,8 @@ import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { apiFetch } from '@/lib/api';
+import { useT, useSetLang, useLang } from '@/contexts/LanguageContext';
+import { SUPPORTED_LANGS } from '@/lib/i18n';
 
 // ─── localStorage prefs ───────────────────────────────────────────────────────
 
@@ -150,23 +152,24 @@ function SelectRow<T extends string>({ label, sub, value, options, onChange }: S
 function DeleteAccountZone() {
   const router = useRouter();
   const { logout } = useAuth();
+  const { t } = useT();
   const [step, setStep] = useState<'idle' | 'confirm' | 'typing'>('idle');
   const [password, setPassword] = useState('');
   const [deleting, setDeleting] = useState(false);
 
   async function handleDelete() {
-    if (!password) { toast.error('Bitte Passwort eingeben.'); return; }
+    if (!password) { toast.error(t('settings.deleteMissingPw')); return; }
     setDeleting(true);
     try {
       await apiFetch('/auth/account', { method: 'DELETE', body: { password } });
-      toast.success('Konto wurde gelöscht.');
+      toast.success(t('settings.deleteSuccess'));
       await logout();
       router.replace('/login');
     } catch (err: unknown) {
       const e = err as { response?: { error?: string } };
-      if (e?.response?.error === 'invalid_credentials') toast.error('Passwort falsch.');
-      else if (e?.response?.error === 'rate_limited') toast.error('Zu viele Versuche. Kurz warten.');
-      else toast.error('Löschen fehlgeschlagen.');
+      if (e?.response?.error === 'invalid_credentials') toast.error(t('settings.deleteWrongPw'));
+      else if (e?.response?.error === 'rate_limited') toast.error(t('settings.deleteRateLimited'));
+      else toast.error(t('settings.deleteError'));
       setDeleting(false);
     }
   }
@@ -179,8 +182,8 @@ function DeleteAccountZone() {
       <div className="px-6 py-4 border-b flex items-center gap-3" style={{ borderColor: 'var(--color-danger)' + '30' }}>
         <Trash2 size={15} style={{ color: 'var(--color-danger)' }} className="flex-shrink-0" />
         <div>
-          <div className="text-[14px] font-semibold" style={{ color: 'var(--color-danger)' }}>Konto löschen</div>
-          <div className="text-[12px] text-[var(--color-muted)] mt-0.5">Unwiderrufliche Aktion — alle Daten werden anonymisiert</div>
+          <div className="text-[14px] font-semibold" style={{ color: 'var(--color-danger)' }}>{t('settings.deleteSection')}</div>
+          <div className="text-[12px] text-[var(--color-muted)] mt-0.5">{t('settings.deleteSub')}</div>
         </div>
       </div>
 
@@ -188,7 +191,7 @@ function DeleteAccountZone() {
         {step === 'idle' && (
           <div className="space-y-3">
             <p className="text-[13px] text-[var(--color-muted)]">
-              Dein Konto wird soft-gelöscht: Persönliche Daten (Name, E-Mail) werden anonymisiert, Analysedaten bleiben für interne Auswertung erhalten.
+              {t('settings.deleteText')}
             </p>
             <button
               onClick={() => setStep('confirm')}
@@ -197,7 +200,7 @@ function DeleteAccountZone() {
               onMouseEnter={e => (e.currentTarget.style.background = 'var(--color-danger)', e.currentTarget.style.color = 'white')}
               onMouseLeave={e => (e.currentTarget.style.background = 'transparent', e.currentTarget.style.color = 'var(--color-danger)')}
             >
-              Konto löschen
+              {t('settings.deleteBtn')}
             </button>
           </div>
         )}
@@ -207,7 +210,7 @@ function DeleteAccountZone() {
             <div className="flex items-start gap-2.5 p-3 rounded-[var(--radius-md)] border" style={{ borderColor: 'var(--color-danger)' + '40', background: 'var(--color-danger-muted)' }}>
               <AlertTriangle size={14} style={{ color: 'var(--color-danger)' }} className="flex-shrink-0 mt-0.5" />
               <p className="text-[12px]" style={{ color: 'var(--color-danger)' }}>
-                <strong>Bist du sicher?</strong> Diese Aktion kann nicht rückgängig gemacht werden.
+                <strong>{t('settings.deleteConfirmQ')}</strong> {t('settings.deleteConfirmText')}
               </p>
             </div>
             <div className="flex gap-2">
@@ -216,13 +219,13 @@ function DeleteAccountZone() {
                 className="h-9 px-4 text-[13px] font-semibold rounded-[var(--radius-md)] text-white transition-opacity hover:opacity-90"
                 style={{ background: 'var(--color-danger)' }}
               >
-                Ja, weiter
+                {t('settings.deleteContinue')}
               </button>
               <button
                 onClick={() => setStep('idle')}
                 className="h-9 px-4 text-[13px] rounded-[var(--radius-md)] bg-[var(--color-surface-2)] border border-[var(--color-border)] text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
               >
-                Abbrechen
+                {t('settings.deleteCancel')}
               </button>
             </div>
           </motion.div>
@@ -231,14 +234,14 @@ function DeleteAccountZone() {
         {step === 'typing' && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-3">
             <div>
-              <label className="block text-[12px] text-[var(--color-muted)] mb-1.5">Passwort bestätigen</label>
+              <label className="block text-[12px] text-[var(--color-muted)] mb-1.5">{t('settings.deletePasswordLabel')}</label>
               <input
                 autoFocus
                 type="password"
                 value={password}
                 onChange={e => setPassword(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && handleDelete()}
-                placeholder="Dein aktuelles Passwort"
+                placeholder={t('settings.deletePasswordPh')}
                 className="w-full h-9 px-3 text-[13px] rounded-[var(--radius-md)] bg-[var(--color-surface)] border text-[var(--color-text)] focus:outline-none transition-colors"
                 style={{ borderColor: 'var(--color-danger)' + '60' }}
               />
@@ -251,13 +254,13 @@ function DeleteAccountZone() {
                 style={{ background: 'var(--color-danger)' }}
               >
                 {deleting && <Loader2 size={13} className="animate-spin" />}
-                Endgültig löschen
+                {t('settings.deleteFinalBtn')}
               </button>
               <button
                 onClick={() => { setStep('idle'); setPassword(''); }}
                 className="h-9 px-4 text-[13px] rounded-[var(--radius-md)] bg-[var(--color-surface-2)] border border-[var(--color-border)] text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
               >
-                Abbrechen
+                {t('settings.deleteCancel')}
               </button>
             </div>
           </motion.div>
@@ -280,6 +283,9 @@ export default function SettingsPage() {
   const router = useRouter();
   const { user, balance } = useAuth();
   const { theme, toggleTheme } = useTheme();
+  const { t, tf } = useT();
+  const lang = useLang();
+  const setLang = useSetLang();
   const [prefs, setPrefs] = useState<Prefs>(PREFS_DEFAULT);
   const [savedPref, setSavedPref] = useState(false);
 
@@ -303,7 +309,7 @@ export default function SettingsPage() {
     <div className="max-w-2xl mx-auto px-5 py-10 space-y-5">
 
       <div className="flex items-center justify-between mb-2">
-        <h1 className="text-[22px] font-bold text-[var(--color-text)]">Einstellungen</h1>
+        <h1 className="text-[22px] font-bold text-[var(--color-text)]">{t('settings.title')}</h1>
         <AnimatePresence>
           {savedPref && (
             <motion.div
@@ -312,7 +318,7 @@ export default function SettingsPage() {
               exit={{ opacity: 0 }}
               className="flex items-center gap-1.5 text-[12px] text-[var(--color-success)]"
             >
-              <Check size={13} /> Gespeichert
+              <Check size={13} /> {t('settings.saved')}
             </motion.div>
           )}
         </AnimatePresence>
@@ -321,19 +327,19 @@ export default function SettingsPage() {
       {/* ── Darstellung ─────────────────────────────────────────────── */}
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
         <SectionCard>
-          <SectionHeader icon={Sun} title="Darstellung" />
+          <SectionHeader icon={Sun} title={t('settings.appearanceSection')} />
           <div className="divide-y divide-[var(--color-border)]">
             <div className="flex items-center justify-between px-6 py-4">
               <div>
-                <div className="text-[13px] text-[var(--color-text)]">Erscheinungsbild</div>
-                <div className="text-[11px] text-[var(--color-muted-2)] mt-0.5">Helles oder dunkles Theme</div>
+                <div className="text-[13px] text-[var(--color-text)]">{t('settings.themeLabel')}</div>
+                <div className="text-[11px] text-[var(--color-muted-2)] mt-0.5">{t('settings.themeSub')}</div>
               </div>
               <button
                 onClick={toggleTheme}
                 className="flex items-center gap-2 h-9 px-4 rounded-[var(--radius-md)] bg-[var(--color-surface-2)] border border-[var(--color-border)] text-[13px] text-[var(--color-text)] hover:bg-[var(--color-surface-3)] transition-colors"
               >
                 {theme === 'dark' ? <Moon size={14} /> : <Sun size={14} />}
-                {theme === 'dark' ? 'Dunkel' : 'Hell'}
+                {theme === 'dark' ? t('settings.themeDark') : t('settings.themeLight')}
               </button>
             </div>
           </div>
@@ -343,36 +349,36 @@ export default function SettingsPage() {
       {/* ── Präferenzen ──────────────────────────────────────────────── */}
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05, duration: 0.3 }}>
         <SectionCard>
-          <SectionHeader icon={SlidersHorizontal} title="Präferenzen" sub="Werden lokal gespeichert" />
+          <SectionHeader icon={SlidersHorizontal} title={t('settings.prefSection')} sub={t('settings.prefSub')} />
           <div className="divide-y divide-[var(--color-border)]">
             <SelectRow
-              label="Standard-Sortierung Verlauf"
-              sub="Voreinstellung für die Verlaufsseite"
+              label={t('settings.historySort')}
+              sub={t('settings.historySortSub')}
               value={prefs.historySort}
               options={[
-                { value: 'newest', label: 'Neueste zuerst' },
-                { value: 'oldest', label: 'Älteste zuerst' },
+                { value: 'newest', label: t('settings.newest') },
+                { value: 'oldest', label: t('settings.oldest') },
               ]}
               onChange={v => updatePref('historySort', v)}
             />
             <SelectRow
-              label="Dashboard-Zeitraum"
-              sub="Standard-Bereich für KPI-Karten"
+              label={t('settings.dashboardRange')}
+              sub={t('settings.dashboardRangeSub')}
               value={prefs.dashboardRange}
               options={[
-                { value: '7d', label: 'Letzte 7 Tage' },
-                { value: '30d', label: 'Letzte 30 Tage' },
-                { value: '90d', label: 'Letzte 90 Tage' },
+                { value: '7d', label: t('settings.last7d') },
+                { value: '30d', label: t('settings.last30d') },
+                { value: '90d', label: t('settings.last90d') },
               ]}
               onChange={v => updatePref('dashboardRange', v)}
             />
             <SelectRow
-              label="Ergebnis-Detailansicht"
-              sub="Kompakt oder vollständig"
+              label={t('settings.resultDetail')}
+              sub={t('settings.resultDetailSub')}
               value={prefs.resultDetailMode}
               options={[
-                { value: 'full', label: 'Vollständig' },
-                { value: 'compact', label: 'Kompakt' },
+                { value: 'full', label: t('settings.full') },
+                { value: 'compact', label: t('settings.compact') },
               ]}
               onChange={v => updatePref('resultDetailMode', v)}
             />
@@ -383,17 +389,14 @@ export default function SettingsPage() {
       {/* ── Sprache ──────────────────────────────────────────────────── */}
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1, duration: 0.3 }}>
         <SectionCard>
-          <SectionHeader icon={Globe} title="Sprache / Locale" />
-          <div className="px-6 py-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="text-[13px] text-[var(--color-text)]">Sprache</div>
-                <div className="text-[11px] text-[var(--color-muted-2)] mt-0.5">Weitere Sprachen folgen in Kürze</div>
-              </div>
-              <span className="text-[12px] font-medium text-[var(--color-text)] bg-[var(--color-surface-2)] border border-[var(--color-border)] px-3 py-1.5 rounded-[var(--radius-md)]">
-                🇩🇪 Deutsch
-              </span>
-            </div>
+          <SectionHeader icon={Globe} title={t('settings.langSection')} />
+          <div className="divide-y divide-[var(--color-border)]">
+            <SelectRow
+              label={t('settings.langLabel')}
+              value={lang}
+              options={SUPPORTED_LANGS.map(l => ({ value: l.value, label: `${l.flag} ${l.label}` }))}
+              onChange={v => setLang(v)}
+            />
           </div>
         </SectionCard>
       </motion.div>
@@ -401,7 +404,7 @@ export default function SettingsPage() {
       {/* ── Abo & Plan ───────────────────────────────────────────────── */}
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15, duration: 0.3 }}>
         <SectionCard>
-          <SectionHeader icon={CreditCard} title="Abo & Plan" />
+          <SectionHeader icon={CreditCard} title={t('settings.planSection')} />
           <div className="px-6 py-5 space-y-4">
             <div className="flex items-center justify-between">
               <div>
@@ -416,10 +419,10 @@ export default function SettingsPage() {
                     }}
                   >
                     {isPaid && <Sparkles size={8} className="mr-1" />}
-                    {isPaid ? 'Aktiv' : 'Kostenlos'}
+                    {isPaid ? t('settings.active') : t('settings.free')}
                   </span>
                 </div>
-                <div className="text-[12px] text-[var(--color-muted)] mt-0.5">{creditsAvail} Credits verfügbar</div>
+                <div className="text-[12px] text-[var(--color-muted)] mt-0.5">{tf('settings.creditsAvailable', creditsAvail)}</div>
               </div>
               {!isPaid && (
                 <button
@@ -427,24 +430,22 @@ export default function SettingsPage() {
                   className="flex items-center gap-1.5 h-9 px-4 text-[12px] font-semibold rounded-[var(--radius-md)] text-white transition-opacity hover:opacity-90"
                   style={{ background: 'linear-gradient(135deg, #22d3ee, #7c3aed)' }}
                 >
-                  <Sparkles size={12} /> Upgrade
+                  <Sparkles size={12} /> {t('settings.upgrade')}
                 </button>
               )}
             </div>
             <div className="p-4 rounded-[var(--radius-lg)] bg-[var(--color-surface-2)] border border-[var(--color-border)]">
               <div className="text-[12px] font-medium text-[var(--color-text)] mb-1">
-                {isPaid ? 'Abo verwalten' : 'Zur Pro-Version'}
+                {isPaid ? t('settings.managePlan') : t('settings.toPro')}
               </div>
               <div className="text-[11px] text-[var(--color-muted)]">
-                {isPaid
-                  ? 'Kündigung und Rechnungen werden über das Kundenportal verwaltet. Integration in Kürze verfügbar.'
-                  : 'Pro: Unbegrenzte Analysen, priorisierte Engines, erweiterte Berichte. In Kürze verfügbar.'}
+                {isPaid ? t('settings.manageText') : t('settings.upgradeText')}
               </div>
               <button
                 onClick={() => router.push('/premium')}
                 className="flex items-center gap-1 mt-2.5 text-[12px] text-[var(--color-primary)] hover:underline"
               >
-                {isPaid ? 'Zum Kundenportal' : 'Mehr erfahren'} <ChevronRight size={12} />
+                {isPaid ? t('settings.toPortal') : t('settings.learnMore')} <ChevronRight size={12} />
               </button>
             </div>
           </div>
@@ -454,17 +455,17 @@ export default function SettingsPage() {
       {/* ── Benachrichtigungen ───────────────────────────────────────── */}
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2, duration: 0.3 }}>
         <SectionCard>
-          <SectionHeader icon={Bell} title="Benachrichtigungen" sub="Einstellungen werden lokal gespeichert" />
+          <SectionHeader icon={Bell} title={t('settings.notifSection')} sub={t('settings.notifSub')} />
           <div className="divide-y divide-[var(--color-border)]">
             <ToggleRow
-              label="E-Mail-Benachrichtigungen"
-              sub="Analysen und Systemhinweise per E-Mail"
+              label={t('settings.emailNotif')}
+              sub={t('settings.emailNotifSub')}
               checked={prefs.notifyEmail}
               onChange={v => updatePref('notifyEmail', v)}
             />
             <ToggleRow
-              label="Browser-Benachrichtigungen"
-              sub="Push-Nachrichten im Browser"
+              label={t('settings.browserNotif')}
+              sub={t('settings.browserNotifSub')}
               checked={prefs.notifyBrowser}
               onChange={v => updatePref('notifyBrowser', v)}
             />
@@ -472,7 +473,7 @@ export default function SettingsPage() {
           <div className="px-6 py-3 border-t border-[var(--color-border)]">
             <div className="flex items-center gap-1.5 text-[11px] text-[var(--color-muted-2)]">
               <BellOff size={11} />
-              Backend-Anbindung für Benachrichtigungen noch nicht aktiv.
+              {t('settings.notifNote')}
             </div>
           </div>
         </SectionCard>
@@ -481,20 +482,20 @@ export default function SettingsPage() {
       {/* ── Datenschutz & Export ─────────────────────────────────────── */}
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25, duration: 0.3 }}>
         <SectionCard>
-          <SectionHeader icon={Shield} title="Datenschutz & Daten-Export" />
+          <SectionHeader icon={Shield} title={t('settings.privacySection')} />
           <div className="px-6 py-4 space-y-3">
             <p className="text-[12px] text-[var(--color-muted)]">
-              Du kannst jederzeit eine Kopie deiner Daten anfordern. Analysen, Verlauf und Kontoinfos werden als JSON-Archiv bereitgestellt.
+              {t('settings.privacyText')}
             </p>
             <button
-              onClick={() => toast.info('Daten-Export wird bald verfügbar sein.')}
+              onClick={() => toast.info(t('settings.exportSoon'))}
               className="flex items-center gap-2 h-9 px-4 text-[13px] font-medium rounded-[var(--radius-md)] bg-[var(--color-surface-2)] border border-[var(--color-border)] text-[var(--color-text)] hover:bg-[var(--color-surface-3)] transition-colors"
             >
-              <Download size={14} /> Daten exportieren
+              <Download size={14} /> {t('settings.exportBtn')}
             </button>
             <div className="text-[11px] text-[var(--color-muted-2)] flex items-center gap-1.5">
               <Shield size={11} />
-              Export-Funktion in Entwicklung.
+              {t('settings.exportNote')}
             </div>
           </div>
         </SectionCard>

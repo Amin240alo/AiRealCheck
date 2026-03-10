@@ -16,6 +16,7 @@ export interface User {
   created_at?: string;
   last_login_at?: string;
   banned?: boolean;
+  language?: string;
 }
 
 export interface Balance {

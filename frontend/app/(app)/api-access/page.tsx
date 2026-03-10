@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { CONTACT_EMAIL } from '@/lib/constants';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Zap,
@@ -279,7 +280,7 @@ export default function ApiAccessPage() {
           <div className="text-[var(--color-muted)] text-[12px] mt-0.5">Kontaktiere uns für maßgeschneiderte SLA und Volumenpreise.</div>
         </div>
         <a
-          href="mailto:enterprise@airealcheck.com"
+          href={`mailto:${CONTACT_EMAIL}`}
           className="flex-shrink-0 ml-4 h-9 px-4 text-[12px] font-semibold rounded-[var(--radius-md)] border border-[var(--color-border)] text-[var(--color-text)] hover:bg-[var(--color-surface-2)] transition-colors flex items-center"
         >
           Kontakt

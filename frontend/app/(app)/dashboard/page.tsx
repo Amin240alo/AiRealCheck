@@ -29,13 +29,15 @@ import {
 import type { HistoryEntry } from '@/lib/types';
 import { VerdictBadge } from '@/components/analysis/VerdictBadge';
 import { formatDateShort } from '@/lib/utils';
+import { useT, useLang } from '@/contexts/LanguageContext';
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
-function greeting(name?: string | null): string {
+function greetingKey(): string {
   const hour = new Date().getHours();
-  const salut = hour < 12 ? 'Guten Morgen' : hour < 18 ? 'Guten Tag' : 'Guten Abend';
-  return name ? `${salut}, ${name.split(' ')[0]}` : salut;
+  if (hour < 12) return 'dashboard.greetingMorning';
+  if (hour < 18) return 'dashboard.greetingAfternoon';
+  return 'dashboard.greetingEvening';
 }
 
 const PLAN_LABELS: Record<string, string> = {
@@ -65,9 +67,6 @@ function DonutChart({ segments, total }: { segments: DonutSegment[]; total: numb
     return (
       <svg width={120} height={120} viewBox="0 0 120 120">
         <circle cx={cx} cy={cy} r={r} fill="none" stroke="var(--color-border)" strokeWidth={12} />
-        <text x={cx} y={cy + 5} textAnchor="middle" fontSize={11} fill="var(--color-muted)" fontFamily="inherit">
-          Keine
-        </text>
       </svg>
     );
   }
@@ -167,6 +166,8 @@ const TYPE_ICONS = {
 } as const;
 
 function RecentRow({ entry, onClick }: { entry: HistoryEntry; onClick: () => void }) {
+  const { t } = useT();
+  const lang = useLang();
   return (
     <button
       onClick={onClick}
@@ -176,8 +177,8 @@ function RecentRow({ entry, onClick }: { entry: HistoryEntry; onClick: () => voi
         {entry.media_type ? TYPE_ICONS[entry.media_type as keyof typeof TYPE_ICONS] ?? <HelpCircle size={14} /> : <HelpCircle size={14} />}
       </div>
       <div className="flex-1 min-w-0">
-        <div className="text-[13px] font-medium text-[var(--color-text)] truncate">{entry.title ?? 'Analyse'}</div>
-        <div className="text-[11px] text-[var(--color-muted-2)] mt-0.5">{formatDateShort(entry.created_at)}</div>
+        <div className="text-[13px] font-medium text-[var(--color-text)] truncate">{entry.title ?? t('dashboard.analysisDefault')}</div>
+        <div className="text-[11px] text-[var(--color-muted-2)] mt-0.5">{formatDateShort(entry.created_at, lang)}</div>
       </div>
       <div className="flex-shrink-0">
         <VerdictBadge entry={entry} size="sm" />
@@ -191,6 +192,8 @@ function RecentRow({ entry, onClick }: { entry: HistoryEntry; onClick: () => voi
 export default function DashboardPage() {
   const router = useRouter();
   const { user, balance, isLoggedIn } = useAuth();
+  const { t, tf } = useT();
+  const lang = useLang();
   const [data, setData] = useState<DashboardResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -205,7 +208,7 @@ export default function DashboardPage() {
     Promise.all([
       fetchDashboard()
         .then(d => setData(d))
-        .catch(() => setError('Statistiken konnten nicht geladen werden.')),
+        .catch(() => setError(t('dashboard.statsError'))),
       fetch('/health')
         .then(r => setBackendUp(r.ok))
         .catch(() => setBackendUp(false)),
@@ -222,9 +225,9 @@ export default function DashboardPage() {
   const mediaBreakdown = stats?.media_breakdown ?? {};
   const mediaTotal = Object.values(mediaBreakdown).reduce((a, b) => a + b, 0);
   const donutSegments = [
-    { label: 'Bild', value: mediaBreakdown.image ?? 0, color: '#22d3ee' },
-    { label: 'Video', value: mediaBreakdown.video ?? 0, color: '#a78bfa' },
-    { label: 'Audio', value: mediaBreakdown.audio ?? 0, color: '#34d399' },
+    { label: t('history.images'), value: mediaBreakdown.image ?? 0, color: '#22d3ee' },
+    { label: t('history.videos'), value: mediaBreakdown.video ?? 0, color: '#a78bfa' },
+    { label: t('history.audio'), value: mediaBreakdown.audio ?? 0, color: '#34d399' },
   ];
 
   const aiPct = stats && stats.total_analyses > 0
@@ -255,7 +258,9 @@ export default function DashboardPage() {
         <div>
           <div className="flex items-center gap-2.5 flex-wrap">
             <h1 className="text-[26px] font-bold text-[var(--color-text)] leading-tight">
-              {greeting(user?.display_name)}
+              {user?.display_name
+                ? `${t(greetingKey())}, ${user.display_name.split(' ')[0]}`
+                : t(greetingKey())}
             </h1>
             <span
               className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-semibold border"
@@ -272,9 +277,9 @@ export default function DashboardPage() {
           <p className="text-[14px] text-[var(--color-muted)] mt-1">
             {credits !== null ? (
               <span>
-                <span className="font-semibold text-[var(--color-text)]">{credits}</span> Credits verfügbar
+                <span className="font-semibold text-[var(--color-text)]">{credits}</span> {t('dashboard.creditsAvailable')}
               </span>
-            ) : 'Hier ist dein Überblick'}
+            ) : t('dashboard.overview')}
           </p>
         </div>
 
@@ -282,20 +287,20 @@ export default function DashboardPage() {
         <div className="flex gap-2.5">
           <button
             onClick={() => router.push('/analyze')}
-            aria-label="Neue Analyse starten"
+            aria-label={t('dashboard.analysisLabel')}
             className="flex items-center gap-2 px-4 py-2 rounded-[var(--radius-lg)] text-[13px] font-semibold text-white transition-all hover:opacity-90 active:scale-95"
             style={{ background: 'linear-gradient(135deg, #22d3ee, #7c3aed)' }}
           >
             <ScanSearch size={15} aria-hidden="true" />
-            Neue Analyse
+            {t('dashboard.newAnalysis')}
           </button>
           <button
             onClick={() => router.push('/history')}
-            aria-label="Analyse-Verlauf anzeigen"
+            aria-label={t('dashboard.showHistory')}
             className="flex items-center gap-2 px-4 py-2 rounded-[var(--radius-lg)] text-[13px] font-medium text-[var(--color-text)] bg-[var(--color-surface-2)] hover:bg-[var(--color-surface-3)] border border-[var(--color-border)] transition-colors"
           >
             <History size={15} aria-hidden="true" />
-            Verlauf
+            {t('dashboard.history')}
           </button>
         </div>
       </motion.div>
@@ -315,14 +320,14 @@ export default function DashboardPage() {
             >
               <div className="flex items-center gap-2.5 text-[var(--color-text)]">
                 <Sparkles size={15} style={{ color: '#a78bfa' }} className="flex-shrink-0" />
-                <span>Upgrade auf <strong>Pro</strong> für unbegrenzte Analysen und priorisierte Engines.</span>
+                <span>{t('dashboard.upgradeBanner')} <strong>{t('dashboard.upgradePro')}</strong> {t('dashboard.upgradeSuffix')}</span>
               </div>
               <button
                 onClick={() => router.push('/premium')}
                 className="flex items-center gap-1 text-[12px] font-semibold flex-shrink-0"
                 style={{ color: '#a78bfa' }}
               >
-                Mehr erfahren <ArrowRight size={12} />
+                {t('dashboard.learnMore')} <ArrowRight size={12} />
               </button>
             </div>
           </motion.div>
@@ -340,7 +345,7 @@ export default function DashboardPage() {
             >
               <CheckCircle size={15} style={{ color: '#22d3ee' }} className="flex-shrink-0" />
               <span>
-                Du hast bereits <strong>{stats.total_analyses}</strong> Analysen durchgeführt. Super!
+                {t('dashboard.congratsPrefix')} <strong>{stats.total_analyses}</strong> {t('dashboard.congratsSuffix')}
               </span>
             </div>
           </motion.div>
@@ -356,39 +361,39 @@ export default function DashboardPage() {
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
           <KpiCard
-            label="Analysen gesamt"
+            label={t('dashboard.analysesTotal')}
             value={stats?.total_analyses ?? 0}
             icon={Activity}
             color="#22d3ee"
             delay={0.05}
           />
           <KpiCard
-            label="KI erkannt"
+            label={t('dashboard.aiDetected')}
             value={stats?.ai_count ?? 0}
-            sub={aiPct !== null ? `${aiPct}% aller Analysen` : undefined}
+            sub={aiPct !== null ? tf('dashboard.ofAllAnalyses', aiPct) : undefined}
             icon={Zap}
             color="var(--color-danger)"
             delay={0.1}
           />
           <KpiCard
-            label="Als echt eingestuft"
+            label={t('dashboard.likelyReal')}
             value={stats?.real_count ?? 0}
-            sub={realPct !== null ? `${realPct}% aller Analysen` : undefined}
+            sub={realPct !== null ? tf('dashboard.ofAllAnalyses', realPct) : undefined}
             icon={ShieldCheck}
             color="var(--color-success)"
             delay={0.15}
           />
           <KpiCard
-            label="Analysen (7 Tage)"
+            label={t('dashboard.analyses7d')}
             value={stats?.analyses_7d ?? 0}
             icon={TrendingUp}
             color="#a78bfa"
             delay={0.2}
           />
           <KpiCard
-            label="Credits (30 Tage)"
+            label={t('dashboard.credits30d')}
             value={stats?.credits_30d ?? 0}
-            sub={stats?.credits_7d ? `${stats.credits_7d} in 7 Tagen` : undefined}
+            sub={stats?.credits_7d ? tf('dashboard.in7Days', stats.credits_7d) : undefined}
             icon={CreditCard}
             color="var(--color-primary)"
             delay={0.25}
@@ -407,12 +412,12 @@ export default function DashboardPage() {
           className="lg:col-span-2 rounded-[var(--radius-xl)] bg-[var(--color-surface)] border border-[var(--color-border)] shadow-[var(--shadow-sm)] flex flex-col overflow-hidden"
         >
           <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--color-border)]">
-            <div className="text-[13px] font-semibold text-[var(--color-text)]">Letzte Analysen</div>
+            <div className="text-[13px] font-semibold text-[var(--color-text)]">{t('dashboard.recentAnalyses')}</div>
             <button
               onClick={() => router.push('/history')}
               className="flex items-center gap-1 text-[12px] text-[var(--color-primary)] hover:underline"
             >
-              Alle anzeigen <ArrowRight size={12} />
+              {t('dashboard.showAll')} <ArrowRight size={12} />
             </button>
           </div>
           <div className="flex-1 p-2">
@@ -421,12 +426,12 @@ export default function DashboardPage() {
                 <div className="w-12 h-12 rounded-full bg-[var(--color-surface-2)] flex items-center justify-center">
                   <ScanSearch size={22} className="text-[var(--color-muted)]" />
                 </div>
-                <div className="text-[13px] text-[var(--color-muted)]">Noch keine Analysen</div>
+                <div className="text-[13px] text-[var(--color-muted)]">{t('dashboard.noAnalyses')}</div>
                 <button
                   onClick={() => router.push('/analyze')}
                   className="text-[12px] text-[var(--color-primary)] hover:underline"
                 >
-                  Erste Analyse starten →
+                  {t('dashboard.startFirstAnalysis')}
                 </button>
               </div>
             ) : (
@@ -453,7 +458,7 @@ export default function DashboardPage() {
             transition={{ delay: 0.35, duration: 0.35 }}
             className="rounded-[var(--radius-xl)] bg-[var(--color-surface)] border border-[var(--color-border)] shadow-[var(--shadow-sm)] p-5"
           >
-            <div className="text-[13px] font-semibold text-[var(--color-text)] mb-4">Medientypen</div>
+            <div className="text-[13px] font-semibold text-[var(--color-text)] mb-4">{t('dashboard.mediaTypes')}</div>
             <div className="flex items-center gap-4">
               <DonutChart segments={donutSegments} total={mediaTotal} />
               <div className="space-y-2 flex-1">
@@ -477,29 +482,29 @@ export default function DashboardPage() {
             transition={{ delay: 0.4, duration: 0.35 }}
             className="rounded-[var(--radius-xl)] bg-[var(--color-surface)] border border-[var(--color-border)] shadow-[var(--shadow-sm)] p-5"
           >
-            <div className="text-[13px] font-semibold text-[var(--color-text)] mb-3">Systemstatus</div>
+            <div className="text-[13px] font-semibold text-[var(--color-text)] mb-3">{t('dashboard.systemStatus')}</div>
             <div className="space-y-2">
               <div className="flex items-center justify-between text-[12px]">
-                <span className="text-[var(--color-muted)]">API</span>
+                <span className="text-[var(--color-muted)]">{t('dashboard.api')}</span>
                 {backendUp === null ? (
-                  <span className="text-[var(--color-muted-2)]">Prüfen…</span>
+                  <span className="text-[var(--color-muted-2)]">{t('dashboard.checking')}</span>
                 ) : backendUp ? (
                   <span className="flex items-center gap-1.5 text-[var(--color-success)]">
                     <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-success)] animate-pulse" />
-                    Online
+                    {t('dashboard.online')}
                   </span>
                 ) : (
                   <span className="flex items-center gap-1.5 text-[var(--color-danger)]">
                     <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-danger)]" />
-                    Offline
+                    {t('dashboard.offline')}
                   </span>
                 )}
               </div>
               <div className="flex items-center justify-between text-[12px]">
-                <span className="text-[var(--color-muted)]">Analyse-Engine</span>
+                <span className="text-[var(--color-muted)]">{t('dashboard.analyzeEngine')}</span>
                 <span className="flex items-center gap-1.5 text-[var(--color-success)]">
                   <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-success)]" />
-                  Aktiv
+                  {t('dashboard.active')}
                 </span>
               </div>
             </div>

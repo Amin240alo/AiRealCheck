@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { CONTACT_EMAIL } from '@/lib/constants';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -88,6 +89,26 @@ function StatusBadge({ active }: { active: boolean }) {
   return (
     <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${active ? 'bg-[var(--color-success-muted)] text-[var(--color-success)]' : 'bg-[var(--color-danger-muted)] text-[var(--color-danger)]'}`}>
       {active ? 'Aktiv' : 'Gesperrt'}
+    </span>
+  );
+}
+
+const ROLE_STYLES: Record<string, string> = {
+  admin:     'bg-[#fbbf2420] text-[#fbbf24]',
+  moderator: 'bg-[#a78bfa20] text-[#a78bfa]',
+  user:      'bg-[var(--color-surface-3)] text-[var(--color-muted)]',
+};
+const ROLE_LABELS: Record<string, string> = {
+  admin:     'Admin',
+  moderator: 'Moderator',
+  user:      'Nutzer',
+};
+
+function RoleBadge({ role }: { role?: string }) {
+  const r = role || 'user';
+  return (
+    <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${ROLE_STYLES[r] ?? ROLE_STYLES.user}`}>
+      {ROLE_LABELS[r] ?? r}
     </span>
   );
 }
@@ -254,7 +275,55 @@ function CreditGrantForm({ userId, onDone }: CreditGrantFormProps) {
   );
 }
 
+interface RoleChangeFormProps { user: AdminUser; currentAdminId?: number; onDone: () => void }
+function RoleChangeForm({ user, currentAdminId, onDone }: RoleChangeFormProps) {
+  const [role, setRole] = useState(user.role || 'user');
+  const [busy, setBusy] = useState(false);
+
+  const isSelf = currentAdminId != null && user.id === currentAdminId;
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (role === (user.role || 'user')) { onDone(); return; }
+    setBusy(true);
+    try {
+      await apiFetch(`/admin/users/${user.id}/set_role`, {
+        method: 'POST',
+        body: { role },
+      });
+      toast.success(`Rolle auf „${ROLE_LABELS[role] ?? role}" gesetzt.`);
+      onDone();
+    } catch (err: any) {
+      const code = err?.error || '';
+      if (code === 'cannot_demote_self') toast.error('Du kannst deine eigene Admin-Rolle nicht entfernen.');
+      else if (code === 'last_admin_protected') toast.error('Letzter Admin – Herabstufung nicht möglich.');
+      else toast.error('Rollenwechsel fehlgeschlagen.');
+    }
+    setBusy(false);
+  }
+
+  return (
+    <form onSubmit={submit} className="flex items-center gap-2 mt-3">
+      <select
+        value={role}
+        onChange={e => setRole(e.target.value)}
+        disabled={isSelf}
+        className="h-8 px-2 text-[12px] rounded-[var(--radius-sm)] bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-text)] focus:outline-none focus:border-[var(--color-primary)] disabled:opacity-50"
+      >
+        <option value="user">Nutzer</option>
+        <option value="moderator">Moderator</option>
+        <option value="admin">Admin</option>
+      </select>
+      <button type="submit" disabled={busy || isSelf} className="h-8 px-3 text-[12px] rounded-[var(--radius-sm)] bg-[var(--color-primary)] text-white hover:opacity-90 disabled:opacity-50 transition-opacity">
+        {busy ? '…' : 'Speichern'}
+      </button>
+      {isSelf && <span className="text-[11px] text-[var(--color-muted)]">Eigene Rolle schreibgeschützt</span>}
+    </form>
+  );
+}
+
 function UsersView() {
+  const { user: authUser } = useAuth();
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [hasMore, setHasMore] = useState(false);
   const [offset, setOffset] = useState(0);
@@ -262,6 +331,7 @@ function UsersView() {
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [grantId, setGrantId] = useState<number | null>(null);
+  const [roleId, setRoleId] = useState<number | null>(null);
   const LIMIT = 20;
 
   const load = useCallback(async () => {
@@ -300,13 +370,14 @@ function UsersView() {
       </div>
 
       {loading ? <Loader /> : (
-        <AdminTable headers={['ID', 'E-Mail', 'Plan', 'Status', 'Credits', 'Analysen', 'Registriert', '']} empty={users.length === 0}>
+        <AdminTable headers={['ID', 'E-Mail', 'Rolle', 'Plan', 'Status', 'Credits', 'Analysen', 'Registriert', '']} empty={users.length === 0}>
           {users.map(u => (
             <React.Fragment key={u.id}>
               <tr className="border-b border-[var(--color-border)] hover:bg-[var(--color-surface-2)] cursor-pointer"
                 onClick={() => setExpandedId(expandedId === u.id ? null : u.id)}>
                 <td className="px-3 py-2.5 text-[var(--color-muted-2)]">#{u.id}</td>
                 <td className="px-3 py-2.5 text-[var(--color-text)] max-w-[180px] truncate">{u.email}</td>
+                <td className="px-3 py-2.5"><RoleBadge role={u.role} /></td>
                 <td className="px-3 py-2.5">
                   <span className={`px-2 py-0.5 rounded-full text-[10px] ${u.plan_type !== 'free' ? 'bg-[#a78bfa20] text-[#a78bfa]' : 'bg-[var(--color-surface-3)] text-[var(--color-muted)]'}`}>
                     {u.plan_type || 'free'}
@@ -321,12 +392,12 @@ function UsersView() {
               <AnimatePresence>
                 {expandedId === u.id && (
                   <tr>
-                    <td colSpan={8} className="p-0">
+                    <td colSpan={9} className="p-0">
                       <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.2 }}>
                         <div className="px-5 py-4 bg-[var(--color-surface-2)] border-b border-[var(--color-border)] space-y-3">
                           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-[12px]">
                             <div><div className="text-[var(--color-muted-2)] mb-0.5">E-Mail verifiziert</div><div className="font-medium">{u.email_verified ? <Check size={13} className="text-[var(--color-success)]" /> : <X size={13} className="text-[var(--color-danger)]" />}</div></div>
-                            <div><div className="text-[var(--color-muted-2)] mb-0.5">Admin</div><div className="font-medium">{u.is_admin ? 'Ja' : 'Nein'}</div></div>
+                            <div><div className="text-[var(--color-muted-2)] mb-0.5">Rolle</div><div className="font-medium mt-0.5"><RoleBadge role={u.role} /></div></div>
                             <div><div className="text-[var(--color-muted-2)] mb-0.5">Letzter Login</div><div className="font-medium">{u.last_login ? formatDate(u.last_login) : '—'}</div></div>
                             <div><div className="text-[var(--color-muted-2)] mb-0.5">Credits gesamt</div><div className="font-medium">{u.credits_total ?? '—'}</div></div>
                           </div>
@@ -339,9 +410,16 @@ function UsersView() {
                               className="h-7 px-3 text-[11px] font-medium rounded-[var(--radius-sm)] bg-[var(--color-surface-3)] text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors flex items-center gap-1">
                               <Plus size={11} /> Credits
                             </button>
+                            <button onClick={() => setRoleId(roleId === u.id ? null : u.id)}
+                              className="h-7 px-3 text-[11px] font-medium rounded-[var(--radius-sm)] bg-[var(--color-surface-3)] text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors flex items-center gap-1">
+                              <Shield size={11} /> Rolle
+                            </button>
                           </div>
                           {grantId === u.id && (
                             <CreditGrantForm userId={u.id} onDone={() => { setGrantId(null); load(); }} />
+                          )}
+                          {roleId === u.id && (
+                            <RoleChangeForm user={u} currentAdminId={authUser?.id} onDone={() => { setRoleId(null); load(); }} />
                           )}
                         </div>
                       </motion.div>
@@ -812,9 +890,9 @@ function FeedbackView() {
           folgt in einem späteren Release.
         </p>
         <div className="mt-6 flex items-center justify-center gap-3">
-          <a href="mailto:support@airealcheck.com"
+          <a href={`mailto:${CONTACT_EMAIL}`}
             className="h-9 px-4 text-[13px] font-medium rounded-[var(--radius-md)] bg-[var(--color-surface-2)] border border-[var(--color-border)] text-[var(--color-text)] hover:bg-[var(--color-surface-3)] transition-colors flex items-center gap-2">
-            <Mail size={14} /> support@airealcheck.com
+            <Mail size={14} /> {CONTACT_EMAIL}
           </a>
         </div>
       </div>

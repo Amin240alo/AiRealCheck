@@ -13,7 +13,7 @@ from Backend.runtime import is_production
 
 
 JWT_SECRET = os.getenv("AIREALCHECK_JWT_SECRET", "dev_change_me")
-ACCESS_TOKEN_MINUTES = int(os.getenv("AIREALCHECK_ACCESS_TOKEN_MINUTES", "15") or 15)
+ACCESS_TOKEN_MINUTES = int(os.getenv("AIREALCHECK_ACCESS_TOKEN_MINUTES", "480") or 480)
 ADMIN_ALLOWED = os.getenv("AIREALCHECK_ALLOW_ADMIN", "false").lower() in {"1", "true", "yes", "on"}
 
 _RATE_BUCKET = {}

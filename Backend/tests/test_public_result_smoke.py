@@ -18,7 +18,7 @@ def test_public_result_transform_smoke():
         "confidence": 0.82,
         "confidence_label": "high",
         "conflict": False,
-        "reasons_user": ["KI-Signale ueberwiegen"],
+        "reasons_user": ["KI-Signale überwiegen"],
         "warnings_user": [],
         "decision_threshold": 0.5,
         "engine_results": [

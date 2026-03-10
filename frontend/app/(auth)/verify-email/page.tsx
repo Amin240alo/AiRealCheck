@@ -6,7 +6,8 @@ import { useSearchParams } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { CheckCircle, XCircle, Loader2 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
-import { resolveAuthError } from '@/lib/utils';
+import { resolveAuthErrorKey } from '@/lib/utils';
+import { useT } from '@/contexts/LanguageContext';
 
 function VerifyEmailContent() {
   const searchParams = useSearchParams();
@@ -15,44 +16,45 @@ function VerifyEmailContent() {
   const [state, setState] = useState<'loading' | 'success' | 'error'>('loading');
   const [message, setMessage] = useState('');
   const didRun = useRef(false);
+  const { t } = useT();
 
   useEffect(() => {
     if (didRun.current) return;
     didRun.current = true;
-    if (!token) { setState('error'); setMessage('Token fehlt. Bitte nutze den Link aus der E-Mail.'); return; }
+    if (!token) { setState('error'); setMessage(t('auth.verify.missingToken')); return; }
     verifyEmail(token)
       .then(() => setState('success'))
-      .catch(err => { setState('error'); setMessage(resolveAuthError(err, 'verify')); });
+      .catch(err => { setState('error'); setMessage(t(resolveAuthErrorKey(err, 'verify'))); });
   }, [token, verifyEmail]);
 
   return (
     <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }} className="w-full max-w-sm">
       <div className="rounded-[var(--radius-xl)] bg-[var(--color-surface)] border border-[var(--color-border)] shadow-[var(--shadow-lg)] p-8 text-center">
-        <div className="text-[11px] font-semibold uppercase tracking-widest text-[var(--color-primary)] mb-6">E-Mail bestätigen</div>
+        <div className="text-[11px] font-semibold uppercase tracking-widest text-[var(--color-primary)] mb-6">{t('auth.verify.badge')}</div>
         {state === 'loading' && (
           <>
             <Loader2 className="mx-auto mb-4 animate-spin text-[var(--color-primary)]" size={40} />
-            <h3 className="text-[18px] font-bold text-[var(--color-text)] mb-2">Bestätigung prüfen…</h3>
-            <p className="text-[13px] text-[var(--color-muted)]">Wir prüfen deinen Link.</p>
+            <h3 className="text-[18px] font-bold text-[var(--color-text)] mb-2">{t('auth.verify.loadingTitle')}</h3>
+            <p className="text-[13px] text-[var(--color-muted)]">{t('auth.verify.loadingText')}</p>
           </>
         )}
         {state === 'success' && (
           <>
             <CheckCircle className="mx-auto mb-4 text-[var(--color-success)]" size={40} />
-            <h3 className="text-[18px] font-bold text-[var(--color-text)] mb-2">E-Mail bestätigt</h3>
-            <p className="text-[13px] text-[var(--color-muted)] mb-6">Du kannst dich jetzt anmelden.</p>
+            <h3 className="text-[18px] font-bold text-[var(--color-text)] mb-2">{t('auth.verify.successTitle')}</h3>
+            <p className="text-[13px] text-[var(--color-muted)] mb-6">{t('auth.verify.successText')}</p>
             <Link href="/login" className="inline-flex items-center justify-center h-10 px-6 rounded-[var(--radius-md)] bg-[var(--color-primary)] text-white text-[13px] font-semibold hover:bg-[var(--color-primary-hover)] transition-colors">
-              Zum Login
+              {t('auth.verify.toLoginBtn')}
             </Link>
           </>
         )}
         {state === 'error' && (
           <>
             <XCircle className="mx-auto mb-4 text-[var(--color-danger)]" size={40} />
-            <h3 className="text-[18px] font-bold text-[var(--color-text)] mb-2">Bestätigung fehlgeschlagen</h3>
-            <p className="text-[13px] text-[var(--color-muted)] mb-6">{message || 'Der Link ist ungültig oder abgelaufen.'}</p>
+            <h3 className="text-[18px] font-bold text-[var(--color-text)] mb-2">{t('auth.verify.errorTitle')}</h3>
+            <p className="text-[13px] text-[var(--color-muted)] mb-6">{message || t('auth.verify.errorTextFallback')}</p>
             <Link href="/login" className="inline-flex items-center justify-center h-10 px-6 rounded-[var(--radius-md)] bg-[var(--color-surface-2)] border border-[var(--color-border)] text-[var(--color-text)] text-[13px] font-semibold hover:bg-[var(--color-surface-3)] transition-colors">
-              Zum Login
+              {t('auth.verify.toLoginBtn')}
             </Link>
           </>
         )}

@@ -3,6 +3,7 @@
 import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
 import { apiFetch, getToken, setToken, API_BASE } from '@/lib/api';
 import type { User, Balance } from '@/lib/types';
+import { restoreLangFromUser } from '@/contexts/LanguageContext';
 
 interface AuthContextValue {
   token: string | null;
@@ -103,6 +104,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (!data?.token) throw new Error('login_failed');
     updateToken(data.token);
     setUser(data.user || null);
+    restoreLangFromUser(data.user?.language);
     await fetchBalance();
   }, [updateToken, fetchBalance]);
 
@@ -143,6 +145,40 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     updateToken(t);
   }, [updateToken]);
 
+  // Proactive activity-based session refresh: runs every 10 minutes while logged in.
+  // Rotates the refresh-token cookie and issues a new access token so the user
+  // never hits the 401 wall during normal use. On a genuine session expiry
+  // (refresh token gone) the user gets a clear notice instead of a silent logout.
+  useEffect(() => {
+    if (!token) return;
+
+    const REFRESH_INTERVAL_MS = 10 * 60 * 1000; // 10 minutes
+
+    const id = setInterval(async () => {
+      const t = getToken();
+      if (!t) return;
+      try {
+        const refreshData = await apiFetch<{ token: string; user: User }>('/auth/refresh', {
+          method: 'POST',
+          token: t,
+        });
+        if (refreshData?.token) {
+          updateToken(refreshData.token);
+          if (refreshData.user) setUser(refreshData.user);
+        }
+      } catch (err: unknown) {
+        const e = err as { status?: number };
+        if (e?.status === 401) {
+          // Refresh token expired – real session end, log out with notice
+          await logout('Deine Sitzung ist abgelaufen. Bitte melde dich erneut an.');
+        }
+        // Network errors are silently ignored – next interval will retry
+      }
+    }, REFRESH_INTERVAL_MS);
+
+    return () => clearInterval(id);
+  }, [token, updateToken, logout]);
+
   // Bootstrap on mount
   useEffect(() => {
     if (bootstrappedRef.current) return;
@@ -166,6 +202,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (refreshData?.token) {
           updateToken(refreshData.token);
           setUser(refreshData.user || null);
+          restoreLangFromUser(refreshData.user?.language);
           await fetchBalance();
           setLoading(false);
           return;

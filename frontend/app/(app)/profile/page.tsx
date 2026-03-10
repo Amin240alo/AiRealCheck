@@ -25,6 +25,7 @@ import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
 import { apiFetch } from '@/lib/api';
 import { getInitials, formatDateShort, formatDate } from '@/lib/utils';
+import { useT } from '@/contexts/LanguageContext';
 
 // ─── shared ──────────────────────────────────────────────────────────────────
 
@@ -75,20 +76,21 @@ function DisplayNameForm({ current, onSaved }: { current: string; onSaved: (name
   const [value, setValue] = useState(current);
   const [saving, setSaving] = useState(false);
   const { fetchMe } = useAuth();
+  const { t } = useT();
 
   async function handleSave() {
     const trimmed = value.trim();
     if (!trimmed || trimmed === current) { setEditing(false); return; }
-    if (trimmed.length > 120) { toast.error('Name ist zu lang (max. 120 Zeichen).'); return; }
+    if (trimmed.length > 120) { toast.error(t('profile.nameTooLong')); return; }
     setSaving(true);
     try {
       await apiFetch('/auth/profile', { method: 'PATCH', body: { display_name: trimmed } });
       await fetchMe();
       onSaved(trimmed);
       setEditing(false);
-      toast.success('Name gespeichert.');
+      toast.success(t('profile.nameSaved'));
     } catch {
-      toast.error('Speichern fehlgeschlagen.');
+      toast.error(t('profile.nameSaveError'));
     } finally {
       setSaving(false);
     }
@@ -102,7 +104,7 @@ function DisplayNameForm({ current, onSaved }: { current: string; onSaved: (name
   return (
     <div className="px-6 py-4 flex items-center gap-4">
       <User2 size={15} className="text-[var(--color-muted)] flex-shrink-0" />
-      <span className="text-[12px] text-[var(--color-muted)] w-28 flex-shrink-0">Name</span>
+      <span className="text-[12px] text-[var(--color-muted)] w-28 flex-shrink-0">{t('profile.nameLabel')}</span>
       {editing ? (
         <div className="flex items-center gap-2 flex-1 min-w-0">
           <input
@@ -119,10 +121,10 @@ function DisplayNameForm({ current, onSaved }: { current: string; onSaved: (name
             className="h-8 px-3 text-[12px] font-semibold rounded-[var(--radius-md)] bg-[var(--color-primary)] text-white hover:opacity-90 disabled:opacity-50 transition-opacity flex items-center gap-1.5"
           >
             {saving && <Loader2 size={12} className="animate-spin" />}
-            Speichern
+            {t('profile.save')}
           </button>
           <button onClick={handleCancel} className="h-8 px-3 text-[12px] rounded-[var(--radius-md)] bg-[var(--color-surface-2)] border border-[var(--color-border)] text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors">
-            Abbrechen
+            {t('profile.cancel')}
           </button>
         </div>
       ) : (
@@ -148,22 +150,23 @@ function PasswordChangeForm() {
   const [next, setNext] = useState('');
   const [confirm, setConfirm] = useState('');
   const [saving, setSaving] = useState(false);
+  const { t } = useT();
 
   async function handleSave() {
-    if (!current || !next) { toast.error('Bitte alle Felder ausfüllen.'); return; }
-    if (next.length < 8) { toast.error('Neues Passwort muss mind. 8 Zeichen haben.'); return; }
-    if (next !== confirm) { toast.error('Passwörter stimmen nicht überein.'); return; }
+    if (!current || !next) { toast.error(t('profile.pwMissingFields')); return; }
+    if (next.length < 8) { toast.error(t('profile.pwMinLength')); return; }
+    if (next !== confirm) { toast.error(t('profile.pwMismatch')); return; }
     setSaving(true);
     try {
       await apiFetch('/auth/change-password', { method: 'PATCH', body: { current_password: current, new_password: next } });
-      toast.success('Passwort erfolgreich geändert.');
+      toast.success(t('profile.pwSaved'));
       setCurrent(''); setNext(''); setConfirm('');
       setOpen(false);
     } catch (err: unknown) {
       const e = err as { response?: { error?: string } };
-      if (e?.response?.error === 'invalid_credentials') toast.error('Aktuelles Passwort ist falsch.');
-      else if (e?.response?.error === 'rate_limited') toast.error('Zu viele Versuche. Kurz warten.');
-      else toast.error('Passwort konnte nicht geändert werden.');
+      if (e?.response?.error === 'invalid_credentials') toast.error(t('profile.pwWrongCurrent'));
+      else if (e?.response?.error === 'rate_limited') toast.error(t('profile.pwRateLimited'));
+      else toast.error(t('profile.pwError'));
     } finally {
       setSaving(false);
     }
@@ -177,7 +180,7 @@ function PasswordChangeForm() {
       >
         <div className="flex items-center gap-4">
           <Lock size={15} className="text-[var(--color-muted)] flex-shrink-0" />
-          <span className="text-[13px] text-[var(--color-text)]">Passwort ändern</span>
+          <span className="text-[13px] text-[var(--color-text)]">{t('profile.changePassword')}</span>
         </div>
         {open ? <ChevronUp size={15} className="text-[var(--color-muted)]" /> : <ChevronDown size={15} className="text-[var(--color-muted)]" />}
       </button>
@@ -193,9 +196,9 @@ function PasswordChangeForm() {
             <div className="px-6 pb-5 space-y-3 border-t border-[var(--color-border)]">
               <div className="pt-4 space-y-3">
                 {[
-                  { label: 'Aktuelles Passwort', val: current, set: setCurrent },
-                  { label: 'Neues Passwort (mind. 8 Zeichen)', val: next, set: setNext },
-                  { label: 'Neues Passwort bestätigen', val: confirm, set: setConfirm },
+                  { label: t('profile.currentPassword'), val: current, set: setCurrent },
+                  { label: t('profile.newPassword'), val: next, set: setNext },
+                  { label: t('profile.confirmPassword'), val: confirm, set: setConfirm },
                 ].map(({ label, val, set }) => (
                   <div key={label}>
                     <label className="block text-[11px] text-[var(--color-muted)] mb-1">{label}</label>
@@ -214,13 +217,13 @@ function PasswordChangeForm() {
                     className="h-9 px-4 text-[13px] font-semibold rounded-[var(--radius-md)] bg-[var(--color-primary)] text-white hover:opacity-90 disabled:opacity-50 transition-opacity flex items-center gap-2"
                   >
                     {saving && <Loader2 size={13} className="animate-spin" />}
-                    Passwort speichern
+                    {t('profile.savePassword')}
                   </button>
                   <button
                     onClick={() => { setOpen(false); setCurrent(''); setNext(''); setConfirm(''); }}
                     className="h-9 px-4 text-[13px] rounded-[var(--radius-md)] bg-[var(--color-surface-2)] border border-[var(--color-border)] text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
                   >
-                    Abbrechen
+                    {t('profile.cancel')}
                   </button>
                 </div>
               </div>
@@ -237,6 +240,7 @@ function PasswordChangeForm() {
 export default function ProfilePage() {
   const router = useRouter();
   const { user, balance, isLoggedIn, isEmailVerified, logout, resendVerify, fetchMe } = useAuth();
+  const { t } = useT();
   const [resendStatus, setResendStatus] = useState('');
   const [loggingOut, setLoggingOut] = useState(false);
   const [localName, setLocalName] = useState<string | null>(null);
@@ -250,20 +254,20 @@ export default function ProfilePage() {
   }
 
   async function handleResend() {
-    setResendStatus('Senden…');
-    try { await resendVerify(); setResendStatus('Gesendet!'); }
-    catch { setResendStatus('Fehler'); }
+    setResendStatus(t('profile.sending'));
+    try { await resendVerify(); setResendStatus(t('profile.sent')); }
+    catch { setResendStatus(t('profile.resendError')); }
   }
 
   if (!isLoggedIn) {
     return (
       <div className="max-w-2xl mx-auto px-5 py-10">
         <SectionCard className="p-10 text-center">
-          <h2 className="text-[18px] font-bold text-[var(--color-text)] mb-2">Du bist als Gast unterwegs</h2>
-          <p className="text-[13px] text-[var(--color-muted)] mb-6">Melde dich an, um dein Profil zu sehen.</p>
+          <h2 className="text-[18px] font-bold text-[var(--color-text)] mb-2">{t('profile.guestTitle')}</h2>
+          <p className="text-[13px] text-[var(--color-muted)] mb-6">{t('profile.guestText')}</p>
           <div className="flex justify-center gap-3">
-            <button onClick={() => router.push('/login')} className="h-9 px-5 bg-[var(--color-primary)] text-white rounded-[var(--radius-md)] text-[13px] font-semibold hover:opacity-90 transition-opacity">Einloggen</button>
-            <button onClick={() => router.push('/register')} className="h-9 px-5 bg-[var(--color-surface-2)] border border-[var(--color-border)] text-[var(--color-text)] rounded-[var(--radius-md)] text-[13px] font-medium hover:bg-[var(--color-surface-3)] transition-colors">Konto erstellen</button>
+            <button onClick={() => router.push('/login')} className="h-9 px-5 bg-[var(--color-primary)] text-white rounded-[var(--radius-md)] text-[13px] font-semibold hover:opacity-90 transition-opacity">{t('profile.signIn')}</button>
+            <button onClick={() => router.push('/register')} className="h-9 px-5 bg-[var(--color-surface-2)] border border-[var(--color-border)] text-[var(--color-text)] rounded-[var(--radius-md)] text-[13px] font-medium hover:bg-[var(--color-surface-3)] transition-colors">{t('profile.createAccount')}</button>
           </div>
         </SectionCard>
       </div>
@@ -290,10 +294,10 @@ export default function ProfilePage() {
           >
             <AlertTriangle size={15} className="mt-0.5 flex-shrink-0 text-[var(--color-warning)]" />
             <div className="flex-1">
-              <div className="text-[13px] font-medium text-[var(--color-warning)]">E-Mail nicht bestätigt</div>
-              <div className="text-[12px] text-[var(--color-muted)] mt-0.5">Ohne Verifikation sind Analysen gesperrt.</div>
+              <div className="text-[13px] font-medium text-[var(--color-warning)]">{t('profile.verifyWarningTitle')}</div>
+              <div className="text-[12px] text-[var(--color-muted)] mt-0.5">{t('profile.verifyWarningSub')}</div>
               <button onClick={handleResend} className="text-[12px] text-[var(--color-primary)] hover:underline mt-1">
-                {resendStatus || 'Bestätigungs-E-Mail erneut senden'}
+                {resendStatus || t('profile.resendVerify')}
               </button>
             </div>
           </motion.div>
@@ -309,7 +313,7 @@ export default function ProfilePage() {
               {getInitials(displayName || user?.email)}
             </div>
             <div className="flex-1 min-w-0">
-              <div className="text-[18px] font-bold text-[var(--color-text)] truncate">{displayName || 'Kein Name'}</div>
+              <div className="text-[18px] font-bold text-[var(--color-text)] truncate">{displayName || t('profile.noName')}</div>
               <div className="text-[13px] text-[var(--color-muted)] mt-0.5 truncate">{user?.email}</div>
               <div className="flex items-center gap-2 mt-2 flex-wrap">
                 <span
@@ -325,11 +329,11 @@ export default function ProfilePage() {
                 </span>
                 {isEmailVerified ? (
                   <span className="inline-flex items-center gap-1 text-[11px] text-[var(--color-success)]">
-                    <CheckCircle size={11} /> Verifiziert
+                    <CheckCircle size={11} /> {t('profile.verified')}
                   </span>
                 ) : (
                   <span className="inline-flex items-center gap-1 text-[11px] text-[var(--color-warning)]">
-                    <XCircle size={11} /> Nicht verifiziert
+                    <XCircle size={11} /> {t('profile.notVerified')}
                   </span>
                 )}
               </div>
@@ -341,12 +345,12 @@ export default function ProfilePage() {
       {/* Credits */}
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05, duration: 0.3 }}>
         <SectionCard>
-          <SectionHeader title="Credits" sub="Dein aktueller Kontostand" />
+          <SectionHeader title={t('profile.creditsSection')} sub={t('profile.creditsSub')} />
           <div className="p-6">
             <div className="flex items-end justify-between mb-3">
               <div>
                 <div className="text-[30px] font-bold text-[var(--color-text)] leading-none tabular-nums">{creditsAvail}</div>
-                <div className="text-[12px] text-[var(--color-muted)] mt-0.5">von {creditsTotal} verfügbar</div>
+                <div className="text-[12px] text-[var(--color-muted)] mt-0.5">{t('profile.creditsOf')} {creditsTotal} {t('profile.creditsAvailable')}</div>
               </div>
               <CreditCard size={20} className="text-[var(--color-muted)]" />
             </div>
@@ -362,7 +366,7 @@ export default function ProfilePage() {
             {balance?.last_credit_reset && (
               <div className="flex items-center gap-1.5 text-[11px] text-[var(--color-muted-2)] mt-2">
                 <Clock size={10} />
-                Letzter Reset: {formatDateShort(balance.last_credit_reset)}
+                {t('profile.creditsReset')}: {formatDateShort(balance.last_credit_reset)}
               </div>
             )}
           </div>
@@ -372,26 +376,26 @@ export default function ProfilePage() {
       {/* Account info + edit */}
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1, duration: 0.3 }}>
         <SectionCard>
-          <SectionHeader title="Kontodaten" sub="Name und Zugangsdaten bearbeiten" />
+          <SectionHeader title={t('profile.accountSection')} sub={t('profile.accountSub')} />
           <div className="divide-y divide-[var(--color-border)]">
             <DisplayNameForm
               current={displayName}
               onSaved={name => setLocalName(name)}
             />
-            <InfoRow icon={Mail} label="E-Mail" value={
+            <InfoRow icon={Mail} label={t('profile.emailLabel')} value={
               <span className="flex items-center gap-2">
                 {user?.email}
-                <span className="text-[11px] text-[var(--color-muted-2)]">(nicht änderbar)</span>
+                <span className="text-[11px] text-[var(--color-muted-2)]">{t('profile.emailNotChangeable')}</span>
               </span>
             } />
-            <InfoRow icon={ShieldCheck} label="Abo" value={
+            <InfoRow icon={ShieldCheck} label={t('profile.subscriptionLabel')} value={
               balance?.subscription_active
-                ? <span className="text-[var(--color-success)]">Aktiv</span>
-                : <span className="text-[var(--color-muted)]">Kein aktives Abo</span>
+                ? <span className="text-[var(--color-success)]">{t('profile.subscriptionActive')}</span>
+                : <span className="text-[var(--color-muted)]">{t('profile.subscriptionNone')}</span>
             } />
-            <InfoRow icon={Calendar} label="Registriert" value={formatDateShort(user?.created_at)} />
+            <InfoRow icon={Calendar} label={t('profile.registeredLabel')} value={formatDateShort(user?.created_at)} />
             {user?.last_login_at && (
-              <InfoRow icon={Clock} label="Letzter Login" value={formatDate(user.last_login_at)} />
+              <InfoRow icon={Clock} label={t('profile.lastLoginLabel')} value={formatDate(user.last_login_at)} />
             )}
             <PasswordChangeForm />
           </div>
@@ -401,7 +405,7 @@ export default function ProfilePage() {
       {/* Verknüpfte Konten */}
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15, duration: 0.3 }}>
         <SectionCard>
-          <SectionHeader title="Verknüpfte Konten" sub="OAuth-Anmeldungen" />
+          <SectionHeader title={t('profile.linkedSection')} sub={t('profile.linkedSub')} />
           <div className="px-6 py-4 flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="w-8 h-8 rounded-[var(--radius-md)] bg-[var(--color-surface-2)] border border-[var(--color-border)] flex items-center justify-center">
@@ -417,7 +421,7 @@ export default function ProfilePage() {
                 <div className="text-[11px] text-[var(--color-muted-2)]">OAuth 2.0</div>
               </div>
             </div>
-            <span className="text-[11px] text-[var(--color-muted-2)] italic">Nicht verknüpft</span>
+            <span className="text-[11px] text-[var(--color-muted-2)] italic">{t('profile.notLinked')}</span>
           </div>
         </SectionCard>
       </motion.div>
@@ -430,7 +434,7 @@ export default function ProfilePage() {
           className="w-full flex items-center justify-center gap-2 h-10 rounded-[var(--radius-xl)] border border-[var(--color-border)] text-[13px] font-medium text-[var(--color-muted)] hover:text-[var(--color-danger)] hover:border-[var(--color-danger)]/50 hover:bg-[var(--color-danger-muted)] transition-colors disabled:opacity-50"
         >
           {loggingOut ? <Loader2 size={14} className="animate-spin" /> : <LogOut size={14} />}
-          {loggingOut ? 'Abmelden…' : 'Ausloggen'}
+          {loggingOut ? t('profile.signingOut') : t('profile.signOut')}
         </button>
       </motion.div>
     </div>

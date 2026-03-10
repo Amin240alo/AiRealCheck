@@ -7,11 +7,11 @@
 
 export const CREDIT_COSTS = {
   /** Credits per image file */
-  image: 5,
-  /** Credits per started minute of audio */
-  audio: 10,
-  /** Credits per started minute of video */
-  video: 25,
+  image: 15,
+  /** Credits per audio file */
+  audio: 20,
+  /** Credits per video analysis (short/default) */
+  video: 30,
 } as const;
 
 // ─── Plan definitions ─────────────────────────────────────────────────────────
@@ -23,8 +23,11 @@ export interface Plan {
   name: string;
   nameShort: string;
   priceMonthly: number;       // EUR per month, 0 = free
+  originalPrice?: number;     // P1.2 Anchoring – old/higher price shown crossed-out
+  savingsLabel?: string;      // P1.4 Loss Aversion – e.g. "Spare 51 %"
+  badgeText?: string;         // P1.3 Social Proof – e.g. "Beliebtester Plan"
   creditsMonthly: number;     // credits included per billing period
-  highlighted: boolean;       // true = "recommended" card
+  highlighted: boolean;       // true = featured/recommended card
   checkoutAvailable: boolean; // false = stub / coming soon
   color: string;              // accent color for card
   features: string[];
@@ -43,9 +46,9 @@ export const PLANS: Record<PlanId, Plan> = {
     color: 'var(--color-muted)',
     features: [
       '100 Credits pro Monat',
-      'Bildanalyse (5 Credits / Datei)',
-      'Audioanalyse (10 Credits / Min.)',
-      'Videoanalyse (25 Credits / Min.)',
+      'Bildanalyse (15 Credits / Datei)',
+      'Audioanalyse (20 Credits / Datei)',
+      'Videoanalyse (30 Credits / Datei)',
       'Analyse-Verlauf (30 Tage)',
       'E-Mail-Support',
     ],
@@ -60,15 +63,18 @@ export const PLANS: Record<PlanId, Plan> = {
     name: 'Pro',
     nameShort: 'Pro',
     priceMonthly: 19,
+    originalPrice: 39,
+    savingsLabel: 'Spare 51 %',
+    badgeText: 'Beliebtester Plan',
     creditsMonthly: 1500,
     highlighted: true,
     checkoutAvailable: false, // flip to true once Stripe/payment is wired
     color: '#22d3ee',
     features: [
       '1.500 Credits pro Monat',
-      'Bildanalyse (5 Credits / Datei)',
-      'Audioanalyse (10 Credits / Min.)',
-      'Videoanalyse (25 Credits / Min.)',
+      'Bildanalyse (15 Credits / Datei)',
+      'Audioanalyse (20 Credits / Datei)',
+      'Videoanalyse (30 Credits / Datei)',
       'Vollständiger Analyse-Verlauf',
       'Priorisierte Engine-Auswahl',
       'API-Zugang (Beta)',
@@ -80,15 +86,18 @@ export const PLANS: Record<PlanId, Plan> = {
     name: 'Business',
     nameShort: 'Biz',
     priceMonthly: 79,
+    originalPrice: 129,
+    savingsLabel: 'Spare 39 %',
+    badgeText: 'Best Value',
     creditsMonthly: 10000,
     highlighted: false,
     checkoutAvailable: false,
     color: '#a78bfa',
     features: [
       '10.000 Credits pro Monat',
-      'Bildanalyse (5 Credits / Datei)',
-      'Audioanalyse (10 Credits / Min.)',
-      'Videoanalyse (25 Credits / Min.)',
+      'Bildanalyse (15 Credits / Datei)',
+      'Audioanalyse (20 Credits / Datei)',
+      'Videoanalyse (30 Credits / Datei)',
       'Vollständiger Analyse-Verlauf',
       'Alle Engines inkl. Premium-Engines',
       'API-Zugang inkl. höherem Rate-Limit',
@@ -119,4 +128,59 @@ export function imagesPerMonth(plan: Plan): number {
 /** How many minutes of video per month? */
 export function videoMinutesPerMonth(plan: Plan): number {
   return Math.floor(plan.creditsMonthly / CREDIT_COSTS.video);
+}
+
+// ─── Backend-dynamic plan loading (P1.6) ─────────────────────────────────────
+
+/** Shape returned by GET /api/plans (snake_case from Flask). */
+interface ApiPlan {
+  id: string;
+  name: string;
+  price_monthly: number;
+  original_price?: number | null;
+  savings_label?: string | null;
+  badge_text?: string | null;
+  credits_monthly: number;
+  highlighted: boolean;
+  checkout_available: boolean;
+  color: string;
+  features: string[];
+  limitations?: string[] | null;
+}
+
+/** Fetch plans from the backend; resolves to null on any error (caller uses static fallback). */
+export async function fetchPlansFromApi(apiBase: string): Promise<Plan[] | null> {
+  try {
+    const res = await fetch(`${apiBase}/api/plans`, { cache: 'no-store' });
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (!data?.ok || !Array.isArray(data.plans)) return null;
+    return (data.plans as ApiPlan[]).map(p => ({
+      id: p.id as PlanId,
+      name: p.name,
+      nameShort: p.name,
+      priceMonthly: p.price_monthly,
+      originalPrice: p.original_price ?? undefined,
+      savingsLabel: p.savings_label ?? undefined,
+      badgeText: p.badge_text ?? undefined,
+      creditsMonthly: p.credits_monthly,
+      highlighted: p.highlighted,
+      checkoutAvailable: p.checkout_available,
+      color: p.color,
+      features: p.features,
+      limitations: p.limitations ?? undefined,
+    }));
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Returns the "next upgrade" plan id for a given current plan id.
+ * Returns null if the user is already on the highest tier.
+ */
+export function getNextPlanId(currentPlanId: string, orderedIds: string[]): string | null {
+  const idx = orderedIds.indexOf(currentPlanId);
+  if (idx === -1 || idx >= orderedIds.length - 1) return null;
+  return orderedIds[idx + 1];
 }

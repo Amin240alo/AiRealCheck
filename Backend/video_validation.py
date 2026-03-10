@@ -15,7 +15,7 @@ _ERRORS = {
     "file_missing": ("Datei existiert nicht", 400),
     "file_too_large": ("Datei zu gross", 413),
     "video_too_long": ("Video zu lang", 413),
-    "too_many_frames": ("Video uebersteigt Frame-Limit", 413),
+    "too_many_frames": ("Video übersteigt Frame-Limit", 413),
 }
 
 

@@ -120,6 +120,7 @@ def _sanitize_user(u: User):
         "credits_total": int(u.credits_total or 0),
         "credits_used": int(u.credits_used or 0),
         "last_credit_reset": (u.last_credit_reset.isoformat() + "Z") if u.last_credit_reset else None,
+        "language": (getattr(u, "language", None) or "de"),
         "created_at": (u.created_at.isoformat() + "Z") if u.created_at else None,
         "updated_at": (u.updated_at.isoformat() + "Z") if u.updated_at else None,
     }
@@ -851,6 +852,36 @@ def update_profile():
     except Exception:
         db.rollback()
         current_app.logger.exception("update_profile_error")
+        return _error("server_error", 500)
+    finally:
+        db.close()
+
+
+SUPPORTED_LANGUAGES = {"de", "en", "fr", "es"}
+
+
+@bp_auth.patch("/language")
+@require_auth
+def update_language():
+    from flask import g
+
+    data = request.get_json(silent=True) or {}
+    lang = (data.get("language") or "").strip().lower()
+    if lang not in SUPPORTED_LANGUAGES:
+        return _error("invalid_input", 400)
+
+    db = get_session()
+    try:
+        user = db.query(User).get(int(g.current_user_id))
+        if not user:
+            return _error("user_not_found", 404)
+        user.language = lang
+        db.add(user)
+        db.commit()
+        return jsonify({"ok": True, "language": lang})
+    except Exception:
+        db.rollback()
+        current_app.logger.exception("update_language_error")
         return _error("server_error", 500)
     finally:
         db.close()

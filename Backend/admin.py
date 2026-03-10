@@ -435,7 +435,7 @@ def list_users():
             except Exception:
                 filters.append(cast(User.id, String).ilike(f"%{q}%"))
             query = query.filter(or_(*filters))
-        if role in {"admin", "user"}:
+        if role in {"admin", "moderator", "user"}:
             query = query.filter(User.role == role)
         if status in {"active", "banned"}:
             query = query.filter(User.is_banned.is_(status == "banned"))
@@ -707,24 +707,58 @@ def update_credits(user_id: int):
         db.close()
 
 
+VALID_ROLES = {"user", "moderator", "admin"}
+
+
 @bp_admin.post("/users/<int:user_id>/set_role")
 @require_admin
 def set_role(user_id: int):
     data = request.get_json(silent=True) or {}
-    role = (data.get("role") or "").strip().lower()
-    if role not in {"user", "admin"}:
+    new_role = (data.get("role") or "").strip().lower()
+    if new_role not in VALID_ROLES:
         return _error("invalid_input", 400)
+
+    acting_admin_id = int(getattr(g, "current_user_id", 0) or 0)
+
+    # Self-demotion guard
+    if acting_admin_id == int(user_id) and new_role != "admin":
+        return _error("cannot_demote_self", 403)
 
     db = get_session()
     try:
-        u = db.query(User).get(int(user_id))
+        u = db.query(User).with_for_update().get(int(user_id))
         if not u:
             return _error("user_not_found", 404)
-        u.role = role
+
+        old_role = u.role or "user"
+
+        # Last-admin guard: if demoting from admin, ensure at least one other admin remains
+        if old_role == "admin" and new_role != "admin":
+            admin_count = (
+                db.query(func.count(User.id))
+                .filter(User.role == "admin")
+                .scalar()
+                or 0
+            )
+            if int(admin_count) <= 1:
+                return _error("last_admin_protected", 403)
+
+        u.role = new_role
         db.add(u)
+        _log_admin_event(
+            db,
+            "ADMIN_ROLE_CHANGED",
+            {
+                "admin_id": acting_admin_id,
+                "target_user_id": int(u.id),
+                "target_email": u.email,
+                "old_role": old_role,
+                "new_role": new_role,
+            },
+        )
         db.commit()
         return jsonify({"ok": True, "role": u.role})
-    except Exception as e:
+    except Exception:
         db.rollback()
         current_app.logger.exception("admin_set_role_error")
         return _error("server_error", 500)

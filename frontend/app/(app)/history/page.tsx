@@ -9,6 +9,7 @@ import type { HistoryEntry, HistoryListResponse, MediaType } from '@/lib/types';
 import { formatDate } from '@/lib/utils';
 import { VerdictBadge, StatusBadge } from '@/components/analysis/VerdictBadge';
 import { AnalysisDetailPanel } from '@/components/analysis/AnalysisDetailPanel';
+import { useT, useLang } from '@/contexts/LanguageContext';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -81,8 +82,10 @@ function HistoryRow({
   onClick: () => void;
   selected: boolean;
 }) {
+  const { t } = useT();
+  const lang = useLang();
   const statusOk = item.status === 'success';
-  const displayName = item.title ? item.title.slice(0, 50) : `${item.media_type ?? 'Analyse'} Analyse`;
+  const displayName = item.title ? item.title.slice(0, 50) : `${item.media_type ?? t('history.analysis')} ${t('history.analysis')}`;
 
   return (
     <motion.button
@@ -110,8 +113,8 @@ function HistoryRow({
           )}
         </div>
         <div className="flex items-center gap-2 mt-0.5 text-[11px] text-[var(--color-muted-2)]">
-          <span>{formatDate(item.created_at)}</span>
-          {item.credits_charged > 0 && <span>· {item.credits_charged} Credits</span>}
+          <span>{formatDate(item.created_at, lang)}</span>
+          {item.credits_charged > 0 && <span>· {item.credits_charged} {t('history.credits')}</span>}
         </div>
       </div>
 
@@ -124,6 +127,7 @@ function HistoryRow({
 
 export default function HistoryPage() {
   const { isLoggedIn } = useAuth();
+  const { t, tf } = useT();
 
   const [items, setItems] = useState<HistoryEntry[]>([]);
   const [total, setTotal] = useState(0);
@@ -170,7 +174,7 @@ export default function HistoryPage() {
         }
         setOffset(newOffset + (res.items?.length ?? 0));
       } catch {
-        setError('Verlauf konnte nicht geladen werden.');
+        setError(t('history.errorLoad'));
       } finally {
         setLoading(false);
         setLoadingMore(false);
@@ -233,14 +237,14 @@ export default function HistoryPage() {
           {/* Header */}
           <div className="flex items-center justify-between mb-6">
             <div>
-              <h1 className="text-[24px] font-bold text-[var(--color-text)]">Verlauf</h1>
-              <p className="text-[14px] text-[var(--color-muted)] mt-1">Deine letzten Prüfungen</p>
+              <h1 className="text-[24px] font-bold text-[var(--color-text)]">{t('history.title')}</h1>
+              <p className="text-[14px] text-[var(--color-muted)] mt-1">{t('history.subtitle')}</p>
             </div>
             {isLoggedIn && (
               <button
                 onClick={() => load(0, false)}
-                aria-label="Verlauf neu laden"
-                title="Neu laden"
+                aria-label={t('history.refresh')}
+                title={t('history.refreshLabel')}
                 className="p-2 rounded-[var(--radius-md)] text-[var(--color-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-surface-2)] transition-colors"
               >
                 <RefreshCw size={15} aria-hidden="true" />
@@ -250,7 +254,7 @@ export default function HistoryPage() {
 
           {!isLoggedIn ? (
             <div className="rounded-[var(--radius-lg)] bg-[var(--color-surface)] border border-[var(--color-border)] p-10 text-center">
-              <div className="text-[var(--color-muted)] text-[14px]">Bitte anmelden, um deinen Verlauf zu sehen.</div>
+              <div className="text-[var(--color-muted)] text-[14px]">{t('history.loginRequired')}</div>
             </div>
           ) : (
             <>
@@ -262,12 +266,12 @@ export default function HistoryPage() {
                     type="search"
                     value={searchInput}
                     onChange={e => handleSearchChange(e.target.value)}
-                    placeholder="Titel suchen…"
-                    aria-label="Verlauf durchsuchen"
+                    placeholder={t('history.searchPh')}
+                    aria-label={t('history.searchLabel')}
                     className="w-full h-9 pl-8 pr-8 rounded-[var(--radius-md)] bg-[var(--color-surface)] border border-[var(--color-border)] text-[13px] text-[var(--color-text)] placeholder:text-[var(--color-muted-2)] focus:outline-none focus:border-[var(--color-primary)] transition-colors"
                   />
                   {searchInput && (
-                    <button onClick={clearSearch} aria-label="Suche leeren" className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[var(--color-muted-2)] hover:text-[var(--color-muted)] transition-colors">
+                    <button onClick={clearSearch} aria-label={t('history.clearSearch')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[var(--color-muted-2)] hover:text-[var(--color-muted)] transition-colors">
                       <X size={13} aria-hidden="true" />
                     </button>
                   )}
@@ -281,7 +285,7 @@ export default function HistoryPage() {
                   }`}
                 >
                   <SlidersHorizontal size={13} />
-                  <span>Filter</span>
+                  <span>{t('history.filter')}</span>
                   {hasActiveFilters && (
                     <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-primary)] ml-0.5" />
                   )}
@@ -301,44 +305,44 @@ export default function HistoryPage() {
                     <div className="pb-4 space-y-2.5">
                       {/* Media type */}
                       <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className="text-[11px] text-[var(--color-muted)] w-16 flex-shrink-0">Typ</span>
+                        <span className="text-[11px] text-[var(--color-muted)] w-16 flex-shrink-0">{t('history.filterType')}</span>
                         {(['', 'image', 'video', 'audio'] as const).map(f => (
                           <FilterChip key={f} active={filters.media_type === f} onClick={() => setMediaFilter(f)}>
-                            {f === '' ? 'Alle' : f === 'image' ? 'Bilder' : f === 'video' ? 'Videos' : 'Audio'}
+                            {f === '' ? t('history.all') : f === 'image' ? t('history.images') : f === 'video' ? t('history.videos') : t('history.audio')}
                           </FilterChip>
                         ))}
                       </div>
                       {/* Verdict */}
                       <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className="text-[11px] text-[var(--color-muted)] w-16 flex-shrink-0">Ergebnis</span>
+                        <span className="text-[11px] text-[var(--color-muted)] w-16 flex-shrink-0">{t('history.filterVerdict')}</span>
                         {(['', 'likely_ai', 'likely_real', 'uncertain'] as const).map(f => (
                           <FilterChip key={f} active={filters.verdict === f} onClick={() => setVerdictFilter(f)}>
-                            {f === '' ? 'Alle' : f === 'likely_ai' ? 'KI erkannt' : f === 'likely_real' ? 'Echt' : 'Unklar'}
+                            {f === '' ? t('history.all') : f === 'likely_ai' ? t('history.aiDetected') : f === 'likely_real' ? t('history.real') : t('history.unclear')}
                           </FilterChip>
                         ))}
                       </div>
                       {/* Confidence */}
                       <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className="text-[11px] text-[var(--color-muted)] w-16 flex-shrink-0">Sicherheit</span>
+                        <span className="text-[11px] text-[var(--color-muted)] w-16 flex-shrink-0">{t('history.filterConfidence')}</span>
                         {(['', 'high', 'medium', 'low'] as const).map(f => (
                           <FilterChip key={f} active={filters.confidence === f} onClick={() => setConfidenceFilter(f)}>
-                            {f === '' ? 'Alle' : f === 'high' ? 'Hoch' : f === 'medium' ? 'Mittel' : 'Niedrig'}
+                            {f === '' ? t('history.all') : f === 'high' ? t('history.high') : f === 'medium' ? t('history.medium') : t('history.low')}
                           </FilterChip>
                         ))}
                       </div>
                       {/* Sort */}
                       <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className="text-[11px] text-[var(--color-muted)] w-16 flex-shrink-0">Sortierung</span>
+                        <span className="text-[11px] text-[var(--color-muted)] w-16 flex-shrink-0">{t('history.filterSort')}</span>
                         {(['newest', 'oldest'] as const).map(f => (
                           <FilterChip key={f} active={filters.sort === f} onClick={() => setSortFilter(f)}>
-                            {f === 'newest' ? 'Neueste zuerst' : 'Älteste zuerst'}
+                            {f === 'newest' ? t('history.newest') : t('history.oldest')}
                           </FilterChip>
                         ))}
                       </div>
                       {/* Clear */}
                       {hasActiveFilters && (
                         <button onClick={clearAllFilters} className="text-[12px] text-[var(--color-danger)] hover:underline">
-                          Filter zurücksetzen
+                          {t('history.clearFilters')}
                         </button>
                       )}
                     </div>
@@ -349,8 +353,8 @@ export default function HistoryPage() {
               {/* Results count */}
               {!loading && !error && (
                 <div className="text-[12px] text-[var(--color-muted-2)] mb-3">
-                  {total === 0 ? 'Keine Einträge' : `${total} ${total === 1 ? 'Eintrag' : 'Einträge'}`}
-                  {filters.search && ` für „${filters.search}"`}
+                  {total === 0 ? t('history.noEntries') : `${total} ${total === 1 ? t('history.entry') : t('history.entries')}`}
+                  {filters.search && ` ${tf('history.forSearch', filters.search)}`}
                 </div>
               )}
 
@@ -366,11 +370,11 @@ export default function HistoryPage() {
               ) : items.length === 0 ? (
                 <div className="rounded-[var(--radius-lg)] bg-[var(--color-surface)] border border-[var(--color-border)] p-10 text-center">
                   <div className="text-[36px] text-[var(--color-muted-2)] mb-3">○</div>
-                  <div className="text-[14px] font-medium text-[var(--color-text)] mb-1">Keine Einträge</div>
+                  <div className="text-[14px] font-medium text-[var(--color-text)] mb-1">{t('history.noEntries')}</div>
                   <div className="text-[13px] text-[var(--color-muted)]">
                     {hasActiveFilters || filters.search
-                      ? 'Versuche andere Filter oder Suchbegriffe.'
-                      : 'Starte deine erste Analyse, um sie hier zu sehen.'}
+                      ? t('history.tryOtherFilters')
+                      : t('history.startFirstAnalysis')}
                   </div>
                 </div>
               ) : (
@@ -401,7 +405,7 @@ export default function HistoryPage() {
                         disabled={loadingMore}
                         className="h-9 px-5 rounded-[var(--radius-md)] text-[13px] font-medium bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-surface-2)] transition-all disabled:opacity-50"
                       >
-                        {loadingMore ? 'Lädt…' : `Mehr laden (${total - offset} weitere)`}
+                        {loadingMore ? t('history.loading') : tf('history.loadMore', total - offset)}
                       </button>
                     </div>
                   )}

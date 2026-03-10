@@ -8,54 +8,56 @@ import {
   LayoutDashboard, ScanSearch, History, User, Settings,
   HelpCircle, MessageSquare, Zap, ShieldCheck,
   PanelLeftClose, PanelLeftOpen, Sparkles, CreditCard,
-  Sun, Moon,
+  Sun, Moon, BadgeCheck,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
+import { useT } from '@/contexts/LanguageContext';
 import { cn } from '@/lib/utils';
 import { ThemeLogo } from '@/components/ui/ThemeLogo';
+import { PLAN_ORDER, PLANS, getNextPlanId, type PlanId } from '@/lib/plans';
 
 const SIDEBAR_KEY = 'ac_sidebar_collapsed';
 const COLLAPSED_W = 60;
 const EXPANDED_W = 220;
 
 interface NavItem {
-  label: string;
+  labelKey: string;
   href: string;
   icon: React.ComponentType<{ size?: number; className?: string }>;
   adminOnly?: boolean;
   disabled?: boolean;
-  badge?: string;
+  badgeKey?: string;
 }
 
-const NAV_SECTIONS: { title: string; items: NavItem[] }[] = [
+const NAV_SECTION_DEFS: { titleKey: string; items: Omit<NavItem, never>[] }[] = [
   {
-    title: 'Arbeitsbereich',
+    titleKey: 'layout.workspace',
     items: [
-      { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
-      { label: 'Analyse',   href: '/analyze',   icon: ScanSearch },
-      { label: 'Verlauf',   href: '/history',    icon: History },
+      { labelKey: 'nav.dashboard', href: '/dashboard', icon: LayoutDashboard },
+      { labelKey: 'nav.analyze',   href: '/analyze',   icon: ScanSearch },
+      { labelKey: 'nav.history',   href: '/history',   icon: History },
     ],
   },
   {
-    title: 'Konto',
+    titleKey: 'layout.account',
     items: [
-      { label: 'Profil',         href: '/profile',   icon: User },
-      { label: 'Einstellungen',  href: '/settings',  icon: Settings },
+      { labelKey: 'nav.profile',   href: '/profile',   icon: User },
+      { labelKey: 'nav.settings',  href: '/settings',  icon: Settings },
     ],
   },
   {
-    title: 'Tools & Support',
+    titleKey: 'layout.toolsSupport',
     items: [
-      { label: 'Support & Hilfe', href: '/support',    icon: HelpCircle },
-      { label: 'Feedback',        href: '/feedback',   icon: MessageSquare },
-      { label: 'API-Zugang',      href: '/api-access', icon: Zap, badge: 'Bald' },
+      { labelKey: 'nav.support',    href: '/support',    icon: HelpCircle },
+      { labelKey: 'nav.feedback',   href: '/feedback',   icon: MessageSquare },
+      { labelKey: 'nav.apiAccess',  href: '/api-access', icon: Zap, badgeKey: 'layout.soon' },
     ],
   },
   {
-    title: 'Admin',
+    titleKey: 'layout.adminSection',
     items: [
-      { label: 'Admin-Panel', href: '/admin', icon: ShieldCheck, adminOnly: true },
+      { labelKey: 'nav.admin', href: '/admin', icon: ShieldCheck, adminOnly: true },
     ],
   },
 ];
@@ -90,6 +92,7 @@ export function Sidebar() {
   const router    = useRouter();
   const { isLoggedIn, isAdmin, balance } = useAuth();
   const { theme, toggleTheme } = useTheme();
+  const { t } = useT();
 
   useEffect(() => {
     try {
@@ -107,11 +110,16 @@ export function Sidebar() {
   const creditsAvail = balance?.credits_available ?? 0;
   const creditsPct   = Math.max(0, Math.min(100, (creditsAvail / creditsTotal) * 100));
 
+  // Plan-aware upgrade CTA
+  const planType    = (balance?.plan_type ?? 'free') as string;
+  const nextPlanId  = getNextPlanId(planType, PLAN_ORDER);
+  const nextPlan    = nextPlanId ? PLANS[nextPlanId as PlanId] : null;
+
   return (
     <motion.aside
       animate={{ width: collapsed ? COLLAPSED_W : EXPANDED_W }}
       transition={sidebarTransition}
-      aria-label="Seitenleiste"
+      aria-label={t('layout.sidebarLabel')}
       className="hidden md:flex flex-col h-screen sticky top-0 bg-[var(--color-surface)] border-r border-[var(--color-border)] overflow-hidden flex-shrink-0 z-30"
       style={{ minWidth: collapsed ? COLLAPSED_W : EXPANDED_W }}
     >
@@ -140,7 +148,7 @@ export function Sidebar() {
         <button
           onClick={toggle}
           className="p-2 rounded-[var(--radius-md)] text-[var(--color-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-surface-2)] transition-colors flex-shrink-0"
-          aria-label={collapsed ? 'Sidebar ausklappen' : 'Sidebar einklappen'}
+          aria-label={collapsed ? t('layout.expandLabel') : t('layout.collapseLabel')}
         >
           <AnimatePresence mode="wait">
             {collapsed ? (
@@ -171,13 +179,14 @@ export function Sidebar() {
       </div>
 
       {/* ── Nav ── */}
-      <nav aria-label="Hauptnavigation" className="flex-1 overflow-y-auto overflow-x-hidden py-3">
-        {NAV_SECTIONS.map((section, sectionIdx) => {
-          const visibleItems = section.items.filter(item => !item.adminOnly || isAdmin);
+      <nav aria-label={t('layout.mainNavLabel')} className="flex-1 overflow-y-auto overflow-x-hidden py-3">
+        {NAV_SECTION_DEFS.map((section, sectionIdx) => {
+          const visibleItems = section.items.filter((item: NavItem) => !item.adminOnly || isAdmin);
           if (visibleItems.length === 0) return null;
+          const sectionTitle = t(section.titleKey);
 
           return (
-            <div key={section.title} className="mb-1">
+            <div key={section.titleKey} className="mb-1">
               {/* Collapsed: visual divider between sections */}
               {collapsed && sectionIdx > 0 && (
                 <div className="mx-3 mt-2 mb-2 h-px bg-[var(--color-border)]" />
@@ -196,14 +205,16 @@ export function Sidebar() {
                       sectionIdx > 0 ? 'pt-3' : 'pt-1'
                     )}
                   >
-                    {section.title}
+                    {sectionTitle}
                   </motion.div>
                 )}
               </AnimatePresence>
 
-              {visibleItems.map((item) => {
+              {visibleItems.map((item: NavItem) => {
                 const isActive = pathname === item.href;
                 const Icon = item.icon;
+                const label = t(item.labelKey);
+                const badge = item.badgeKey ? t(item.badgeKey) : undefined;
 
                 return (
                   <div key={item.href} className="px-2 py-0.5">
@@ -213,7 +224,7 @@ export function Sidebar() {
                           'flex items-center h-9 rounded-[var(--radius-sm)] opacity-40 cursor-not-allowed text-[var(--color-muted)]',
                           collapsed ? 'justify-center' : 'gap-2.5 px-2.5'
                         )}
-                        title={collapsed ? item.label : undefined}
+                        title={collapsed ? label : undefined}
                       >
                         <Icon size={collapsed ? 18 : 16} />
                         <AnimatePresence>
@@ -225,10 +236,10 @@ export function Sidebar() {
                               exit="exit"
                               className="flex items-center gap-2 min-w-0 flex-1"
                             >
-                              <span className="text-[13px] truncate">{item.label}</span>
-                              {item.badge && (
+                              <span className="text-[13px] truncate">{label}</span>
+                              {badge && (
                                 <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[var(--color-surface-3)] text-[var(--color-muted-2)]">
-                                  {item.badge}
+                                  {badge}
                                 </span>
                               )}
                             </motion.div>
@@ -239,7 +250,7 @@ export function Sidebar() {
                       <Link
                         href={item.href}
                         aria-current={isActive ? 'page' : undefined}
-                        aria-label={collapsed ? item.label : undefined}
+                        aria-label={collapsed ? label : undefined}
                         className={cn(
                           'flex items-center h-9 rounded-[var(--radius-sm)] transition-colors duration-150',
                           collapsed ? 'justify-center' : 'gap-2.5 px-2.5',
@@ -247,7 +258,7 @@ export function Sidebar() {
                             ? 'bg-[var(--color-primary-muted)] text-[var(--color-primary)]'
                             : 'text-[var(--color-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-surface-2)]'
                         )}
-                        title={collapsed ? item.label : undefined}
+                        title={collapsed ? label : undefined}
                       >
                         <Icon size={collapsed ? 18 : 16} />
                         <AnimatePresence>
@@ -259,7 +270,7 @@ export function Sidebar() {
                               exit="exit"
                               className="text-[13px] truncate"
                             >
-                              {item.label}
+                              {label}
                             </motion.span>
                           )}
                         </AnimatePresence>
@@ -283,8 +294,8 @@ export function Sidebar() {
               'flex items-center h-9 w-full rounded-[var(--radius-sm)] text-[var(--color-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-surface-2)] transition-colors duration-150',
               collapsed ? 'justify-center' : 'gap-2.5 px-2.5'
             )}
-            aria-label={theme === 'dark' ? 'Heller Modus aktivieren' : 'Dunkler Modus aktivieren'}
-            title={collapsed ? (theme === 'dark' ? 'Heller Modus' : 'Dunkler Modus') : undefined}
+            aria-label={theme === 'dark' ? t('layout.lightMode') : t('layout.darkMode')}
+            title={collapsed ? (theme === 'dark' ? t('layout.lightMode') : t('layout.darkMode')) : undefined}
           >
             <AnimatePresence mode="wait">
               {theme === 'dark' ? (
@@ -320,43 +331,60 @@ export function Sidebar() {
                   exit="exit"
                   className="text-[13px]"
                 >
-                  {theme === 'dark' ? 'Heller Modus' : 'Dunkler Modus'}
+                  {theme === 'dark' ? t('layout.lightMode') : t('layout.darkMode')}
                 </motion.span>
               )}
             </AnimatePresence>
           </button>
         </div>
 
-        {/* ── Upgrade CTA ── */}
+        {/* ── Upgrade CTA (plan-aware) ── */}
         {isLoggedIn && (
           <div className="px-2 mt-2 pb-1">
-            <button
-              onClick={() => router.push('/premium')}
-              className={cn(
-                'w-full rounded-[var(--radius-md)] transition-all duration-200',
-                'bg-gradient-to-r from-violet-600 to-blue-500',
-                'hover:from-violet-500 hover:to-blue-400',
-                'text-white shadow-md hover:shadow-lg hover:scale-[1.02] active:scale-[0.99]',
-                collapsed
-                  ? 'h-10 flex items-center justify-center'
-                  : 'h-11 px-4 flex items-center gap-3 text-[13px] font-semibold'
-              )}
-              title={collapsed ? 'Upgrade auf Premium' : undefined}
-            >
-              <Sparkles size={collapsed ? 18 : 15} className="flex-shrink-0" />
-              <AnimatePresence>
-                {!collapsed && (
-                  <motion.span
-                    variants={labelVariants}
-                    initial="hidden"
-                    animate="visible"
-                    exit="exit"
-                  >
-                    Upgrade auf Premium
-                  </motion.span>
+            {nextPlan ? (
+              <button
+                onClick={() => router.push('/premium')}
+                className={cn(
+                  'w-full rounded-[var(--radius-md)] transition-all duration-200',
+                  'bg-gradient-to-r from-violet-600 to-blue-500',
+                  'hover:from-violet-500 hover:to-blue-400',
+                  'text-white shadow-md hover:shadow-lg hover:scale-[1.02] active:scale-[0.99]',
+                  collapsed
+                    ? 'h-10 flex items-center justify-center'
+                    : 'h-11 px-4 flex items-center gap-3 text-[13px] font-semibold'
                 )}
-              </AnimatePresence>
-            </button>
+                title={collapsed ? `Upgrade auf ${nextPlan.name}` : undefined}
+              >
+                <Sparkles size={collapsed ? 18 : 15} className="flex-shrink-0" />
+                <AnimatePresence>
+                  {!collapsed && (
+                    <motion.span variants={labelVariants} initial="hidden" animate="visible" exit="exit">
+                      Upgrade auf {nextPlan.name}
+                    </motion.span>
+                  )}
+                </AnimatePresence>
+              </button>
+            ) : (
+              /* Top-tier plan: show "Aktiver Plan" indicator */
+              <div
+                className={cn(
+                  'w-full rounded-[var(--radius-md)] border border-[var(--color-border)] text-[var(--color-muted)]',
+                  collapsed
+                    ? 'h-10 flex items-center justify-center'
+                    : 'h-10 px-4 flex items-center gap-2 text-[12px] font-medium'
+                )}
+                title={collapsed ? 'Aktiver Plan' : undefined}
+              >
+                <BadgeCheck size={collapsed ? 18 : 14} className="flex-shrink-0" />
+                <AnimatePresence>
+                  {!collapsed && (
+                    <motion.span variants={labelVariants} initial="hidden" animate="visible" exit="exit">
+                      Aktiver Plan
+                    </motion.span>
+                  )}
+                </AnimatePresence>
+              </div>
+            )}
           </div>
         )}
       </nav>
@@ -378,7 +406,7 @@ export function Sidebar() {
               <div className="flex items-center gap-1.5">
                 <CreditCard size={12} className="text-[var(--color-primary)]" />
                 <span className="text-[14px] font-bold text-[var(--color-text)]">{creditsAvail}</span>
-                <span className="text-[11px] text-[var(--color-muted-2)]">Credits</span>
+                <span className="text-[11px] text-[var(--color-muted-2)]">{t('layout.credits')}</span>
               </div>
             </div>
             <div className="h-1.5 rounded-full bg-[var(--color-surface-3)] overflow-hidden">
@@ -389,9 +417,9 @@ export function Sidebar() {
             </div>
             {balance?.last_credit_reset && (
               <div className="flex justify-between mt-2">
-                <span className="text-[11px] text-[var(--color-muted-2)]">Reset</span>
+                <span className="text-[11px] text-[var(--color-muted-2)]">{t('layout.reset')}</span>
                 <span className="text-[11px] text-[var(--color-muted)]">
-                  {new Date(balance.last_credit_reset).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' })}
+                  {new Date(balance.last_credit_reset).toLocaleDateString(undefined, { day: '2-digit', month: '2-digit' })}
                 </span>
               </div>
             )}
@@ -408,11 +436,11 @@ export function Sidebar() {
             exit={{ opacity: 0, transition: { duration: 0.08 } }}
             className="flex items-center gap-2 px-4 pb-4 text-[11px] text-[var(--color-muted-2)]"
           >
-            <Link href="/legal?section=impressum" className="hover:text-[var(--color-muted)] transition-colors">Impressum</Link>
+            <Link href="/legal?section=impressum" className="hover:text-[var(--color-muted)] transition-colors">{t('layout.impressum')}</Link>
             <span>·</span>
-            <Link href="/legal?section=privacy" className="hover:text-[var(--color-muted)] transition-colors">Datenschutz</Link>
+            <Link href="/legal?section=privacy" className="hover:text-[var(--color-muted)] transition-colors">{t('layout.datenschutz')}</Link>
             <span>·</span>
-            <Link href="/legal?section=tac" className="hover:text-[var(--color-muted)] transition-colors">AGB</Link>
+            <Link href="/legal?section=tac" className="hover:text-[var(--color-muted)] transition-colors">{t('layout.agb')}</Link>
           </motion.div>
         )}
       </AnimatePresence>

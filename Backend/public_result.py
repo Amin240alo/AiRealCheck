@@ -189,7 +189,7 @@ def _build_forensics_section(engine_list):
             section = {"ai_percent": entry.get("ai_percent")}
             summary_lines = []
             if entry.get("available") is False:
-                summary_lines.append("Forensik nicht verfuegbar.")
+                summary_lines.append("Forensik nicht verfügbar.")
             note = entry.get("notes")
             warn = entry.get("warning")
             if note:

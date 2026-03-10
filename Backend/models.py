@@ -40,6 +40,7 @@ class User(Base):
         onupdate=func.now(),
         nullable=False,
     )
+    language = Column(String(5), nullable=False, default="de", server_default=text("'de'"))
     last_login = Column(DateTime(timezone=True), nullable=True)
 
     credit_ledger = relationship("CreditLedger", back_populates="user", lazy="select")

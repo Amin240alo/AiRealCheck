@@ -556,13 +556,13 @@ def _build_reasons(verdict, conflict, engine_count, reasons_in=None):
     if conflict:
         reasons.append("Modelle uneinig")
     if verdict == "likely_ai":
-        reasons.append("KI-Signale ueberwiegen")
+        reasons.append("KI-Signale überwiegen")
     elif verdict == "likely_real":
         reasons.append("Keine starken KI-Indikatoren gefunden")
     else:
         reasons.append("Gemischte Signale")
     if engine_count <= 1:
-        reasons.append("Nur ein Signal verfuegbar")
+        reasons.append("Nur ein Signal verfügbar")
     if verdict == "uncertain" or conflict:
         reasons.append("Zweiten Check empfohlen")
     return reasons[:3]
@@ -1000,33 +1000,33 @@ def compute_confidence(engine_results, final_ai, media_type="image"):
 
     if media_type == "audio":
         if len(detector_values) == 0:
-            return "low", ["Keine Audio-Signale verfuegbar"]
+            return "low", ["Keine Audio-Signale verfügbar"]
         if len(detector_values) == 1:
-            return "low", ["Nur ein Audio-Signal verfuegbar"]
+            return "low", ["Nur ein Audio-Signal verfügbar"]
         diff = max(detector_values) - min(detector_values)
         if diff <= 0.15:
-            return "high", ["Audio-Signale stimmen ueberein"]
+            return "high", ["Audio-Signale stimmen überein"]
         return "medium", ["Audio-Signale uneinig", "Zweiten Check empfohlen"]
 
     if media_type == "image" and len(detector_values) == 0 and xception_value is not None:
-        return "low", ["Nur wenige Signale verfuegbar", "fallback:xception"]
+        return "low", ["Nur wenige Signale verfügbar", "fallback:xception"]
 
     if media_type == "video" and len(detector_values) == 0:
         if temporal_value is not None:
-            return "low", ["Keine Bild-Detektoren aktiv fuer Video-Frames.", "fallback:temporal"]
-        return "low", ["Keine Bild-Detektoren aktiv fuer Video-Frames.", "fallback:none"]
+            return "low", ["Keine Bild-Detektoren aktiv für Video-Frames.", "fallback:temporal"]
+        return "low", ["Keine Bild-Detektoren aktiv für Video-Frames.", "fallback:none"]
 
     if len(detector_values) >= 2:
         diff = max(detector_values) - min(detector_values)
         if diff <= 0.15:
             label = "high"
-            reasons = ["Modelle stimmen ueberein"]
+            reasons = ["Modelle stimmen überein"]
         else:
             label = "medium"
             reasons = ["Modelle uneinig", "Zweiten Check empfohlen"]
     else:
         label = "low"
-        reasons = ["Nur wenige Signale verfuegbar"]
+        reasons = ["Nur wenige Signale verfügbar"]
 
     if media_type == "image" and detector_values and final_ai is not None and xception_value is not None:
         delta = abs(final_ai - xception_value)
@@ -1105,7 +1105,7 @@ def build_user_reasons(result_payload, engine_results_normalized, media_type):
         engine_results_normalized, media_type=media_type
     )
     if missing_high_weight:
-        _add("warnings", "Wichtige Pruefer waren nicht verfuegbar")
+        _add("warnings", "Wichtige Prüfer waren nicht verfügbar")
 
     conflict = bool(payload.get("conflict"))
     if conflict:
@@ -1126,7 +1126,7 @@ def build_user_reasons(result_payload, engine_results_normalized, media_type):
             if _is_present(entry):
                 audio_present += 1
         if audio_present <= 1:
-            _add("warnings", "Nur wenige Audio-Signale verfuegbar")
+            _add("warnings", "Nur wenige Audio-Signale verfügbar")
 
     c2pa_verified = False
     watermark_found = False
@@ -1387,7 +1387,7 @@ def build_standard_result(
         if (not non_xception_available) and xception_available:
             verdict, traffic_light, label_de, label_en = "uncertain", "yellow", "Unsicher", "Uncertain"
             confidence_label = "low"
-            confidence_reasons = ["Nur wenige Signale verfuegbar", "fallback:xception"]
+            confidence_reasons = ["Nur wenige Signale verfügbar", "fallback:xception"]
             confidence = min(confidence, 0.35)
     if media_type == "audio":
         low_reasons = []
@@ -1903,16 +1903,16 @@ def run_ensemble(file_path: str):
 
         user_summary = []
         if verdict == "real":
-            user_summary.append("Das Ergebnis spricht eher fuer eine echte Aufnahme.")
+            user_summary.append("Das Ergebnis spricht eher für eine echte Aufnahme.")
         elif verdict == "fake":
-            user_summary.append("Das Ergebnis spricht eher fuer eine KI/Manipulation.")
+            user_summary.append("Das Ergebnis spricht eher für eine KI/Manipulation.")
         elif verdict == "unknown":
-            user_summary.append("Keine belastbaren Signale verfuegbar.")
+            user_summary.append("Keine belastbaren Signale verfügbar.")
         else:
-            user_summary.append("Das Ergebnis ist uneindeutig; weitere Pruefung empfohlen.")
+            user_summary.append("Das Ergebnis ist uneindeutig; weitere Prüfung empfohlen.")
 
         if not hive_ok:
-            user_summary.append("Hauptanalyse (Hive) war nicht verfuegbar; Fallback wurde genutzt.")
+            user_summary.append("Hauptanalyse (Hive) war nicht verfügbar; Fallback wurde genutzt.")
 
         details = {
             "hive": hive_result.get("details", []) if isinstance(hive_result, dict) else [],
@@ -1926,7 +1926,7 @@ def run_ensemble(file_path: str):
                 "error": True,
                 "message": "No analysis engine available",
                 "details": [],
-                "warnings": warnings or ["Keine Engine verfuegbar"],
+                "warnings": warnings or ["Keine Engine verfügbar"],
                 "primary_source": primary_source,
                 "sources_used": sources_used,
                 "health": {"hive": hive_health_check()},

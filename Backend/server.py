@@ -312,9 +312,28 @@ def _ensure_history_schema():
 
 # Initialize database tables
 
+def _ensure_user_language_schema():
+    """Add language column to users if missing."""
+    try:
+        inspector = inspect(engine)
+        if "users" not in inspector.get_table_names():
+            return
+        columns = {col.get("name") for col in inspector.get_columns("users")}
+        if "language" not in columns:
+            stmt = "ALTER TABLE users ADD COLUMN language VARCHAR(5) NOT NULL DEFAULT 'de'"
+            if not using_sqlite():
+                stmt = "ALTER TABLE users ADD COLUMN IF NOT EXISTS language VARCHAR(5) NOT NULL DEFAULT 'de'"
+            with engine.begin() as conn:
+                conn.execute(text(stmt))
+            print("[schema] users.language column added")
+    except Exception as exc:
+        print(f"[schema] _ensure_user_language_schema error: {exc}")
+
+
 init_db(Base)
 _ensure_analysis_schema()
 _ensure_history_schema()
+_ensure_user_language_schema()
 
 
 
@@ -331,6 +350,96 @@ app.register_blueprint(bp_api_admin)
 app.register_blueprint(bp_analyses)
 app.register_blueprint(bp_history)
 
+
+# ── Public plans endpoint (P1.6 – backend-dynamic pricing) ───────────────────
+
+_PLANS_CONFIG = [
+    {
+        "id": "free",
+        "name": "Free",
+        "price_monthly": 0,
+        "original_price": None,
+        "savings_label": None,
+        "badge_text": None,
+        "highlighted": False,
+        "credits_monthly": 100,
+        "color": "#9ca3af",
+        "checkout_available": False,
+        "features": [
+            "100 Credits pro Monat",
+            "Bildanalyse (15 Credits / Datei)",
+            "Audioanalyse (20 Credits / Datei)",
+            "Videoanalyse (30 Credits / Datei)",
+            "Analyse-Verlauf (30 Tage)",
+            "E-Mail-Support",
+        ],
+        "limitations": [
+            "Kein API-Zugang",
+            "Standard-Engines",
+            "Kein Priority-Support",
+        ],
+    },
+    {
+        "id": "pro",
+        "name": "Pro",
+        "price_monthly": 19,
+        "original_price": 39,
+        "savings_label": "Spare 51 %",
+        "badge_text": "Beliebtester Plan",
+        "highlighted": True,
+        "credits_monthly": 1500,
+        "color": "#22d3ee",
+        "checkout_available": False,
+        "features": [
+            "1.500 Credits pro Monat",
+            "Bildanalyse (15 Credits / Datei)",
+            "Audioanalyse (20 Credits / Datei)",
+            "Videoanalyse (30 Credits / Datei)",
+            "Vollständiger Analyse-Verlauf",
+            "Priorisierte Engine-Auswahl",
+            "API-Zugang (Beta)",
+            "Priority-E-Mail-Support",
+        ],
+        "limitations": None,
+    },
+    {
+        "id": "business",
+        "name": "Business",
+        "price_monthly": 79,
+        "original_price": 129,
+        "savings_label": "Spare 39 %",
+        "badge_text": "Best Value",
+        "highlighted": False,
+        "credits_monthly": 10000,
+        "color": "#a78bfa",
+        "checkout_available": False,
+        "features": [
+            "10.000 Credits pro Monat",
+            "Bildanalyse (15 Credits / Datei)",
+            "Audioanalyse (20 Credits / Datei)",
+            "Videoanalyse (30 Credits / Datei)",
+            "Vollständiger Analyse-Verlauf",
+            "Alle Engines inkl. Premium-Engines",
+            "API-Zugang inkl. höherem Rate-Limit",
+            "Webhook-Unterstützung",
+            "Dedizierter Support-Kanal",
+            "Team-Nutzung (bald)",
+        ],
+        "limitations": None,
+    },
+]
+
+_CREDIT_COSTS_CONFIG = {"image": 15, "audio": 20, "video": 30}
+
+
+@app.get("/api/plans")
+def api_get_plans():
+    """Public endpoint – returns plan definitions for the pricing UI (P1.6)."""
+    return jsonify({
+        "ok": True,
+        "plans": _PLANS_CONFIG,
+        "credit_costs": _CREDIT_COSTS_CONFIG,
+    })
 
 
 # Simple in-memory rate limit: 30 req / 5 min per IP
@@ -1329,7 +1438,7 @@ def _run_analysis_path(file_path, filename, media_type="image", user_ctx=None, c
         else:
             error_payload = {
                 "ok": False,
-                "error": "Nicht unterstuetzter Dateityp",
+                "error": "Nicht unterstützter Dateityp",
                 "media_type_detected": media_type_detected,
                 "analysis_id": analysis_id,
             }
@@ -1422,7 +1531,7 @@ def _run_analysis_path(file_path, filename, media_type="image", user_ctx=None, c
 
         response_payload["legacy"] = {
             "is_legacy": True,
-            "note": "Legacy-Scores; nicht fuer das Urteil verwendet.",
+            "note": "Legacy-Scores; nicht für das Urteil verwendet.",
 
             "verdict": result.get("verdict"),
 

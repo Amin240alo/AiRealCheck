@@ -6,8 +6,9 @@ import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { Eye, EyeOff, CheckCircle } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
-import { resolveAuthError } from '@/lib/utils';
+import { resolveAuthErrorKey } from '@/lib/utils';
 import { API_BASE } from '@/lib/api';
+import { useT } from '@/contexts/LanguageContext';
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -23,6 +24,7 @@ export default function RegisterPage() {
   const [error, setError] = useState('');
   const [registered, setRegistered] = useState(false);
   const [registeredEmail, setRegisteredEmail] = useState('');
+  const { t } = useT();
 
   React.useEffect(() => {
     if (isLoggedIn) router.replace('/analyze');
@@ -30,10 +32,10 @@ export default function RegisterPage() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!name.trim()) { setError('Bitte deinen Namen eingeben.'); return; }
-    if (!email || !password || password.length < 8) { setError('Passwort muss mindestens 8 Zeichen haben.'); return; }
-    if (password !== confirm) { setError('Passwörter stimmen nicht überein.'); return; }
-    if (!consent) { setError('Bitte AGB und Datenschutz akzeptieren.'); return; }
+    if (!name.trim()) { setError(t('auth.register.missingName')); return; }
+    if (!email || !password || password.length < 8) { setError(t('auth.register.minPassword')); return; }
+    if (password !== confirm) { setError(t('auth.register.passwordMismatch')); return; }
+    if (!consent) { setError(t('auth.register.missingConsent')); return; }
     setError(''); setLoading(true);
     try {
       await register(email.trim().toLowerCase(), password, name.trim(), consent);
@@ -46,7 +48,7 @@ export default function RegisterPage() {
         setRegistered(true);
       }
     } catch (err: unknown) {
-      setError(resolveAuthError(err as Parameters<typeof resolveAuthError>[0], 'register'));
+      setError(t(resolveAuthErrorKey(err as Parameters<typeof resolveAuthErrorKey>[0], 'register')));
     } finally {
       setLoading(false);
     }
@@ -57,15 +59,15 @@ export default function RegisterPage() {
       <motion.div initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }} className="w-full max-w-md">
         <div className="rounded-[var(--radius-xl)] bg-[var(--color-surface)] border border-[var(--color-border)] shadow-[var(--shadow-lg)] p-10 text-center">
           <CheckCircle className="mx-auto mb-4 text-[var(--color-success)]" size={44} />
-          <h2 className="text-[22px] font-bold text-[var(--color-text)] mb-2">Bitte E-Mail bestätigen</h2>
+          <h2 className="text-[22px] font-bold text-[var(--color-text)] mb-2">{t('auth.register.successTitle')}</h2>
           <p className="text-[14px] text-[var(--color-muted)] mb-7">
-            Wir haben den Bestätigungslink an <strong>{registeredEmail}</strong> geschickt. Schau auch in deinen Spam-Ordner.
+            {t('auth.register.successText')} <strong>{registeredEmail}</strong> {t('auth.register.successText2')}
           </p>
           <Link
             href="/login"
             className="inline-flex items-center justify-center h-11 px-7 rounded-[var(--radius-md)] bg-[var(--color-primary)] text-white text-[14px] font-semibold hover:bg-[var(--color-primary-hover)] transition-colors"
           >
-            Zum Login
+            {t('auth.register.toLoginBtn')}
           </Link>
         </div>
       </motion.div>
@@ -111,8 +113,8 @@ export default function RegisterPage() {
       <div className="rounded-[var(--radius-xl)] bg-[var(--color-surface)] border border-[var(--color-border)] shadow-[var(--shadow-lg)] p-10">
         <div className="mb-7">
           <div className="text-[11px] font-semibold uppercase tracking-widest text-[var(--color-primary)] mb-2">AIRealCheck</div>
-          <h2 className="text-[24px] font-bold text-[var(--color-text)]">Account erstellen</h2>
-          <p className="text-[14px] text-[var(--color-muted)] mt-1.5">Starte kostenlos mit 100 Credits.</p>
+          <h2 className="text-[24px] font-bold text-[var(--color-text)]">{t('auth.register.title')}</h2>
+          <p className="text-[14px] text-[var(--color-muted)] mt-1.5">{t('auth.register.subtitle')}</p>
         </div>
 
         {error && (
@@ -123,20 +125,20 @@ export default function RegisterPage() {
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-5" noValidate>
           <div className="flex flex-col gap-2">
-            <label htmlFor="name" className="text-[11px] font-semibold uppercase tracking-wider text-[var(--color-muted)]">Name</label>
+            <label htmlFor="name" className="text-[11px] font-semibold uppercase tracking-wider text-[var(--color-muted)]">{t('auth.register.nameLabel')}</label>
             <input
               id="name"
               type="text"
               value={name}
               onChange={e => setName(e.target.value)}
-              placeholder="Vor- und Nachname"
+              placeholder={t('auth.register.namePh')}
               autoComplete="name"
               required
               className="h-11 px-3.5 rounded-[var(--radius-md)] bg-[var(--color-surface-2)] border border-[var(--color-border)] text-[var(--color-text)] text-[14px] placeholder:text-[var(--color-muted-2)] focus:outline-none focus:border-[var(--color-primary)] focus:ring-1 focus:ring-[var(--color-primary)] transition-colors"
             />
           </div>
           <div className="flex flex-col gap-2">
-            <label htmlFor="email" className="text-[11px] font-semibold uppercase tracking-wider text-[var(--color-muted)]">E-Mail</label>
+            <label htmlFor="email" className="text-[11px] font-semibold uppercase tracking-wider text-[var(--color-muted)]">{t('auth.register.emailLabel')}</label>
             <input
               id="email"
               type="email"
@@ -150,11 +152,11 @@ export default function RegisterPage() {
           </div>
           <PwField
             value={password} onChange={setPassword} show={showPw} onToggle={() => setShowPw(!showPw)}
-            id="password" placeholder="Mindestens 8 Zeichen" label="Passwort" autoComplete="new-password"
+            id="password" placeholder={t('auth.register.passwordPh')} label={t('auth.register.passwordLabel')} autoComplete="new-password"
           />
           <PwField
             value={confirm} onChange={setConfirm} show={showConfirm} onToggle={() => setShowConfirm(!showConfirm)}
-            id="confirm" placeholder="Passwort erneut eingeben" label="Passwort bestätigen" autoComplete="new-password"
+            id="confirm" placeholder={t('auth.register.confirmPh')} label={t('auth.register.confirmLabel')} autoComplete="new-password"
           />
           <label className="flex items-start gap-3 cursor-pointer">
             <input
@@ -165,10 +167,10 @@ export default function RegisterPage() {
               required
             />
             <span className="text-[13px] text-[var(--color-muted)]">
-              Ich akzeptiere die{' '}
-              <Link href="/legal?section=tac" className="text-[var(--color-primary)] hover:underline">AGB</Link>
-              {' '}und die{' '}
-              <Link href="/legal?section=privacy" className="text-[var(--color-primary)] hover:underline">Datenschutzerklärung</Link>.
+              {t('auth.register.consentText')}{' '}
+              <Link href="/legal?section=tac" className="text-[var(--color-primary)] hover:underline">{t('auth.register.consentAgb')}</Link>
+              {' '}{t('auth.register.consentAnd')}{' '}
+              <Link href="/legal?section=privacy" className="text-[var(--color-primary)] hover:underline">{t('auth.register.consentPrivacy')}</Link>.
             </span>
           </label>
           <button
@@ -182,13 +184,13 @@ export default function RegisterPage() {
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.4 0 0 5.4 0 12h4z"/>
               </svg>
             )}
-            {loading ? 'Registrieren…' : 'Registrieren'}
+            {loading ? t('auth.register.submitting') : t('auth.register.submit')}
           </button>
         </form>
 
         <div className="my-5 flex items-center gap-3">
           <div className="flex-1 h-px bg-[var(--color-border)]" />
-          <span className="text-[12px] text-[var(--color-muted-2)]">oder</span>
+          <span className="text-[12px] text-[var(--color-muted-2)]">{t('auth.register.or')}</span>
           <div className="flex-1 h-px bg-[var(--color-border)]" />
         </div>
 
@@ -202,12 +204,12 @@ export default function RegisterPage() {
             <path fill="#FBBC05" d="M10.89 28.52c-.48-1.44-.76-2.97-.76-4.52s.27-3.08.76-4.52l-8.06-6.26C.99 16.06 0 19.89 0 24s.99 7.94 2.83 11.78l8.06-6.26z"/>
             <path fill="#34A853" d="M24 48c6.48 0 11.93-2.14 15.9-5.81l-7.43-5.77c-2.07 1.39-4.72 2.22-8.47 2.22-6.15 0-11.38-2.6-14.87-6.98l-8.06 6.26C6.71 42.62 14.7 48 24 48z"/>
           </svg>
-          Mit Google anmelden
+          {t('auth.register.withGoogle')}
         </a>
 
         <div className="mt-6 flex items-center justify-center gap-2 text-[13px] text-[var(--color-muted)]">
-          <span>Bereits registriert?</span>
-          <Link href="/login" className="text-[var(--color-primary)] hover:underline">Zum Login</Link>
+          <span>{t('auth.register.alreadyReg')}</span>
+          <Link href="/login" className="text-[var(--color-primary)] hover:underline">{t('auth.register.toLogin')}</Link>
         </div>
       </div>
     </motion.div>

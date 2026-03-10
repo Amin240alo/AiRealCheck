@@ -10,9 +10,9 @@ from Backend.db import get_session
 from Backend.models import User, CreditTransaction
 from Backend.middleware import require_verified_email, require_admin, _error
 
-COST_IMAGE = int(os.getenv("AIREALCHECK_COST_IMAGE", "10") or 10)
-COST_AUDIO = int(os.getenv("AIREALCHECK_COST_AUDIO", "15") or 15)
-COST_VIDEO_SHORT = int(os.getenv("AIREALCHECK_COST_VIDEO_SHORT", "25") or 25)
+COST_IMAGE = int(os.getenv("AIREALCHECK_COST_IMAGE", "15") or 15)
+COST_AUDIO = int(os.getenv("AIREALCHECK_COST_AUDIO", "20") or 20)
+COST_VIDEO_SHORT = int(os.getenv("AIREALCHECK_COST_VIDEO_SHORT", "30") or 30)
 COST_VIDEO_PER_SEC = int(os.getenv("AIREALCHECK_COST_VIDEO_PER_SEC", "1") or 1)
 RESET_DAYS = int(os.getenv("AIREALCHECK_CREDIT_RESET_DAYS", "30") or 30)
 

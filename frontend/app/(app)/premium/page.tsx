@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { CONTACT_EMAIL } from '@/lib/constants';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -18,9 +19,42 @@ import {
   Clock,
   RefreshCw,
   Info,
+  TrendingDown,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
-import { PLANS, PLAN_ORDER, CREDIT_COSTS, getPlan, isPaidPlan, imagesPerMonth, videoMinutesPerMonth, type PlanId } from '@/lib/plans';
+import {
+  PLANS,
+  PLAN_ORDER,
+  CREDIT_COSTS,
+  getPlan,
+  isPaidPlan,
+  imagesPerMonth,
+  videoMinutesPerMonth,
+  fetchPlansFromApi,
+  getNextPlanId,
+  type Plan,
+  type PlanId,
+} from '@/lib/plans';
+import { API_BASE } from '@/lib/api';
+
+// ─── Dynamic plan loader (P1.6) ───────────────────────────────────────────────
+
+function usePlans() {
+  const staticPlans = PLAN_ORDER.map(id => PLANS[id]);
+  const [plans, setPlans] = useState<Plan[]>(staticPlans);
+  const [planOrder, setPlanOrder] = useState<string[]>(PLAN_ORDER);
+
+  useEffect(() => {
+    fetchPlansFromApi(API_BASE).then(fetched => {
+      if (fetched && fetched.length > 0) {
+        setPlans(fetched);
+        setPlanOrder(fetched.map(p => p.id));
+      }
+    });
+  }, []);
+
+  return { plans, planOrder };
+}
 
 // ─── Feature comparison rows ──────────────────────────────────────────────────
 
@@ -36,16 +70,16 @@ const CROSS = () => <X size={15} className="text-[var(--color-muted-2)]" />;
 const TEXT = (t: string) => <span className="text-[12px] font-medium text-[var(--color-text)]">{t}</span>;
 
 const COMP_ROWS: CompRow[] = [
-  { label: 'Credits / Monat',      free: TEXT('100'),      pro: TEXT('1.500'),     business: TEXT('10.000') },
-  { label: 'Bildanalyse',          free: CHECK(),          pro: CHECK(),           business: CHECK() },
-  { label: 'Audioanalyse',         free: CHECK(),          pro: CHECK(),           business: CHECK() },
-  { label: 'Videoanalyse',         free: CHECK(),          pro: CHECK(),           business: CHECK() },
+  { label: 'Credits / Monat',      free: TEXT('100'),      pro: TEXT('1.500'),      business: TEXT('10.000') },
+  { label: 'Bildanalyse',          free: CHECK(),          pro: CHECK(),            business: CHECK() },
+  { label: 'Audioanalyse',         free: CHECK(),          pro: CHECK(),            business: CHECK() },
+  { label: 'Videoanalyse',         free: CHECK(),          pro: CHECK(),            business: CHECK() },
   { label: 'Analyse-Verlauf',      free: TEXT('30 Tage'),  pro: TEXT('Unbegrenzt'), business: TEXT('Unbegrenzt') },
-  { label: 'Priorisierte Engines', free: CROSS(),          pro: CHECK(),           business: CHECK() },
-  { label: 'API-Zugang',           free: CROSS(),          pro: TEXT('Beta'),      business: TEXT('Voll + höheres Limit') },
-  { label: 'Webhooks',             free: CROSS(),          pro: CROSS(),           business: CHECK('#a78bfa') },
-  { label: 'Premium-Engines',      free: CROSS(),          pro: CROSS(),           business: CHECK('#a78bfa') },
-  { label: 'Support',              free: TEXT('E-Mail'),   pro: TEXT('Priorität'), business: TEXT('Dedizierter Kanal') },
+  { label: 'Priorisierte Engines', free: CROSS(),          pro: CHECK(),            business: CHECK() },
+  { label: 'API-Zugang',           free: CROSS(),          pro: TEXT('Beta'),       business: TEXT('Voll + höheres Limit') },
+  { label: 'Webhooks',             free: CROSS(),          pro: CROSS(),            business: CHECK('#a78bfa') },
+  { label: 'Premium-Engines',      free: CROSS(),          pro: CROSS(),            business: CHECK('#a78bfa') },
+  { label: 'Support',              free: TEXT('E-Mail'),   pro: TEXT('Priorität'),  business: TEXT('Dedizierter Kanal') },
 ];
 
 // ─── FAQ data ─────────────────────────────────────────────────────────────────
@@ -53,7 +87,7 @@ const COMP_ROWS: CompRow[] = [
 const FAQS = [
   {
     q: 'Wann werden Pro und Business verfügbar sein?',
-    a: 'Die Checkout-Integration wird gerade fertiggestellt. Du kannst dich auf die Warteliste eintragen oder uns unter pro@airealcheck.com kontaktieren — wir benachrichtigen dich bei Launch.',
+    a: `Die Checkout-Integration wird gerade fertiggestellt. Du kannst dich auf die Warteliste eintragen oder uns unter ${CONTACT_EMAIL} kontaktieren — wir benachrichtigen dich bei Launch.`,
   },
   {
     q: 'Was passiert mit meinen Credits am Monatsende?',
@@ -61,7 +95,7 @@ const FAQS = [
   },
   {
     q: 'Wie genau funktioniert die Credit-Berechnung?',
-    a: 'Bilder: 5 Credits pro Datei. Audio: 10 Credits pro begonnener Minute (z.B. 90 Sekunden = 2 Minuten = 20 Credits). Video: 25 Credits pro begonnener Minute. Das Ergebnis wird immer vollständig zurückgegeben — auch wenn die Credits danach auf 0 stehen.',
+    a: 'Bilder: 15 Credits pro Datei. Audio: 20 Credits pro Analyse. Video: 30 Credits pro Analyse (kurze Videos bis 30 Sek.). Das Ergebnis wird immer vollständig zurückgegeben — auch wenn die Credits danach auf 0 stehen.',
   },
   {
     q: 'Kann ich upgraden und danach wieder downgraden?',
@@ -77,17 +111,16 @@ const FAQS = [
   },
   {
     q: 'Gibt es Enterprise-Konditionen?',
-    a: 'Ja. Für höhere Volumen, SLA-Vereinbarungen oder maßgeschneiderte Integrationen kontaktiere uns unter enterprise@airealcheck.com.',
+    a: `Ja. Für höhere Volumen, SLA-Vereinbarungen oder maßgeschneiderte Integrationen kontaktiere uns unter ${CONTACT_EMAIL}.`,
   },
 ];
 
 // ─── Checkout stub CTA ────────────────────────────────────────────────────────
 
-function UpgradeCta({ planId, currentPlanId }: { planId: PlanId; currentPlanId: string }) {
+function UpgradeCta({ plan, currentPlanId }: { plan: Plan; currentPlanId: string }) {
   const [showStub, setShowStub] = useState(false);
-  const plan = PLANS[planId];
 
-  if (planId === 'free') {
+  if (plan.id === 'free') {
     if (currentPlanId === 'free') {
       return (
         <div className="w-full h-10 rounded-[var(--radius-md)] flex items-center justify-center text-[13px] font-medium bg-[var(--color-surface-2)] text-[var(--color-muted)] border border-[var(--color-border)] cursor-default select-none">
@@ -98,7 +131,7 @@ function UpgradeCta({ planId, currentPlanId }: { planId: PlanId; currentPlanId: 
     return null;
   }
 
-  if (currentPlanId === planId) {
+  if (currentPlanId === plan.id) {
     return (
       <div className="w-full h-10 rounded-[var(--radius-md)] flex items-center justify-center text-[13px] font-medium border"
         style={{ borderColor: plan.color, color: plan.color, background: plan.color + '12' }}>
@@ -130,9 +163,9 @@ function UpgradeCta({ planId, currentPlanId }: { planId: PlanId; currentPlanId: 
               <Clock size={12} style={{ color: plan.color }} className="flex-shrink-0 mt-0.5" />
               <div style={{ color: 'var(--color-muted)' }}>
                 Checkout wird implementiert. Für frühen Zugang:{' '}
-                <a href={`mailto:pro@airealcheck.com?subject=${plan.name}-Zugang`}
+                <a href={`mailto:${CONTACT_EMAIL}?subject=${plan.name}-Zugang`}
                   className="font-semibold hover:underline" style={{ color: plan.color }}>
-                  pro@airealcheck.com
+                  {CONTACT_EMAIL}
                 </a>
               </div>
             </div>
@@ -143,14 +176,14 @@ function UpgradeCta({ planId, currentPlanId }: { planId: PlanId; currentPlanId: 
   );
 }
 
-// ─── Pricing card ─────────────────────────────────────────────────────────────
+// ─── Pricing card (P1.2 + P1.3 + P1.4 + P1.5) ────────────────────────────────
 
-function PricingCard({ planId, currentPlanId, delay }: { planId: PlanId; currentPlanId: string; delay: number }) {
-  const plan = PLANS[planId];
-  const isCurrent = currentPlanId === planId;
+function PricingCard({ plan, currentPlanId, delay }: { plan: Plan; currentPlanId: string; delay: number }) {
+  const isCurrent = currentPlanId === plan.id;
 
   return (
     <motion.div
+      data-plan={plan.id}
       initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay, duration: 0.35 }}
@@ -160,26 +193,41 @@ function PricingCard({ planId, currentPlanId, delay }: { planId: PlanId; current
           : 'border-[var(--color-border)]'
       }`}
       style={{
-        background: plan.highlighted ? 'linear-gradient(160deg, #22d3ee08, #7c3aed08)' : 'var(--color-surface)',
+        background: plan.highlighted
+          ? 'linear-gradient(160deg, #22d3ee08, #7c3aed08)'
+          : 'var(--color-surface)',
       }}
     >
+      {/* Highlighted top border */}
       {plan.highlighted && (
-        <div className="absolute top-0 left-0 right-0 h-0.5" style={{ background: 'linear-gradient(90deg, #22d3ee, #7c3aed)' }} />
+        <div className="absolute top-0 left-0 right-0 h-0.5"
+          style={{ background: 'linear-gradient(90deg, #22d3ee, #7c3aed)' }} />
       )}
 
-      {plan.highlighted && (
+      {/* P1.3 – Social Proof Badge (dynamic badgeText) */}
+      {plan.badgeText && (
         <div className="absolute top-3 right-3">
-          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold text-white" style={{ background: 'linear-gradient(135deg, #22d3ee, #7c3aed)' }}>
-            <Sparkles size={9} /> Empfohlen
+          <span
+            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold text-white"
+            style={{ background: plan.highlighted ? 'linear-gradient(135deg, #22d3ee, #7c3aed)' : plan.color }}
+          >
+            <Sparkles size={9} /> {plan.badgeText}
           </span>
         </div>
       )}
 
-      <div className="p-6 flex-1">
+      <div className="p-6 flex-1 flex flex-col">
         {/* Plan header */}
         <div className="mb-5">
-          <div className="text-[13px] font-semibold mb-1" style={{ color: plan.color }}>{plan.name}</div>
-          <div className="flex items-end gap-1.5">
+          <div className="text-[13px] font-semibold mb-2" style={{ color: plan.color }}>{plan.name}</div>
+
+          {/* P1.2 – Anchoring: original price crossed out, current price prominent */}
+          <div className="flex items-end gap-2 flex-wrap">
+            {plan.originalPrice != null && plan.originalPrice > plan.priceMonthly && (
+              <span className="text-[20px] font-semibold text-[var(--color-muted-2)] line-through leading-none self-center">
+                {plan.originalPrice} €
+              </span>
+            )}
             <span className="text-[36px] font-bold text-[var(--color-text)] leading-none">
               {plan.priceMonthly === 0 ? 'Kostenlos' : `${plan.priceMonthly} €`}
             </span>
@@ -187,13 +235,22 @@ function PricingCard({ planId, currentPlanId, delay }: { planId: PlanId; current
               <span className="text-[13px] text-[var(--color-muted)] pb-1">/Monat</span>
             )}
           </div>
-          <div className="text-[12px] text-[var(--color-muted)] mt-1.5">
+
+          {/* P1.4 – Loss Aversion: savings label */}
+          {plan.savingsLabel && (
+            <div className="mt-1.5 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold"
+              style={{ background: plan.color + '20', color: plan.color }}>
+              <TrendingDown size={10} /> {plan.savingsLabel}
+            </div>
+          )}
+
+          <div className="text-[12px] text-[var(--color-muted)] mt-2">
             <span className="font-semibold text-[var(--color-text)]">{plan.creditsMonthly.toLocaleString('de-DE')}</span> Credits / Monat
           </div>
         </div>
 
         {/* Feature list */}
-        <ul className="space-y-2 mb-6">
+        <ul className="space-y-2 mb-6 flex-1">
           {plan.features.map(f => (
             <li key={f} className="flex items-start gap-2.5 text-[12px] text-[var(--color-muted)]">
               <Check size={13} className="mt-0.5 flex-shrink-0" style={{ color: plan.color }} />
@@ -208,7 +265,7 @@ function PricingCard({ planId, currentPlanId, delay }: { planId: PlanId; current
           ))}
         </ul>
 
-        <UpgradeCta planId={planId} currentPlanId={currentPlanId} />
+        <UpgradeCta plan={plan} currentPlanId={currentPlanId} />
       </div>
     </motion.div>
   );
@@ -218,9 +275,9 @@ function PricingCard({ planId, currentPlanId, delay }: { planId: PlanId; current
 
 function CreditModel() {
   const items = [
-    { icon: ImageIcon, label: 'Bild', cost: `${CREDIT_COSTS.image} Credits`, sub: 'pro Datei', color: '#22d3ee' },
-    { icon: Music,     label: 'Audio', cost: `${CREDIT_COSTS.audio} Credits`, sub: 'pro begonnener Minute', color: '#34d399' },
-    { icon: Video,     label: 'Video', cost: `${CREDIT_COSTS.video} Credits`, sub: 'pro begonnener Minute', color: '#a78bfa' },
+    { icon: ImageIcon, label: 'Bild',  cost: `${CREDIT_COSTS.image} Credits`, sub: 'pro Datei',               color: '#22d3ee' },
+    { icon: Music,     label: 'Audio', cost: `${CREDIT_COSTS.audio} Credits`, sub: 'pro begonnener Minute',    color: '#34d399' },
+    { icon: Video,     label: 'Video', cost: `${CREDIT_COSTS.video} Credits`, sub: 'pro begonnener Minute',    color: '#a78bfa' },
   ];
 
   return (
@@ -232,7 +289,8 @@ function CreditModel() {
       <div className="grid grid-cols-1 sm:grid-cols-3 divide-y sm:divide-y-0 sm:divide-x divide-[var(--color-border)]">
         {items.map(({ icon: Icon, label, cost, sub, color }) => (
           <div key={label} className="p-5 flex items-center gap-4">
-            <div className="w-10 h-10 rounded-[var(--radius-lg)] flex items-center justify-center flex-shrink-0" style={{ background: color + '20' }}>
+            <div className="w-10 h-10 rounded-[var(--radius-lg)] flex items-center justify-center flex-shrink-0"
+              style={{ background: color + '20' }}>
               <Icon size={20} style={{ color }} />
             </div>
             <div>
@@ -254,7 +312,11 @@ function CreditModel() {
 // ─── Comparison table ─────────────────────────────────────────────────────────
 
 function ComparisonTable({ currentPlanId }: { currentPlanId: string }) {
-  const PLAN_COLORS = { free: 'var(--color-muted)', pro: '#22d3ee', business: '#a78bfa' };
+  const PLAN_COLORS: Record<string, string> = {
+    free: 'var(--color-muted)',
+    pro: '#22d3ee',
+    business: '#a78bfa',
+  };
 
   return (
     <div className="rounded-[var(--radius-xl)] bg-[var(--color-surface)] border border-[var(--color-border)] shadow-[var(--shadow-sm)] overflow-hidden">
@@ -267,8 +329,9 @@ function ComparisonTable({ currentPlanId }: { currentPlanId: string }) {
             <tr className="border-b border-[var(--color-border)]">
               <th className="text-left px-5 py-3 text-[11px] font-semibold uppercase tracking-wider text-[var(--color-muted-2)] w-[45%]">Funktion</th>
               {PLAN_ORDER.map(pid => (
-                <th key={pid} className="text-center px-4 py-3 text-[12px] font-bold" style={{ color: PLAN_COLORS[pid] }}>
-                  {PLANS[pid].name}
+                <th key={pid} className="text-center px-4 py-3 text-[12px] font-bold"
+                  style={{ color: PLAN_COLORS[pid] ?? 'var(--color-muted)' }}>
+                  {PLANS[pid]?.name ?? pid}
                   {currentPlanId === pid && (
                     <span className="ml-1.5 text-[9px] font-medium text-[var(--color-muted)]">(aktuell)</span>
                   )}
@@ -338,12 +401,17 @@ function FaqSection() {
 export default function PremiumPage() {
   const router = useRouter();
   const { user, balance, isLoggedIn } = useAuth();
+  const { plans, planOrder } = usePlans();
 
   const currentPlanId = (balance?.plan_type ?? user?.plan_type ?? 'free') as string;
   const currentPlan = getPlan(currentPlanId);
   const alreadyPaid = isPaidPlan(currentPlanId);
   const creditsAvail = balance?.credits_available ?? 0;
   const creditsTotal = balance?.credits_total ?? 100;
+
+  // Mid-page CTA: show when not on the highest plan, with dynamic next-plan label
+  const nextPlanId = getNextPlanId(currentPlanId, planOrder);
+  const nextPlan = nextPlanId ? plans.find(p => p.id === nextPlanId) : null;
 
   return (
     <div className="max-w-4xl mx-auto px-5 py-10 space-y-10">
@@ -394,10 +462,15 @@ export default function PremiumPage() {
         )}
       </motion.div>
 
-      {/* ── Pricing cards ──────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
-        {PLAN_ORDER.map((pid, i) => (
-          <PricingCard key={pid} planId={pid} currentPlanId={currentPlanId} delay={0.05 + i * 0.07} />
+      {/* ── Pricing cards (P1.5 – dynamic, works for any number of plans) ── */}
+      <div className={`grid gap-5 grid-cols-1 ${plans.length === 2 ? 'sm:grid-cols-2' : plans.length >= 3 ? 'sm:grid-cols-3' : ''}`}>
+        {plans.map((plan, i) => (
+          <PricingCard
+            key={plan.id}
+            plan={plan}
+            currentPlanId={currentPlanId}
+            delay={0.05 + i * 0.07}
+          />
         ))}
       </div>
 
@@ -412,23 +485,20 @@ export default function PremiumPage() {
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.3, duration: 0.35 }}
-        className="grid grid-cols-1 sm:grid-cols-3 gap-4"
+        className={`grid gap-4 grid-cols-1 ${plans.length >= 3 ? 'sm:grid-cols-3' : plans.length === 2 ? 'sm:grid-cols-2' : ''}`}
       >
-        {PLAN_ORDER.map((pid, i) => {
-          const p = PLANS[pid];
-          return (
-            <div key={pid} className="rounded-[var(--radius-xl)] bg-[var(--color-surface)] border border-[var(--color-border)] p-4 text-center space-y-1">
-              <div className="text-[12px] font-semibold" style={{ color: p.color }}>{p.name}</div>
-              <div className="text-[13px] text-[var(--color-muted)]">
-                ≈ <span className="font-bold text-[var(--color-text)]">{imagesPerMonth(p).toLocaleString('de-DE')}</span> Bilder
-              </div>
-              <div className="text-[13px] text-[var(--color-muted)]">
-                oder ≈ <span className="font-bold text-[var(--color-text)]">{videoMinutesPerMonth(p).toLocaleString('de-DE')}</span> Min. Video
-              </div>
-              <div className="text-[11px] text-[var(--color-muted-2)]">pro Monat</div>
+        {plans.map(p => (
+          <div key={p.id} className="rounded-[var(--radius-xl)] bg-[var(--color-surface)] border border-[var(--color-border)] p-4 text-center space-y-1">
+            <div className="text-[12px] font-semibold" style={{ color: p.color }}>{p.name}</div>
+            <div className="text-[13px] text-[var(--color-muted)]">
+              ≈ <span className="font-bold text-[var(--color-text)]">{imagesPerMonth(p).toLocaleString('de-DE')}</span> Bilder
             </div>
-          );
-        })}
+            <div className="text-[13px] text-[var(--color-muted)]">
+              oder ≈ <span className="font-bold text-[var(--color-text)]">{videoMinutesPerMonth(p).toLocaleString('de-DE')}</span> Min. Video
+            </div>
+            <div className="text-[11px] text-[var(--color-muted-2)]">pro Monat</div>
+          </div>
+        ))}
       </motion.div>
 
       {/* ── Feature comparison table ─────────────────────────────────────────── */}
@@ -437,8 +507,8 @@ export default function PremiumPage() {
         <ComparisonTable currentPlanId={currentPlanId} />
       </motion.div>
 
-      {/* ── Mid-page CTA banner ──────────────────────────────────────────────── */}
-      {!alreadyPaid && (
+      {/* ── Mid-page CTA (dynamic next plan, hidden for top-tier users) ──────── */}
+      {nextPlan && (
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
@@ -451,17 +521,22 @@ export default function PremiumPage() {
               Bereit für mehr Analysen?
             </div>
             <div className="text-[13px] text-[var(--color-muted)] mt-1">
-              Pro gibt dir 1.500 Credits — das entspricht ~300 Bilder oder ~60 Minuten Video pro Monat.
+              {nextPlan.name} gibt dir {nextPlan.creditsMonthly.toLocaleString('de-DE')} Credits — das entspricht
+              ≈ {imagesPerMonth(nextPlan).toLocaleString('de-DE')} Bilder oder{' '}
+              ≈ {videoMinutesPerMonth(nextPlan).toLocaleString('de-DE')} Min. Video pro Monat.
+              {nextPlan.savingsLabel && (
+                <span className="ml-1.5 font-semibold" style={{ color: nextPlan.color }}>{nextPlan.savingsLabel}</span>
+              )}
             </div>
           </div>
           <button
             onClick={() => {
-              document.querySelector('[data-plan="pro"]')?.scrollIntoView({ behavior: 'smooth' });
+              document.querySelector(`[data-plan="${nextPlan.id}"]`)?.scrollIntoView({ behavior: 'smooth' });
             }}
             className="flex-shrink-0 flex items-center gap-2 h-10 px-6 text-[13px] font-semibold text-white rounded-[var(--radius-lg)] transition-all hover:opacity-90 whitespace-nowrap"
             style={{ background: 'linear-gradient(135deg, #22d3ee, #7c3aed)' }}
           >
-            <Sparkles size={14} /> Pro ansehen
+            <Sparkles size={14} /> {nextPlan.name} ansehen
           </button>
         </motion.div>
       )}
@@ -482,11 +557,11 @@ export default function PremiumPage() {
           Fragen zu Plänen, Enterprise oder individuellen Anforderungen?
         </div>
         <a
-          href="mailto:pro@airealcheck.com"
+          href={`mailto:${CONTACT_EMAIL}`}
           className="inline-flex items-center gap-2 text-[13px] font-semibold hover:underline"
           style={{ color: '#22d3ee' }}
         >
-          pro@airealcheck.com <ArrowRight size={13} />
+          {CONTACT_EMAIL} <ArrowRight size={13} />
         </a>
       </motion.div>
 

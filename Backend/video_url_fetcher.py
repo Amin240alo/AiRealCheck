@@ -191,7 +191,7 @@ def fetch_video_from_url(url: str) -> Tuple[str, dict]:
         return path, {"method": "yt-dlp"}
 
     if not _looks_like_direct_file(normalized):
-        raise VideoUrlError("ytdlp_missing", "Link-Download nicht verfuegbar: yt-dlp fehlt", 400)
+        raise VideoUrlError("ytdlp_missing", "Link-Download nicht verfügbar: yt-dlp fehlt", 400)
 
     path = _download_direct(normalized, temp_dir)
     _enforce_video_limits(path)
@@ -236,9 +236,9 @@ def _download_with_ytdlp(url: str, temp_dir: str) -> str:
     if proc.returncode != 0:
         stderr = (proc.stderr or "").lower()
         if "private" in stderr or "sign in" in stderr or "login" in stderr or "members only" in stderr:
-            raise VideoUrlError("auth_required", "URL erfordert Login oder ist nicht oeffentlich", 403)
+            raise VideoUrlError("auth_required", "URL erfordert Login oder ist nicht öffentlich", 403)
         if "unsupported url" in stderr or "no video formats found" in stderr:
-            raise VideoUrlError("unsupported_format", "Unterstuetztes Format nicht gefunden", 415)
+            raise VideoUrlError("unsupported_format", "Unterstütztes Format nicht gefunden", 415)
         raise VideoUrlError("download_failed", "Download fehlgeschlagen", 502)
 
     candidates = [p for p in glob_paths(prefix)]
@@ -295,7 +295,7 @@ def _download_direct(url: str, temp_dir: str) -> str:
             continue
 
         if resp.status_code in {401, 403}:
-            raise VideoUrlError("auth_required", "URL erfordert Login oder ist nicht oeffentlich", 403)
+            raise VideoUrlError("auth_required", "URL erfordert Login oder ist nicht öffentlich", 403)
         if resp.status_code < 200 or resp.status_code >= 300:
             raise VideoUrlError("download_failed", "Download fehlgeschlagen", 502)
 

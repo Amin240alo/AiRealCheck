@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useMemo } from 'react';
+import { CONTACT_EMAIL } from '@/lib/constants';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Search,
@@ -75,7 +76,7 @@ const FAQ_CATEGORIES: FaqCategory[] = [
     items: [
       {
         q: 'Wie viele Credits bekomme ich im Free-Plan?',
-        a: 'Im Free-Plan erhältst du 100 Credits. Credits werden monatlich zurückgesetzt. Pro Analyse werden je nach Medientyp und Komplexität 1–5 Credits abgezogen.',
+        a: 'Im Free-Plan erhältst du 100 Credits. Credits werden monatlich zurückgesetzt. Pro Analyse werden je nach Medientyp 15 (Bild), 20 (Audio) oder 30 (Video) Credits abgezogen.',
       },
       {
         q: 'Wann werden meine Credits zurückgesetzt?',
@@ -131,7 +132,7 @@ const FAQ_CATEGORIES: FaqCategory[] = [
       },
       {
         q: 'Gibt es Rabatte für Unternehmen oder Bildungseinrichtungen?',
-        a: 'Ja, Enterprise- und Bildungskonditionen sind geplant. Schreib uns an enterprise@airealcheck.com für eine individuelle Vereinbarung.',
+        a: `Ja, Enterprise- und Bildungskonditionen sind geplant. Schreib uns an ${CONTACT_EMAIL} für eine individuelle Vereinbarung.`,
       },
     ],
   },
@@ -445,7 +446,7 @@ export default function SupportPage() {
             <ContactForm />
             <div className="px-5 pb-4 flex items-center gap-1.5 text-[11px] text-[var(--color-muted-2)]">
               <AlertTriangle size={11} />
-              Oder direkt per E-Mail: <strong className="text-[var(--color-muted)]">support@airealcheck.com</strong>
+              Oder direkt per E-Mail: <strong className="text-[var(--color-muted)]">{CONTACT_EMAIL}</strong>
             </div>
           </motion.div>
         </>
