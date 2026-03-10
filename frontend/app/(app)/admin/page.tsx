@@ -94,8 +94,8 @@ function StatusBadge({ active }: { active: boolean }) {
 }
 
 const ROLE_STYLES: Record<string, string> = {
-  admin:     'bg-[#fbbf2420] text-[#fbbf24]',
-  moderator: 'bg-[#a78bfa20] text-[#a78bfa]',
+  admin:     'bg-[var(--color-warning-muted)] text-[var(--color-warning)]',
+  moderator: 'bg-[var(--color-primary-muted)] text-[var(--color-primary)]',
   user:      'bg-[var(--color-surface-3)] text-[var(--color-muted)]',
 };
 const ROLE_LABELS: Record<string, string> = {
@@ -379,7 +379,7 @@ function UsersView() {
                 <td className="px-3 py-2.5 text-[var(--color-text)] max-w-[180px] truncate">{u.email}</td>
                 <td className="px-3 py-2.5"><RoleBadge role={u.role} /></td>
                 <td className="px-3 py-2.5">
-                  <span className={`px-2 py-0.5 rounded-full text-[10px] ${u.plan_type !== 'free' ? 'bg-[#a78bfa20] text-[#a78bfa]' : 'bg-[var(--color-surface-3)] text-[var(--color-muted)]'}`}>
+                  <span className={`px-2 py-0.5 rounded-full text-[10px] ${u.plan_type !== 'free' ? 'bg-[var(--color-primary-muted)] text-[var(--color-primary)]' : 'bg-[var(--color-surface-3)] text-[var(--color-muted)]'}`}>
                     {u.plan_type || 'free'}
                   </span>
                 </td>
@@ -617,7 +617,7 @@ function EnginesView() {
       <SectionHeader title="Engines" onRefresh={load} />
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-center">
         <div className="p-3 rounded-[var(--radius-md)] bg-[var(--color-surface)] border border-[var(--color-border)]">
-          <div className="text-[22px] font-bold text-[#22d3ee]">{active.length}</div>
+          <div className="text-[22px] font-bold text-[var(--color-accent)]">{active.length}</div>
           <div className="text-[11px] text-[var(--color-muted)] mt-0.5">Aktiv</div>
         </div>
         <div className="p-3 rounded-[var(--radius-md)] bg-[var(--color-surface)] border border-[var(--color-border)]">
@@ -880,8 +880,8 @@ function FeedbackView() {
     <div className="space-y-5">
       <SectionHeader title="Feedback-Inbox" />
       <div className="rounded-[var(--radius-xl)] border border-[var(--color-border)] bg-[var(--color-surface)] p-8 text-center">
-        <div className="w-12 h-12 rounded-full bg-[#22d3ee15] flex items-center justify-center mx-auto mb-4">
-          <MessageSquare size={22} style={{ color: '#22d3ee' }} />
+        <div className="w-12 h-12 rounded-full bg-[var(--color-accent-muted)] flex items-center justify-center mx-auto mb-4">
+          <MessageSquare size={22} className="text-[var(--color-accent)]" />
         </div>
         <div className="text-[15px] font-semibold text-[var(--color-text)] mb-2">Feedback-Backend in Entwicklung</div>
         <p className="text-[13px] text-[var(--color-muted)] max-w-md mx-auto leading-relaxed">

@@ -1,6 +1,6 @@
 const TOKEN_KEY = 'airealcheck_token';
 
-export const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:5001';
+export const API_BASE = process.env.NEXT_PUBLIC_API_URL || '';
 
 export function getToken(): string | null {
   if (typeof window === 'undefined') return null;
@@ -36,6 +36,9 @@ interface FetchOptions {
 }
 
 export async function apiFetch<T = unknown>(path: string, opts: FetchOptions = {}): Promise<T> {
+  if (!API_BASE) {
+    throw new Error('NEXT_PUBLIC_API_URL is required');
+  }
   const { method = 'GET', body = null, headers = {}, signal, token } = opts;
   const finalHeaders: Record<string, string> = {
     Accept: 'application/json',

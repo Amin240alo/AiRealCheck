@@ -507,9 +507,9 @@ export default function AnalyzePage() {
   }
 
   const dropzoneStyle: React.CSSProperties = dragging
-    ? { borderColor: '#22d3ee', boxShadow: '0 0 0 1px rgba(34,211,238,0.35), 0 0 32px rgba(34,211,238,0.12)', background: 'rgba(34,211,238,0.04)' }
+    ? { borderColor: 'var(--color-accent)', boxShadow: '0 0 0 1px var(--color-accent-border), 0 0 32px var(--color-accent-muted)', background: 'var(--color-accent-muted)' }
     : stagedFile
-    ? { borderColor: 'rgba(34,211,238,0.45)', boxShadow: '0 0 16px rgba(34,211,238,0.07)' }
+    ? { borderColor: 'var(--color-accent-border)', boxShadow: '0 0 16px var(--color-accent-muted)' }
     : {};
 
   const MediaIcon = mediaType === 'image' ? ImageIcon : mediaType === 'video' ? Video : Music;
@@ -612,8 +612,8 @@ export default function AnalyzePage() {
                         className="flex items-center gap-4 p-5 min-h-[168px]"
                       >
                         <div className="w-10 h-10 rounded-[var(--radius-md)] flex items-center justify-center flex-shrink-0"
-                          style={{ background: 'rgba(34,211,238,0.10)', border: '1px solid rgba(34,211,238,0.22)' }}>
-                          <MediaIcon size={18} style={{ color: '#22d3ee' }} />
+                          style={{ background: 'var(--color-accent-muted)', border: '1px solid var(--color-accent-border)' }}>
+                          <MediaIcon size={18} className="text-[var(--color-accent)]" />
                         </div>
                         {/* A1 req 5 – Truncate long filenames */}
                         <div className="flex-1 min-w-0 overflow-hidden">
@@ -652,10 +652,10 @@ export default function AnalyzePage() {
                       >
                         <div className="w-14 h-14 rounded-[var(--radius-xl)] flex items-center justify-center transition-all duration-200"
                           style={{
-                            background: dragging ? 'rgba(34,211,238,0.12)' : 'rgba(34,211,238,0.06)',
-                            border: `1px solid rgba(34,211,238,${dragging ? '0.35' : '0.15'})`,
+                            background: 'var(--color-accent-muted)',
+                            border: `1px solid ${dragging ? 'var(--color-accent)' : 'var(--color-accent-border)'}`,
                           }}>
-                          <MediaIcon size={26} style={{ color: dragging ? '#22d3ee' : 'var(--color-muted)' }} />
+                          <MediaIcon size={26} className={dragging ? 'text-[var(--color-accent)]' : 'text-[var(--color-muted)]'} />
                         </div>
                         <div>
                           <div className="text-[14px] font-medium text-[var(--color-text)]">

@@ -56,7 +56,7 @@ oauth = OAuth()
 def _google_oauth_config():
     client_id = (os.getenv("GOOGLE_CLIENT_ID") or os.getenv("GOOGLE_OAUTH_CLIENT_ID") or "").strip()
     client_secret = (os.getenv("GOOGLE_CLIENT_SECRET") or os.getenv("GOOGLE_OAUTH_CLIENT_SECRET") or "").strip()
-    redirect_uri = (os.getenv("GOOGLE_REDIRECT_URI") or os.getenv("GOOGLE_OAUTH_REDIRECT_URI") or "").strip()
+    redirect_uri = _google_redirect_uri()
     return client_id, client_secret, redirect_uri
 
 
@@ -126,12 +126,26 @@ def _sanitize_user(u: User):
     }
 
 
+def _normalize_base_url(raw: str) -> str:
+    return (raw or "").strip().rstrip("/")
+
+
 def _public_api_url():
-    return (os.getenv("AIREALCHECK_PUBLIC_API_URL") or "http://localhost:5001").rstrip("/")
+    return _normalize_base_url(os.getenv("AIREALCHECK_PUBLIC_API_URL"))
 
 
 def _public_web_url():
-    return (os.getenv("AIREALCHECK_PUBLIC_WEB_URL") or "http://127.0.0.1:5500").rstrip("/")
+    return _normalize_base_url(os.getenv("AIREALCHECK_PUBLIC_WEB_URL"))
+
+
+def _google_redirect_uri() -> str:
+    redirect_uri = (os.getenv("GOOGLE_REDIRECT_URI") or os.getenv("GOOGLE_OAUTH_REDIRECT_URI") or "").strip()
+    if redirect_uri:
+        return redirect_uri
+    api = _public_api_url()
+    if api:
+        return f"{api}/auth/google/callback"
+    return ""
 
 
 def _oauth_debug_enabled():
@@ -151,17 +165,23 @@ def _log_oauth_redirect(target_url: str, token_created: bool):
 
 def _build_oauth_callback_url(token: str) -> str:
     web = _public_web_url()
+    if not web:
+        return ""
     token_value = quote(token or "", safe="")
     return f"{web}/auth/callback#token={token_value}"
 
 
 def _build_oauth_error_url() -> str:
     web = _public_web_url()
+    if not web:
+        return ""
     return f"{web}/login?oauth_error=1"
 
 
 def _oauth_error_redirect():
     target = _build_oauth_error_url()
+    if not target:
+        return _error("oauth_misconfigured", 500)
     _log_oauth_redirect(target, token_created=False)
     return redirect(target)
 
@@ -170,14 +190,20 @@ def _build_verify_link(token: str) -> str:
     web = _public_web_url()
     if web:
         return f"{web}/verify-email?token={token}"
-    return f"{_public_api_url()}/auth/verify?token={token}"
+    api = _public_api_url()
+    if api:
+        return f"{api}/auth/verify?token={token}"
+    return ""
 
 
 def _build_reset_link(token: str) -> str:
     web = _public_web_url()
     if web:
         return f"{web}/reset-password?token={token}"
-    return f"{_public_api_url()}/auth/reset?token={token}"
+    api = _public_api_url()
+    if api:
+        return f"{api}/auth/reset?token={token}"
+    return ""
 
 
 def _ensure_terms_consent(db, user_id: int):
@@ -337,6 +363,8 @@ def register():
         db.close()
 
     verify_link = _build_verify_link(token)
+    if not verify_link:
+        return _error("public_url_not_configured", 500)
     greeting = f"Hallo {display_name}," if display_name else "Hallo,"
     body = "\n".join(
         [
@@ -516,6 +544,9 @@ def google_callback():
         )
         db.commit()
         redirect_url = _build_oauth_callback_url(access_token)
+        if not redirect_url:
+            current_app.logger.error("oauth_missing_public_web_url")
+            return _error("oauth_misconfigured", 500)
         resp = redirect(redirect_url)
         _set_refresh_cookie(resp, refresh_token)
         _log_oauth_redirect(redirect_url, token_created=True)
@@ -609,6 +640,8 @@ def resend_verify():
         db.close()
 
     verify_link = _build_verify_link(token)
+    if not verify_link:
+        return _error("public_url_not_configured", 500)
     greeting = f"Hallo {user_display_name}," if user_display_name else "Hallo,"
     body = "\n".join(
         [
@@ -676,6 +709,8 @@ def forgot_password():
             db.add(row)
             db.commit()
             reset_link = _build_reset_link(token)
+            if not reset_link:
+                return _error("public_url_not_configured", 500)
             greeting = f"Hallo {user.display_name}," if user.display_name else "Hallo,"
             body = "\n".join(
                 [
