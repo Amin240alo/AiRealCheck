@@ -115,6 +115,7 @@ function HistoryRow({
         <div className="flex items-center gap-2 mt-0.5 text-[11px] text-[var(--color-muted-2)]">
           <span>{formatDate(item.created_at, lang)}</span>
           {item.credits_charged > 0 && <span>· {item.credits_charged} {t('history.credits')}</span>}
+          <span className="font-mono text-[10px] opacity-60 select-all">{item.id.slice(0, 8)}</span>
         </div>
       </div>
 

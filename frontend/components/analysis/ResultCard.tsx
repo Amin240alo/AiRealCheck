@@ -523,6 +523,15 @@ export function ResultCard({ data, file, mediaType: mediaTypeProp, title, onRese
                 <span>{creditsUsed} Credits</span>
               )}
             </div>
+
+            {/* Analysis ID */}
+            {n.meta?.analysis_id && (
+              <div className="mt-2">
+                <span className="text-[10px] text-[var(--color-muted-2)] font-mono select-all">
+                  ID: {n.meta.analysis_id}
+                </span>
+              </div>
+            )}
           </div>
 
           {/* Media preview */}

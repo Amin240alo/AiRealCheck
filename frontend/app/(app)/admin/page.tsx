@@ -444,7 +444,10 @@ function AnalysesView() {
   const [offset, setOffset] = useState(0);
   const [mediaFilter, setMediaFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [search, setSearch] = useState('');
+  const [searchInput, setSearchInput] = useState('');
   const [loading, setLoading] = useState(true);
+  const searchTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const LIMIT = 25;
 
   const load = useCallback(async () => {
@@ -453,21 +456,38 @@ function AnalysesView() {
       const params = new URLSearchParams({ limit: String(LIMIT), offset: String(offset) });
       if (mediaFilter) params.set('type', mediaFilter);
       if (statusFilter) params.set('status', statusFilter);
+      if (search) params.set('search', search);
       const data = await apiFetch<{ items: AdminAnalysisRow[]; has_more: boolean }>(`/admin/analyses?${params}`);
       setItems(data.items || []);
       setHasMore(data.has_more ?? false);
     } catch { setItems([]); }
     setLoading(false);
-  }, [offset, mediaFilter, statusFilter]);
+  }, [offset, mediaFilter, statusFilter, search]);
 
   useEffect(() => { load(); }, [load]);
+
+  const handleSearchChange = (val: string) => {
+    setSearchInput(val);
+    if (searchTimeout.current) clearTimeout(searchTimeout.current);
+    searchTimeout.current = setTimeout(() => { setSearch(val); setOffset(0); }, 350);
+  };
 
   const sel = "h-8 px-2 text-[12px] rounded-[var(--radius-md)] bg-[var(--color-surface-2)] border border-[var(--color-border)] text-[var(--color-text)] focus:outline-none cursor-pointer";
 
   return (
     <div className="space-y-4">
       <SectionHeader title="Analysen" onRefresh={load} />
-      <div className="flex gap-2 flex-wrap">
+      <div className="flex gap-2 flex-wrap items-center">
+        <div className="relative flex-1 min-w-[180px]">
+          <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--color-muted-2)]" />
+          <input
+            type="search"
+            value={searchInput}
+            onChange={e => handleSearchChange(e.target.value)}
+            placeholder="Nach ID oder Titel suchen…"
+            className="w-full h-8 pl-7 pr-3 text-[12px] rounded-[var(--radius-md)] bg-[var(--color-surface-2)] border border-[var(--color-border)] text-[var(--color-text)] placeholder:text-[var(--color-muted-2)] focus:outline-none focus:border-[var(--color-primary)]"
+          />
+        </div>
         <select value={mediaFilter} onChange={e => { setMediaFilter(e.target.value); setOffset(0); }} className={sel}>
           <option value="">Alle Typen</option>
           <option value="image">Bild</option>
@@ -481,10 +501,12 @@ function AnalysesView() {
         </select>
       </div>
       {loading ? <Loader /> : (
-        <AdminTable headers={['ID', 'Nutzer', 'Datum', 'Typ', 'Status', 'Score', 'Engines', 'Cr.']} empty={items.length === 0}>
+        <AdminTable headers={['Analyse-ID', 'Nutzer', 'Datum', 'Typ', 'Status', 'Score', 'Urteil', 'Cr.']} empty={items.length === 0}>
           {items.map(a => (
             <tr key={a.id} className="border-b border-[var(--color-border)] last:border-0 hover:bg-[var(--color-surface-2)]">
-              <td className="px-3 py-2.5 text-[var(--color-muted-2)]">#{a.id}</td>
+              <td className="px-3 py-2.5">
+                <span className="font-mono text-[10px] text-[var(--color-muted-2)] select-all">{a.id}</span>
+              </td>
               <td className="px-3 py-2.5 text-[var(--color-text)] max-w-[140px] truncate">{a.user_email || `#${a.user_id}`}</td>
               <td className="px-3 py-2.5 text-[var(--color-muted)] whitespace-nowrap">{formatDate(a.created_at)}</td>
               <td className="px-3 py-2.5"><span className="px-1.5 py-0.5 rounded bg-[var(--color-surface-3)] text-[var(--color-muted)] text-[10px] capitalize">{a.media_type}</span></td>
@@ -494,7 +516,7 @@ function AnalysesView() {
                 </span>
               </td>
               <td className="px-3 py-2.5 text-[var(--color-text)]">{a.final_score != null ? `${a.final_score}%` : '—'}</td>
-              <td className="px-3 py-2.5 text-[var(--color-muted-2)] max-w-[160px] truncate text-[11px]">{a.engines_summary || '—'}</td>
+              <td className="px-3 py-2.5 text-[var(--color-muted-2)] max-w-[140px] truncate text-[11px]">{a.verdict_label || '—'}</td>
               <td className="px-3 py-2.5 text-[var(--color-muted)]">{a.credits_charged}</td>
             </tr>
           ))}

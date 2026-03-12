@@ -105,9 +105,9 @@ def _traffic_from_verdict(verdict_key):
 
 def _labels_from_verdict(verdict_key):
     if verdict_key == "likely_real":
-        return "Ueberwiegend echt", "Likely real"
+        return "Überwiegend echt", "Likely real"
     if verdict_key == "likely_ai":
-        return "Ueberwiegend KI", "Likely AI-generated"
+        return "Überwiegend KI", "Likely AI-generated"
     return "Unsicher", "Uncertain"
 
 

@@ -541,10 +541,10 @@ def _compute_overall_confidence(spread_or_results, engine_count=None, conflict=N
 def _verdict_from_ai(ai_likelihood):
     ai_likelihood = _clamp(ai_likelihood)
     if ai_likelihood <= 20.0:
-        return "likely_real", "green", "Ueberwiegend echt", "Likely real"
+        return "likely_real", "green", "Überwiegend echt", "Likely real"
     if ai_likelihood <= 60.0:
         return "uncertain", "yellow", "Unsicher", "Uncertain"
-    return "likely_ai", "red", "Ueberwiegend KI", "Likely AI-generated"
+    return "likely_ai", "red", "Überwiegend KI", "Likely AI-generated"
 
 
 def _build_reasons(verdict, conflict, engine_count, reasons_in=None):
@@ -1463,7 +1463,7 @@ def build_standard_result(
         primary_source = primary_source_override
         verdict = "real"
         traffic_light = "green"
-        label_de = "Ueberwiegend echt"
+        label_de = "Überwiegend echt"
         label_en = "Likely real"
         if confidence_label == "low":
             confidence_label = "medium"

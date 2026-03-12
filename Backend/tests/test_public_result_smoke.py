@@ -13,7 +13,7 @@ def test_public_result_transform_smoke():
         "real_likelihood": 27,
         "verdict": "likely_ai",
         "traffic_light": "red",
-        "label_de": "Ueberwiegend KI",
+        "label_de": "Überwiegend KI",
         "label_en": "Likely AI-generated",
         "confidence": 0.82,
         "confidence_label": "high",
@@ -45,7 +45,7 @@ def test_public_result_transform_smoke():
 def test_history_engine_breakdown_compact():
     public = {
         "meta": {"schema_version": "public_result_v1"},
-        "summary": {"ai_percent": 88, "label_de": "Ueberwiegend KI"},
+        "summary": {"ai_percent": 88, "label_de": "Überwiegend KI"},
         "details": {
             "engines": [
                 {"engine": "hive", "ai_percent": 88},

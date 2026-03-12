@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Image as ImageIcon, Video, Music, Upload, Link as LinkIcon,
-  AlertTriangle, X, ShieldCheck, BarChart2, Archive, Zap, Check,
+  AlertTriangle, X, Check,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { apiFetch, getToken, API_BASE } from '@/lib/api';
@@ -262,36 +262,6 @@ function AnalysisProgressPanel({
   );
 }
 
-// ── Info Panel ────────────────────────────────────────────────────────────────
-
-function InfoPanel() {
-  const items = [
-    { icon: ShieldCheck, accent: '#22d3ee', title: 'Eindeutiges Urteil',    desc: 'KI-generiert, echt oder unklar — immer mit klarer Begründung.' },
-    { icon: BarChart2,   accent: '#a78bfa', title: 'Konfidenz-Score',       desc: 'Hoch, Mittel oder Niedrig — du siehst, wie sicher das Ergebnis ist.' },
-    { icon: Zap,         accent: '#22d3ee', title: 'Technische Signale',    desc: 'Details aus mehreren KI-Engines: Bildforensik, Metadaten, C2PA.' },
-    { icon: Archive,     accent: '#a78bfa', title: 'Automatischer Verlauf', desc: 'Jede Analyse wird gespeichert — filterbar und jederzeit abrufbar.' },
-  ];
-  return (
-    <div className="flex flex-col h-full">
-      <div className="text-[11px] uppercase tracking-wider font-semibold text-[var(--color-muted)] mb-5">Was du bekommst</div>
-      <div className="space-y-4 flex-1">
-        {items.map(({ icon: Icon, accent, title, desc }) => (
-          <div key={title} className="flex items-start gap-3">
-            <div className="w-7 h-7 rounded-[var(--radius-md)] flex items-center justify-center flex-shrink-0 mt-0.5"
-              style={{ background: accent + '18', border: `1px solid ${accent}30` }}>
-              <Icon size={14} style={{ color: accent }} />
-            </div>
-            <div>
-              <div className="text-[13px] font-medium text-[var(--color-text)]">{title}</div>
-              <div className="text-[12px] text-[var(--color-muted)] mt-0.5 leading-relaxed">{desc}</div>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function formatFileSize(bytes: number): string {
@@ -364,50 +334,52 @@ export default function AnalyzePage() {
   // A1.3 – Non-linear progress simulation
   useEffect(() => {
     if (!analyzing) {
-      setAnalyzeStep(0);
-      setAnalyzeProgress(0);
-      setDoneEngines([]);
       if (progressTimerRef.current) {
         clearInterval(progressTimerRef.current);
         progressTimerRef.current = null;
       }
       return;
     }
+    // Ensure we always start from 0 when a new analysis begins
+    setAnalyzeStep(0);
+    setAnalyzeProgress(0);
+    setDoneEngines([]);
+
     const startMs = Date.now();
     const engines = SIM_ENGINES[mediaType];
 
     const tick = () => {
       const t = (Date.now() - startMs) / 1000;
 
-      // Phase 1 (0–3 s): 0→40 % (fast — upload phase)
-      // Phase 2 (3–8 s): 40→70 % (medium — signal extraction)
-      // Phase 3 (8–30 s): 70→92 % (slow — ensemble engines)
-      // Hold at 95 % until server responds
+      // Phase 1 (0–2 s): 0→35 % (fast — upload)
+      // Phase 2 (2–7 s): 35→65 % (normal — signal extraction)
+      // Phase 3 (7–40 s): 65→92 % (slow — ensemble engines, decelerating)
+      // Hold at 93 % until server responds
       let prog: number;
-      if (t < 3)       prog = (t / 3) * 40;
-      else if (t < 8)  prog = 40 + ((t - 3) / 5)  * 30;
-      else if (t < 30) prog = 70 + ((t - 8) / 22) * 22;
+      if (t < 2)       prog = (t / 2) * 35;
+      else if (t < 7)  prog = 35 + ((t - 2) / 5) * 30;
+      else if (t < 40) prog = 65 + ((t - 7) / 33) * 27;
       else             prog = 92;
 
-      setAnalyzeProgress(prev => Math.max(prev, Math.min(Math.round(prog), 95)));
+      setAnalyzeProgress(prev => Math.max(prev, Math.min(Math.round(prog), 93)));
 
       // A1.2 – Step timing
       let s = 0;
       if (t >= 1)  s = 1;
       if (t >= 4)  s = 2;
       if (t >= 22) s = 3;
-      if (t >= 28) s = 4;
+      if (t >= 35) s = 4;
       setAnalyzeStep(s);
 
-      // A1.4 – Reveal engines progressively from t=4s over 16 s
+      // A1.4 – Reveal engines progressively from t=4s over 18 s
       if (t >= 4) {
-        const ratio = Math.min((t - 4) / 16, 1);
+        const ratio = Math.min((t - 4) / 18, 1);
         setDoneEngines(engines.slice(0, Math.floor(ratio * engines.length)));
       }
     };
 
     tick();
-    progressTimerRef.current = setInterval(tick, 300);
+    progressTimerRef.current = setInterval(tick, 250);
     return () => {
       if (progressTimerRef.current) clearInterval(progressTimerRef.current);
     };
@@ -457,7 +429,10 @@ export default function AnalyzePage() {
     if (inputMode === 'link' && !url) { setServerError('Bitte einen Link eingeben.'); return; }
     if (inputMode === 'link' && !/^https?:\/\//i.test(url)) { setServerError('Nur http/https Links sind erlaubt.'); return; }
 
-    setServerError(''); setResult(null); setAnalyzing(true);
+    setServerError(''); setResult(null);
+    // Explicitly reset progress before starting so it always begins at 0
+    setAnalyzeProgress(0); setAnalyzeStep(0); setDoneEngines([]);
+    setAnalyzing(true);
     const controller = new AbortController();
     abortRef.current = controller;
     const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS);
@@ -486,6 +461,14 @@ export default function AnalyzePage() {
         });
       }
       await refreshBalance();
+      // Animate progress to 100% before revealing result
+      if (progressTimerRef.current) {
+        clearInterval(progressTimerRef.current);
+        progressTimerRef.current = null;
+      }
+      setAnalyzeProgress(100);
+      setAnalyzeStep(ANALYZE_STEPS.length - 1);
+      await new Promise(r => setTimeout(r, 550));
       setResult(data);
     } catch (err: unknown) {
       const e = err as { name?: string; status?: number; response?: { error?: string } };
@@ -504,6 +487,7 @@ export default function AnalyzePage() {
   function reset() {
     setStagedFile(null); setFileError(null); setUrl('');
     setResult(null); setServerError('');
+    setAnalyzeProgress(0); setAnalyzeStep(0); setDoneEngines([]);
   }
 
   const dropzoneStyle: React.CSSProperties = dragging
@@ -515,8 +499,7 @@ export default function AnalyzePage() {
   const MediaIcon = mediaType === 'image' ? ImageIcon : mediaType === 'video' ? Video : Music;
 
   return (
-    // max-w-5xl → upload card ~20% wider than previous max-w-4xl
-    <div className="max-w-5xl mx-auto px-6 py-10">
+    <div className="max-w-4xl mx-auto px-6 py-10">
       <div className="mb-7">
         <h1 className="text-[24px] font-bold text-[var(--color-text)]">KI-Inhalte erkennen</h1>
         <p className="text-[14px] text-[var(--color-muted)] mt-1">Prüfe Bilder, Videos und Audio auf KI-Erzeugung.</p>
@@ -536,10 +519,8 @@ export default function AnalyzePage() {
         </div>
       )}
 
-      {/* Grid: wider upload card + same-height info panel via items-stretch */}
-      <div className="grid grid-cols-1 lg:grid-cols-[1fr_260px] gap-5 mb-5 items-stretch">
-
-        {/* Upload card */}
+      {/* Upload card */}
+      <div className="mb-5">
         <div className="rounded-[var(--radius-xl)] bg-[var(--color-surface)] border border-[var(--color-border)] shadow-[var(--shadow-sm)] p-6 flex flex-col">
 
           {/* Media type buttons */}
@@ -768,11 +749,6 @@ export default function AnalyzePage() {
               </motion.div>
             )}
           </AnimatePresence>
-        </div>
-
-        {/* Info panel – same height as upload card via grid items-stretch */}
-        <div className="rounded-[var(--radius-xl)] bg-[var(--color-surface)] border border-[var(--color-border)] shadow-[var(--shadow-sm)] p-6 flex flex-col">
-          <InfoPanel />
         </div>
       </div>
 

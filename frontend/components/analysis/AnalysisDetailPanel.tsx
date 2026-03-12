@@ -212,6 +212,12 @@ export function AnalysisDetailPanel({ entry, onClose }: Props) {
                   </div>
                 )}
               </div>
+
+              {/* Analysis ID */}
+              <div className="rounded-[var(--radius-md)] bg-[var(--color-surface-2)] px-3 py-2.5 text-[11px]">
+                <div className="text-[var(--color-muted)] mb-1">Analyse-ID</div>
+                <div className="font-mono text-[var(--color-text)] break-all select-all">{entry.id}</div>
+              </div>
             </div>
           </motion.aside>
         </>

@@ -2,7 +2,7 @@ import datetime as dt
 import json
 
 from flask import Blueprint, request, jsonify, g
-from sqlalchemy import desc, func
+from sqlalchemy import desc, func, or_
 from sqlalchemy.exc import IntegrityError
 
 from Backend.db import get_session
@@ -102,9 +102,9 @@ def _extract_verdict_label(payload):
         return label.strip()
     verdict = (payload.get("verdict") or "").strip().lower()
     if verdict == "likely_ai":
-        return "Wahrscheinlich KI"
+        return "Überwiegend KI"
     if verdict == "likely_real":
-        return "Wahrscheinlich echt"
+        return "Überwiegend echt"
     if verdict == "uncertain":
         return "Unsicher"
     return None
@@ -312,7 +312,10 @@ def list_history():
         if media_type:
             query = query.filter(AnalysisHistory.media_type == media_type)
         if search:
-            query = query.filter(AnalysisHistory.title.ilike(f"%{search}%"))
+            query = query.filter(or_(
+                AnalysisHistory.title.ilike(f"%{search}%"),
+                AnalysisHistory.id.ilike(f"%{search}%"),
+            ))
         if verdict == "likely_ai":
             query = query.filter(AnalysisHistory.final_score >= 70)
         elif verdict == "likely_real":

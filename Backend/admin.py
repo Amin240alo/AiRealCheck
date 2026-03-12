@@ -806,6 +806,7 @@ def list_analyses():
     limit = min(max(limit, 1), 200)
     offset = max(offset, 0)
     user_id = (request.args.get("user_id") or "").strip()
+    search = (request.args.get("search") or "").strip()
     status = (request.args.get("status") or "").strip().lower()
     media_type = (request.args.get("type") or request.args.get("media_type") or "").strip().lower()
     score_min_raw = (request.args.get("score_min") or "").strip()
@@ -854,6 +855,11 @@ def list_analyses():
             query = query.filter(func.date(AnalysisHistory.created_at) <= date_to)
         if engine:
             query = query.filter(AnalysisHistory.engine_breakdown.ilike(f"%{engine}%"))
+        if search:
+            query = query.filter(or_(
+                AnalysisHistory.title.ilike(f"%{search}%"),
+                AnalysisHistory.id.ilike(f"%{search}%"),
+            ))
         rows = (
             query.order_by(desc(AnalysisHistory.created_at))
             .limit(limit + 1)
